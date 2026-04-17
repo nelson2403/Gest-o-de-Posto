@@ -1,12 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-// POST /api/auto-configurar-contas
+// GET /api/auto-configurar-contas
 // 1. Para cada posto sem codigo_conta_externo, descobre a conta bancária pelo as_movto
 // 2. Auto-aplica quando há exatamente 1 conta 1.2.* encontrada
 // 3. Recalcula extrato_saldo_externo para todas as tarefas divergentes/ok do posto
 // 4. Retorna relatório do que foi feito e o que precisa de revisão manual
-export async function POST(_req: NextRequest) {
+export async function GET() {
   const admin = createAdminClient()
 
   // Busca todos os postos com empresa configurada
