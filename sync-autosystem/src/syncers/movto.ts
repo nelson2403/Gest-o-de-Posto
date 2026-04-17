@@ -9,7 +9,7 @@
  * PK: grid (mlid não é único — pode ter duplicatas e NULLs)
  */
 import { withClient } from '../autosystem'
-import { upsertLotes } from '../supabase'
+import { upsertLotes, deletarOrfaosDia } from '../supabase'
 import { marcarInicio, marcarOk, marcarErro } from '../controle'
 import { logger } from '../logger'
 
@@ -65,13 +65,59 @@ async function syncMovtoPorData(empresas: number[], dataIni: string, dataFim: st
   })
 }
 
-// Sync regular: somente hoje
+// Sync regular: somente hoje + detecção de deleções do dia atual
 export async function syncMovtoHoje(empresas: number[]) {
   const tabela = 'as_movto'
   await marcarInicio(tabela)
   try {
     const data = hoje()
-    const n = await syncMovtoPorData(empresas, data, data)
+    // Busca registros do AUTOSYSTEM para hoje
+    const rows = await withClient(async c => {
+      const r = await c.query(`
+        SELECT
+          m.grid::bigint,
+          m.mlid::bigint,
+          m.empresa::bigint,
+          m.data::text,
+          m.vencto::text,
+          m.documento::text,
+          m.tipo_doc::text,
+          m.valor::float,
+          m.conta_debitar::text,
+          m.conta_creditar::text,
+          m.child::bigint,
+          m.motivo::bigint,
+          m.pessoa::bigint,
+          m.obs::text
+        FROM movto m
+        WHERE m.empresa = ANY($1::bigint[])
+          AND m.data >= $2::date
+          AND m.data <= $2::date
+        ORDER BY m.data, m.grid
+      `, [empresas, data])
+      return r.rows.map(row => ({
+        grid:           Number(row.grid),
+        mlid:           row.mlid !== null ? Number(row.mlid) : null,
+        empresa:        Number(row.empresa),
+        data:           row.data,
+        vencto:         row.vencto,
+        documento:      row.documento,
+        tipo_doc:       row.tipo_doc,
+        valor:          row.valor,
+        conta_debitar:  row.conta_debitar,
+        conta_creditar: row.conta_creditar,
+        child:          row.child !== null ? Number(row.child) : null,
+        motivo:         row.motivo !== null ? Number(row.motivo) : null,
+        pessoa:         row.pessoa !== null ? Number(row.pessoa) : null,
+        obs:            row.obs,
+      }))
+    })
+
+    const gridsValidos = new Set(rows.map(r => r.grid))
+    const n = await upsertLotes(tabela, rows, 'grid')
+    // Detecta deleções somente no dia atual (seguro — janela de 1 dia)
+    const deletados = await deletarOrfaosDia(empresas, data, gridsValidos)
+    if (deletados > 0) logger.ok(`${tabela}: ${deletados} registros deletados (removidos no AUTOSYSTEM)`)
     await marcarOk(tabela, n)
     if (n > 0) logger.ok(`${tabela} (hoje ${data}): ${n} registros`)
   } catch (e: any) {

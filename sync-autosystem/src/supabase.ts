@@ -58,6 +58,35 @@ async function fetchGridsMirror(
   return grids
 }
 
+// Remove do mirror registros deletados no AUTOSYSTEM para UM DIA ESPECÍFICO
+// Mais seguro que deletarOrfaos: usa filtro de data no DELETE para evitar apagar dados históricos
+export async function deletarOrfaosDia(
+  empresas: number[],
+  data: string,
+  gridsValidos: Set<number>,
+  tamLote = 500,
+): Promise<number> {
+  const sb = getSupabase()
+  // Busca grids do mirror SOMENTE para esse dia
+  const { data: rows, error } = await sb
+    .from('as_movto')
+    .select('grid')
+    .in('empresa', empresas)
+    .eq('data', data)
+  if (error) throw new Error(`deletarOrfaosDia: ${error.message}`)
+  const mirrorGrids = (rows ?? []).map((r: any) => Number(r.grid))
+  const deletar = mirrorGrids.filter(g => !gridsValidos.has(g))
+  if (deletar.length === 0) return 0
+
+  for (let i = 0; i < deletar.length; i += tamLote) {
+    const lote = deletar.slice(i, i + tamLote)
+    // Filtro duplo: grid + data — nunca apaga fora do dia
+    const { error } = await sb.from('as_movto').delete().in('grid', lote).eq('data', data)
+    if (error) throw new Error(`deletarOrfaosDia lote ${i}: ${error.message}`)
+  }
+  return deletar.length
+}
+
 // Remove do mirror registros deletados no AUTOSYSTEM para o intervalo empresa/data
 export async function deletarOrfaos(
   empresas: number[],
