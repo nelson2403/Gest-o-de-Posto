@@ -92,7 +92,7 @@ export async function syncCartaoHistorico(empresas: number[], dataInicio: string
       logger.error(`  ${tabela} ${anoMes}: ${e.message}`)
     }
 
-    cur.setMonth(cur.getMonth() + 1)
+    cur.setFullYear(cur.getFullYear(), cur.getMonth() + 1, 1)
   }
 
   await marcarOk(tabela, total)
