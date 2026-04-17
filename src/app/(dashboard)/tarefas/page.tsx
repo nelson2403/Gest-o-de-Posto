@@ -572,7 +572,7 @@ export default function TarefasPage() {
         }
       />
 
-      <div className="p-6 space-y-5">
+      <div className="p-3 md:p-6 space-y-5">
 
         {/* ── Cards de resumo ── */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">

@@ -70,7 +70,7 @@ function KpiCard({ label, value, sub, icon: Icon, color }: {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[11px] text-gray-500 uppercase tracking-wide font-medium">{label}</p>
-        <p className="text-xl font-bold text-gray-800 mt-0.5">{value}</p>
+        <p className="text-base md:text-xl font-bold text-gray-800 mt-0.5 truncate">{value}</p>
         {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
       </div>
     </div>
@@ -130,7 +130,7 @@ export default function MarketingDashboard() {
     <div className="flex flex-col h-full">
       <Header title="Marketing" description={`Visão geral — ${hoje}`} />
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-6">
 
         {/* Ações rápidas */}
         <div className="flex items-center justify-between">
@@ -148,7 +148,7 @@ export default function MarketingDashboard() {
         ) : (
           <>
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <KpiCard label="Gasto no mês" value={fmtBRL(kpis.gastoMensal)} sub="Patrocínios + Ações" icon={TrendingUp} color="bg-blue-500" />
               <KpiCard label="Patrocínios" value={fmtBRL(kpis.gastoPatrocinio)} sub={`${patrocinios.filter(p=>p.status==='aprovado').length} aprovados`} icon={Gift} color="bg-emerald-500" />
               <KpiCard label="Ações" value={fmtBRL(kpis.gastoAcoes)} sub={`${kpis.acoesAbertas} ação(ões) em aberto`} icon={Megaphone} color="bg-violet-500" />

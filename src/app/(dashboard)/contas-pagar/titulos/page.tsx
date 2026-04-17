@@ -169,7 +169,7 @@ export default function TitulosASPage() {
           <>
             {/* KPIs */}
             {totais && (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 {[
                   { label: 'Total no período', value: fmtBRL(totais.total),      sub: `${totais.qt_total} título(s)`,      icon: TrendingDown, cls: 'bg-gray-500' },
                   { label: 'A Vencer',          value: fmtBRL(totais.a_vencer),  sub: `${totais.qt_a_vencer} título(s)`,   icon: Clock,        cls: 'bg-blue-500' },

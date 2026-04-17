@@ -99,14 +99,14 @@ function KpiCard({ label, value, sub, icon: Icon, color }: {
   }
   const c = colors[color]
   return (
-    <div className={cn('rounded-xl border border-gray-200 bg-white p-5 shadow-sm flex items-start gap-4')}>
-      <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0', c.icon)}>
-        <Icon className="w-5 h-5" />
+    <div className={cn('rounded-xl border border-gray-200 bg-white p-3 md:p-5 shadow-sm flex items-start gap-3')}>
+      <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0', c.icon)}>
+        <Icon className="w-4 h-4" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-[12px] text-gray-500 font-medium">{label}</p>
-        <p className="text-[22px] font-bold text-gray-900 leading-tight mt-0.5">{value}</p>
-        {sub && <p className={cn('text-[11px] font-medium mt-0.5', c.text)}>{sub}</p>}
+        <p className="text-[11px] text-gray-500 font-medium truncate">{label}</p>
+        <p className="text-[16px] md:text-[22px] font-bold text-gray-900 leading-tight mt-0.5 truncate">{value}</p>
+        {sub && <p className={cn('text-[10px] md:text-[11px] font-medium mt-0.5 truncate', c.text)}>{sub}</p>}
       </div>
     </div>
   )
@@ -397,11 +397,11 @@ export default function ContasReceberPage() {
         }
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-3 md:p-6 space-y-6">
 
         {/* ── KPI Cards ── */}
         {!loadingFormas && gruposFormas.length > 0 && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard
               label="Total Geral"
               value={formatCurrency(kpis.totalGeral)}

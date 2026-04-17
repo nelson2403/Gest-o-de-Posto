@@ -85,7 +85,7 @@ export default function ControleCaixasConfigPage() {
     return (
       <div className="animate-fade-in">
         <Header title="Configuração de Postos" description="Controle de Caixas" />
-        <div className="p-6">
+        <div className="p-3 md:p-6">
           <div className="text-center py-16 text-gray-400">
             <p className="text-sm">Você não tem permissão para acessar esta página.</p>
           </div>

@@ -104,7 +104,7 @@ export default function PostoDetalhesPage() {
   if (!posto) return (
     <div>
       <Header title="Posto não encontrado" />
-      <div className="p-6"><Button variant="outline" onClick={() => router.back()}><ArrowLeft className="w-4 h-4" /> Voltar</Button></div>
+      <div className="p-3 md:p-6"><Button variant="outline" onClick={() => router.back()}><ArrowLeft className="w-4 h-4" /> Voltar</Button></div>
     </div>
   )
 

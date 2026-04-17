@@ -217,7 +217,7 @@ export default function AcessosCamerasPage() {
         }
       />
 
-      <div className="p-6">
+      <div className="p-3 md:p-6">
         <DataTable
           columns={columns}
           data={acessos}

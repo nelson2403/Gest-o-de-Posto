@@ -85,7 +85,7 @@ function SummaryCard({ label, value, color, icon, onClick, active }: {
   return (
     <button
       onClick={onClick}
-      className={`bg-white rounded-xl border shadow-sm p-5 flex items-center gap-4 w-full text-left transition-all ${
+      className={`bg-white rounded-xl border shadow-sm p-3 md:p-5 flex items-center gap-3 w-full text-left transition-all ${
         active ? 'border-gray-400 ring-2 ring-gray-200' : 'border-gray-200 hover:border-gray-300'
       }`}
     >
@@ -94,7 +94,7 @@ function SummaryCard({ label, value, color, icon, onClick, active }: {
       </div>
       <div>
         <p className="text-xs text-gray-500 leading-tight">{label}</p>
-        <p className="text-2xl font-bold text-gray-900 leading-tight mt-0.5">{value}</p>
+        <p className="text-lg md:text-2xl font-bold text-gray-900 leading-tight mt-0.5 truncate">{value}</p>
       </div>
     </button>
   )
@@ -255,11 +255,11 @@ export default function ControleCaixasPage() {
         }
       />
 
-      <div className="p-6 space-y-5">
+      <div className="p-3 md:p-6 space-y-5">
 
         {loading ? (
           <div className="space-y-5">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {[1,2,3,4].map(i => (
                 <div key={i} className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4 animate-pulse">
                   <div className="w-11 h-11 bg-gray-200 rounded-xl flex-shrink-0" />
@@ -316,7 +316,7 @@ export default function ControleCaixasPage() {
             )}
 
             {/* Cards + filtros + tabela — ocultos para conciliador/fechador */}
-            {!isConciliador && <><div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {!isConciliador && <><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <SummaryCard label="Total de Postos" value={totais.total} color="bg-blue-100"
                 active={filterStatus === 'todos'} onClick={() => setFilterStatus('todos')}
                 icon={<svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>}

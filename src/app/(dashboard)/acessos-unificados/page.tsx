@@ -218,7 +218,7 @@ export default function AcessosUnificadosPage() {
         }
       />
 
-      <div className="p-6">
+      <div className="p-3 md:p-6">
         {(role === 'operador' || role === 'conciliador') && (
           <div className="mb-4 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-[12px] text-amber-700 flex items-center gap-2">
             <KeyRound className="w-3.5 h-3.5 flex-shrink-0" />
