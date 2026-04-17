@@ -1,0 +1,182 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 20% 97%;
+    --foreground: 222 25% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 25% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 25% 8%;
+    --primary: 24 95% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 95%;
+    --secondary-foreground: 222 20% 22%;
+    --muted: 220 14% 95%;
+    --muted-foreground: 220 10% 48%;
+    --accent: 220 14% 93%;
+    --accent-foreground: 222 20% 22%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 90%;
+    --input: 220 13% 90%;
+    --ring: 24 95% 53%;
+    --radius: 0.625rem;
+    --sidebar-background: 222 44% 8%;
+    --sidebar-foreground: 220 20% 88%;
+    --sidebar-primary: 24 95% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 222 30% 14%;
+    --sidebar-accent-foreground: 220 20% 88%;
+    --sidebar-border: 222 30% 14%;
+    --sidebar-ring: 24 95% 53%;
+  }
+}
+
+.dark {
+  --background: 222 25% 8%;
+  --foreground: 220 20% 92%;
+  --card: 222 25% 11%;
+  --card-foreground: 220 20% 92%;
+  --popover: 222 25% 11%;
+  --popover-foreground: 220 20% 92%;
+  --primary: 24 95% 53%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 222 20% 16%;
+  --secondary-foreground: 220 20% 88%;
+  --muted: 222 20% 16%;
+  --muted-foreground: 220 10% 55%;
+  --accent: 222 20% 18%;
+  --accent-foreground: 220 20% 88%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 222 20% 18%;
+  --input: 222 20% 18%;
+  --ring: 24 95% 53%;
+  --sidebar-background: 222 44% 5%;
+  --sidebar-foreground: 220 20% 80%;
+  --sidebar-primary: 24 95% 53%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 222 30% 10%;
+  --sidebar-accent-foreground: 220 20% 80%;
+  --sidebar-border: 222 30% 10%;
+  --sidebar-ring: 24 95% 53%;
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* ── Dark mode global overrides ────────────── */
+/* Cobre todos os bg-white / bg-gray-* / text-gray-* hardcoded nas páginas */
+.dark .bg-white          { background-color: hsl(222 25% 11%) !important; }
+.dark .bg-gray-50        { background-color: hsl(222 25% 13%) !important; }
+.dark .bg-gray-100       { background-color: hsl(222 20% 16%) !important; }
+.dark .bg-gray-200       { background-color: hsl(222 20% 20%) !important; }
+
+.dark .text-gray-900     { color: hsl(220 20% 94%) !important; }
+.dark .text-gray-800     { color: hsl(220 20% 88%) !important; }
+.dark .text-gray-700     { color: hsl(220 15% 78%) !important; }
+.dark .text-gray-600     { color: hsl(220 12% 65%) !important; }
+.dark .text-gray-500     { color: hsl(220 10% 52%) !important; }
+.dark .text-gray-400     { color: hsl(220 10% 45%) !important; }
+
+.dark .border-gray-100   { border-color: hsl(222 20% 16%) !important; }
+.dark .border-gray-200   { border-color: hsl(222 20% 20%) !important; }
+
+.dark .divide-gray-50 > * + *  { border-color: hsl(222 20% 15%) !important; }
+.dark .divide-gray-100 > * + * { border-color: hsl(222 20% 16%) !important; }
+
+/* Cards e painéis */
+.dark .shadow-sm         { box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4) !important; }
+
+/* Hover rows em tabelas */
+.dark .hover\:bg-gray-50\/60:hover { background-color: hsl(222 20% 14%) !important; }
+.dark .hover\:bg-gray-50\/50:hover { background-color: hsl(222 20% 14%) !important; }
+.dark .hover\:bg-gray-50:hover     { background-color: hsl(222 20% 14%) !important; }
+
+/* Inputs */
+.dark input:not([type="range"]),
+.dark textarea,
+.dark select {
+  background-color: hsl(222 25% 14%) !important;
+  border-color: hsl(222 20% 22%) !important;
+  color: hsl(220 20% 90%) !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: hsl(220 10% 45%) !important;
+}
+
+/* Badges coloridas — preserva as cores originais */
+.dark .bg-emerald-100 { background-color: hsl(152 60% 14%) !important; }
+.dark .bg-red-100     { background-color: hsl(0 60% 15%) !important; }
+.dark .bg-orange-100  { background-color: hsl(24 60% 14%) !important; }
+.dark .bg-orange-50   { background-color: hsl(24 50% 11%) !important; }
+.dark .bg-amber-100   { background-color: hsl(43 60% 14%) !important; }
+.dark .bg-blue-100    { background-color: hsl(213 60% 14%) !important; }
+.dark .bg-blue-50     { background-color: hsl(213 50% 11%) !important; }
+.dark .bg-violet-100  { background-color: hsl(263 60% 15%) !important; }
+.dark .bg-violet-50   { background-color: hsl(263 50% 12%) !important; }
+.dark .bg-purple-100  { background-color: hsl(280 55% 14%) !important; }
+.dark .bg-teal-100    { background-color: hsl(174 55% 13%) !important; }
+.dark .bg-pink-100    { background-color: hsl(330 55% 14%) !important; }
+.dark .bg-cyan-100    { background-color: hsl(190 55% 13%) !important; }
+.dark .bg-yellow-50   { background-color: hsl(50 50% 11%) !important; }
+.dark .bg-yellow-100  { background-color: hsl(50 55% 13%) !important; }
+.dark .bg-red-50      { background-color: hsl(0 50% 11%) !important; }
+.dark .bg-orange-500  { background-color: hsl(24 95% 53%) !important; }
+
+/* Scrollbar */
+.dark .scrollbar-thin { scrollbar-color: hsl(222 20% 22%) transparent; }
+
+/* ── Animações ─────────────────────────────── */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes skeleton-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-up { animation: fade-up 0.22s ease-out both; }
+.animate-fade-in { animation: fade-in 0.18s ease-out both; }
+
+/* ── Skeleton ──────────────────────────────── */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    hsl(220 13% 91%) 25%,
+    hsl(220 13% 94%) 50%,
+    hsl(220 13% 91%) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+  border-radius: calc(var(--radius) - 2px);
+}
+
+/* ── Scrollbar fina ────────────────────────── */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(220 13% 84%) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar { width: 5px; height: 5px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: hsl(220 13% 84%);
+  border-radius: 99px;
+}
+
+/* ── Table row hover ───────────────────────── */
+.data-table tbody tr:hover td { background: hsl(220 14% 97%); }

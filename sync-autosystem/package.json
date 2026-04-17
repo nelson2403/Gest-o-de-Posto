@@ -1,0 +1,28 @@
+{
+  "name": "sync-autosystem",
+  "version": "1.0.0",
+  "description": "Serviço de sincronização AUTOSYSTEM → Supabase",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev":                "ts-node src/index.ts",
+    "build":              "tsc",
+    "start":              "node dist/index.js",
+    "sync-inicial":       "ts-node src/sync-inicial.ts",
+    "instalar-servico":   "node scripts/instalar-servico.js",
+    "desinstalar-servico":"node scripts/desinstalar-servico.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "dotenv": "^16.4.5",
+    "node-cron": "^3.0.3",
+    "node-windows": "^1.0.0-beta.8",
+    "pg": "^8.13.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.30",
+    "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.11.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,22 @@
+node_modules
+.env.local
+.env*.local
+.env
+
+# sync service (projeto separado, tem credenciais)
+sync-autosystem/.env
+sync-autosystem/node_modules
+sync-autosystem/dist
+
+# outros projetos na mesma pasta
+dashboard/
+sistema-bobinas/
+sistema-fechamento/
+
+# next
+.next/
+out/
+
+# misc
+*.log
+.DS_Store
