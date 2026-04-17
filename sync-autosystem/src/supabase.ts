@@ -30,3 +30,51 @@ export async function upsertLotes(
   }
   return total
 }
+
+// Busca todos os grids do mirror para um intervalo de empresa/data (paginado)
+async function fetchGridsMirror(
+  empresas: number[],
+  dataIni: string,
+  dataFim: string,
+  pageSize = 1000,
+): Promise<number[]> {
+  const sb = getSupabase()
+  const grids: number[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await sb
+      .from('as_movto')
+      .select('grid')
+      .in('empresa', empresas)
+      .gte('data', dataIni)
+      .lte('data', dataFim)
+      .range(from, from + pageSize - 1)
+    if (error) throw new Error(`fetchGridsMirror: ${error.message}`)
+    if (!data || data.length === 0) break
+    grids.push(...data.map((r: any) => Number(r.grid)))
+    if (data.length < pageSize) break
+    from += pageSize
+  }
+  return grids
+}
+
+// Remove do mirror registros deletados no AUTOSYSTEM para o intervalo empresa/data
+export async function deletarOrfaos(
+  empresas: number[],
+  dataIni: string,
+  dataFim: string,
+  gridsValidos: Set<number>,
+  tamLote = 500,
+): Promise<number> {
+  const mirrorGrids = await fetchGridsMirror(empresas, dataIni, dataFim)
+  const deletar = mirrorGrids.filter(g => !gridsValidos.has(g))
+  if (deletar.length === 0) return 0
+
+  const sb = getSupabase()
+  for (let i = 0; i < deletar.length; i += tamLote) {
+    const lote = deletar.slice(i, i + tamLote)
+    const { error } = await sb.from('as_movto').delete().in('grid', lote)
+    if (error) throw new Error(`deletarOrfaos lote ${i}: ${error.message}`)
+  }
+  return deletar.length
+}
