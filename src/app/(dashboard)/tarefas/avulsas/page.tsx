@@ -254,10 +254,10 @@ export default function TarefasAvulsasPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4">
 
         {/* Cards resumo */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
           {[
             { label: 'Total',        value: resumo.total,        color: 'text-gray-700',  bg: 'bg-white border-gray-200' },
             { label: 'Pendentes',    value: resumo.pendente,     color: 'text-gray-600',  bg: 'bg-white border-gray-200' },
@@ -273,51 +273,50 @@ export default function TarefasAvulsasPage() {
         </div>
 
         {/* Filtros */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3 flex flex-wrap items-end gap-3">
-          <Filter className="w-4 h-4 text-gray-400 self-center flex-shrink-0" />
-
-          <div className="relative flex-1 min-w-[180px]">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3 flex flex-col gap-3">
+          <div className="relative w-full">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input
               value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Buscar por título ou responsável..."
-              className="w-full h-8 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400"
+              className="w-full h-9 pl-8 pr-3 text-[12px] border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400"
             />
           </div>
-
-          <div className="space-y-0.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Status</label>
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as StatusTarefa | 'todos')}
-              className="h-8 px-2 text-[12px] border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-orange-400">
-              <option value="todos">Todos</option>
-              <option value="pendente">Pendente</option>
-              <option value="em_andamento">Em andamento</option>
-              <option value="concluido">Concluído</option>
-              <option value="cancelado">Cancelado</option>
-            </select>
-          </div>
-
-          <div className="space-y-0.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Categoria</label>
-            <select value={filterCategoria} onChange={e => setFilterCategoria(e.target.value as CategoriaTarefa | 'todos')}
-              className="h-8 px-2 text-[12px] border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-orange-400">
-              <option value="todos">Todas</option>
-              {Object.entries(CATEGORIA_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
-          </div>
-
-          {isMasterAdmin && (
-            <div className="space-y-0.5 min-w-[140px]">
-              <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Responsável</label>
-              <select value={filterUsuario} onChange={e => setFilterUsuario(e.target.value)}
-                className="w-full h-8 px-2 text-[12px] border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-orange-400">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-0.5">
+              <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Status</label>
+              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as StatusTarefa | 'todos')}
+                className="w-full h-9 px-2 text-[12px] border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-orange-400">
                 <option value="todos">Todos</option>
-                {usuarios.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
+                <option value="pendente">Pendente</option>
+                <option value="em_andamento">Em andamento</option>
+                <option value="concluido">Concluído</option>
+                <option value="cancelado">Cancelado</option>
               </select>
             </div>
-          )}
+
+            <div className="space-y-0.5">
+              <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Categoria</label>
+              <select value={filterCategoria} onChange={e => setFilterCategoria(e.target.value as CategoriaTarefa | 'todos')}
+                className="w-full h-9 px-2 text-[12px] border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-orange-400">
+                <option value="todos">Todas</option>
+                {Object.entries(CATEGORIA_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            </div>
+
+            {isMasterAdmin && (
+              <div className="space-y-0.5 col-span-2">
+                <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Responsável</label>
+                <select value={filterUsuario} onChange={e => setFilterUsuario(e.target.value)}
+                  className="w-full h-9 px-2 text-[12px] border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-orange-400">
+                  <option value="todos">Todos</option>
+                  {usuarios.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Tabela */}
@@ -333,6 +332,7 @@ export default function TarefasAvulsasPage() {
               <p className="text-[13px]">Nenhuma tarefa encontrada.</p>
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-[12.5px]">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50 text-[11px]">
@@ -429,6 +429,7 @@ export default function TarefasAvulsasPage() {
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>

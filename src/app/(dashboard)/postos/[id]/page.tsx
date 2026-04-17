@@ -95,7 +95,7 @@ export default function PostoDetalhesPage() {
   if (loading) return (
     <div>
       <Header title="Carregando..." />
-      <div className="p-6 space-y-4">
+      <div className="p-3 md:p-6 space-y-4">
         {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-24 bg-gray-100 animate-pulse rounded-lg" />)}
       </div>
     </div>
@@ -122,7 +122,7 @@ export default function PostoDetalhesPage() {
         }
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-3 md:p-6 space-y-6">
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 rounded-lg p-1 overflow-x-auto">
           {TABS.map(tab => {

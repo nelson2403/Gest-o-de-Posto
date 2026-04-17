@@ -275,7 +275,7 @@ export default function ExtratoPainelPage() {
         }
       />
 
-      <div className="p-6 space-y-5">
+      <div className="p-3 md:p-6 space-y-5">
 
         {/* ── Cards de resumo ─────────────────────────────────────────── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -375,8 +375,8 @@ export default function ExtratoPainelPage() {
         )}
 
         {/* ── Filtros ─────────────────────────────────────────────────── */}
-        <div className="flex flex-wrap gap-2">
-          <div className="relative flex-1 min-w-[200px]">
+        <div className="flex flex-col gap-2">
+          <div className="relative w-full">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <Input
               placeholder="Buscar posto, título ou arquivo..."
@@ -385,26 +385,28 @@ export default function ExtratoPainelPage() {
               className="pl-8 h-9 text-[13px]"
             />
           </div>
-          <Select value={filtroStatus} onValueChange={v => setFiltroStatus(v as typeof filtroStatus)}>
-            <SelectTrigger className="h-9 w-[160px] text-[13px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os status</SelectItem>
-              <SelectItem value="ok">Validados</SelectItem>
-              <SelectItem value="divergente">Divergentes</SelectItem>
-              <SelectItem value="pendente">Pendentes</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={filtroPosto} onValueChange={setFiltroPosto}>
-            <SelectTrigger className="h-9 w-[180px] text-[13px]">
-              <SelectValue placeholder="Todos os postos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os postos</SelectItem>
-              {postosUnicos.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <div className="grid grid-cols-2 gap-2">
+            <Select value={filtroStatus} onValueChange={v => setFiltroStatus(v as typeof filtroStatus)}>
+              <SelectTrigger className="h-9 w-full text-[13px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os status</SelectItem>
+                <SelectItem value="ok">Validados</SelectItem>
+                <SelectItem value="divergente">Divergentes</SelectItem>
+                <SelectItem value="pendente">Pendentes</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={filtroPosto} onValueChange={setFiltroPosto}>
+              <SelectTrigger className="h-9 w-full text-[13px]">
+                <SelectValue placeholder="Todos os postos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os postos</SelectItem>
+                {postosUnicos.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* ── Tabela ──────────────────────────────────────────────────── */}

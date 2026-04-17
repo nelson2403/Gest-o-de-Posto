@@ -191,7 +191,7 @@ export default function DemonstrativoConciliacaoPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4">
         {/* Cards de resumo */}
         {!loading && rowsFiltradas.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -221,6 +221,7 @@ export default function DemonstrativoConciliacaoPage() {
               {filtroUsuario ? `Nenhum posto encontrado para "${filtroUsuario}".` : 'Nenhum posto encontrado.'}
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
@@ -263,6 +264,7 @@ export default function DemonstrativoConciliacaoPage() {
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>

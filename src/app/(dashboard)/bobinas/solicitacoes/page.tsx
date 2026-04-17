@@ -306,7 +306,7 @@ export default function SolicitacoesPage() {
         ))}
       </div>
 
-      <div className="p-6 space-y-4">
+      <div className="p-3 md:p-6 space-y-4">
         {loading ? (
           <div className="animate-pulse space-y-4">
             <div className="h-10 bg-gray-200 rounded w-48" />

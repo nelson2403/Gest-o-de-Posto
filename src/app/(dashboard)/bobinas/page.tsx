@@ -102,7 +102,7 @@ export default function BobbinasPage() {
     <div className="animate-fade-in">
       <Header title="Bobinas" description="Gestão de bobinas e solicitações" />
 
-      <div className="p-6 space-y-6">
+      <div className="p-3 md:p-6 space-y-6">
         {loading ? (
           <div className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -142,7 +142,7 @@ export default function CRConfiguracaoPage() {
         description="Vincule cada forma de pagamento do AUTOSYSTEM a um grupo"
       />
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-4 max-w-4xl">
+      <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4 max-w-4xl">
 
         {/* Legenda dos grupos */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">

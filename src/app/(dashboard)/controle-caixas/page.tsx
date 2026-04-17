@@ -337,8 +337,8 @@ export default function ControleCaixasPage() {
 
             {/* Barra de filtros */}
             <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-3">
-              <div className="flex items-center gap-3 flex-wrap">
-                <div className="relative flex-1 min-w-[180px]">
+              <div className="flex flex-col gap-2">
+                <div className="relative w-full">
                   <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
@@ -349,41 +349,42 @@ export default function ControleCaixasPage() {
                     className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
                 </div>
-                <select
-                  value={filterStatus}
-                  onChange={e => setFilterStatus(e.target.value as FilterStatus)}
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
-                >
-                  <option value="todos">Todos os status</option>
-                  <option value="em_dia">Em dia</option>
-                  <option value="atencao">Atenção</option>
-                  <option value="atrasado">Atrasado</option>
-                  <option value="sem_mapeamento">Não configurados</option>
-                </select>
-                <select
-                  value={ordenacao}
-                  onChange={e => setOrdenacao(e.target.value as typeof ordenacao)}
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
-                >
-                  <option value="status">Ordenar por situação</option>
-                  <option value="nome">Ordenar por nome</option>
-                  <option value="data_desc">Último caixa — mais recente</option>
-                  <option value="data_asc">Último caixa — mais antigo</option>
-                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={filterStatus}
+                    onChange={e => setFilterStatus(e.target.value as FilterStatus)}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
+                  >
+                    <option value="todos">Todos os status</option>
+                    <option value="em_dia">Em dia</option>
+                    <option value="atencao">Atenção</option>
+                    <option value="atrasado">Atrasado</option>
+                    <option value="sem_mapeamento">Não configurados</option>
+                  </select>
+                  <select
+                    value={ordenacao}
+                    onChange={e => setOrdenacao(e.target.value as typeof ordenacao)}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
+                  >
+                    <option value="status">Situação</option>
+                    <option value="nome">Nome</option>
+                    <option value="data_desc">Mais recente</option>
+                    <option value="data_asc">Mais antigo</option>
+                  </select>
+                </div>
                 {temFiltroAtivo && (
-                  <button onClick={limparFiltros} className="px-3 py-2 text-xs font-medium text-gray-500 hover:text-gray-800 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                  <button onClick={limparFiltros} className="text-xs font-medium text-gray-500 hover:text-gray-800 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 transition-colors text-left">
                     Limpar filtros
                   </button>
                 )}
               </div>
-              <div className="flex items-center gap-3 flex-wrap">
+              <div className="space-y-1.5">
                 <span className="text-xs text-gray-500 font-medium">Último caixa entre:</span>
-                <div className="flex items-center gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)}
-                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-500" />
-                  <span className="text-xs text-gray-400">e</span>
+                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-500 w-full" />
                   <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)}
-                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-500 w-full" />
                 </div>
                 {(dataInicio || dataFim) && (
                   <button onClick={() => { setDataInicio(''); setDataFim('') }} className="text-xs text-gray-400 hover:text-gray-700">
@@ -507,6 +508,7 @@ export default function ControleCaixasPage() {
                         {postosDoUsuario.length === 0 ? (
                           <p className="text-[13px] text-gray-400 text-center py-6 italic">Nenhum posto vinculado.</p>
                         ) : (
+                          <div className="overflow-x-auto">
                           <table className="w-full text-sm">
                             <thead>
                               <tr className="border-b border-gray-100">
@@ -545,6 +547,7 @@ export default function ControleCaixasPage() {
                               ))}
                             </tbody>
                           </table>
+                          </div>
                         )}
                       </div>
                     )

@@ -466,7 +466,7 @@ export default function PerfisPage() {
         }
       />
 
-      <div className="p-6 space-y-8">
+      <div className="p-3 md:p-6 space-y-8">
 
         {/* ── Cargos fixos ── */}
         <section>

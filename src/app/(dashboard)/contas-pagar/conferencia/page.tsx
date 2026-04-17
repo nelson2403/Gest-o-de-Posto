@@ -161,16 +161,16 @@ export default function ConferenciaPage() {
     <div className="flex flex-col h-full">
       <Header title="Conferência Diária" description="Títulos a pagar vs valor informado" />
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-5">
+      <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-5">
 
         {/* Filtros */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap items-end gap-3">
             {!isGerente && (
-              <div className="flex-1 min-w-[200px]">
+              <div className="sm:col-span-2 lg:flex-1 lg:min-w-[200px]">
                 <Label className="text-[12px] text-gray-500 mb-1 block">Posto / Empresa</Label>
                 <Select value={selectedPosto} onValueChange={setSelectedPosto}>
-                  <SelectTrigger className="h-9 text-[13px]">
+                  <SelectTrigger className="h-9 text-[13px] w-full">
                     <SelectValue placeholder="Selecione o posto" />
                   </SelectTrigger>
                   <SelectContent>
@@ -190,7 +190,7 @@ export default function ConferenciaPage() {
                 type="date"
                 value={selectedData}
                 onChange={e => setSelectedData(e.target.value)}
-                className="h-9 text-[13px] w-40"
+                className="h-9 text-[13px] w-full"
               />
             </div>
             <Button size="sm" variant="outline" onClick={load}

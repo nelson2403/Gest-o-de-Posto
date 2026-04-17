@@ -493,7 +493,7 @@ export default function AnaliticoPage() {
     <div className="animate-fade-in">
       <Header title="Analítico" description="DRE financeiro, maquininhas, aluguéis e taxas" />
 
-      <div className="p-6 space-y-6">
+      <div className="p-3 md:p-6 space-y-6">
         {/* Abas */}
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
           {TABS.map(({ id, label, icon: Icon }) => (

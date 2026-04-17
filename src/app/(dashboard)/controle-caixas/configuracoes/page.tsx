@@ -98,7 +98,7 @@ export default function ControleCaixasConfigPage() {
     <div className="animate-fade-in">
       <Header title="Configuração de Postos" description="Vincule cada posto ao banco externo" />
 
-      <div className="p-6 space-y-5 max-w-3xl">
+      <div className="p-3 md:p-6 space-y-5 max-w-3xl">
 
         {loading ? (
           <div className="space-y-3 animate-pulse">

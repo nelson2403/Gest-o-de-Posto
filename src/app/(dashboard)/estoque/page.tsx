@@ -407,7 +407,7 @@ export default function EstoquePage() {
         }
       />
 
-      <div className="p-6 space-y-5">
+      <div className="p-3 md:p-6 space-y-5">
 
         {/* ── Filtro de posto ── */}
         <div className="flex items-center gap-3">

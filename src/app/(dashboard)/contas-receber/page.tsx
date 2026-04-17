@@ -461,24 +461,29 @@ export default function ContasReceberPage() {
 
         {/* ── Filtros ── */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-          <div className="flex flex-wrap gap-3 items-center">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-              <Input placeholder="Buscar forma de pagamento..." value={searchFormas} onChange={e => setSearchFormas(e.target.value)} className="pl-8 h-9 text-[13px]" />
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-3">
+              <div className="relative flex-1 min-w-[160px]">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                <Input placeholder="Buscar forma de pagamento..." value={searchFormas} onChange={e => setSearchFormas(e.target.value)} className="pl-8 h-9 text-[13px]" />
+              </div>
+              <Select value={filtroFormasEmpresa} onValueChange={setFiltroFormasEmpresa}>
+                <SelectTrigger className="h-9 w-full sm:w-[200px] text-[13px]"><SelectValue placeholder="Todos os postos" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os postos</SelectItem>
+                  {postos.map(p => <SelectItem key={p.id} value={p.codigo_empresa_externo!}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={filtroFormasEmpresa} onValueChange={setFiltroFormasEmpresa}>
-              <SelectTrigger className="h-9 w-[200px] text-[13px]"><SelectValue placeholder="Todos os postos" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os postos</SelectItem>
-                {postos.map(p => <SelectItem key={p.id} value={p.codigo_empresa_externo!}>{p.nome}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <div className="flex items-center gap-2">
-              <CalendarDays className="w-3.5 h-3.5 text-gray-400" />
-              <span className="text-[12px] text-gray-400 whitespace-nowrap">De:</span>
-              <Input type="date" value={filtroFormasVenctoIni} onChange={e => setFiltroFormasVenctoIni(e.target.value)} className="h-9 text-[13px] w-36" />
-              <span className="text-[12px] text-gray-400 whitespace-nowrap">Até:</span>
-              <Input type="date" value={filtroFormasVenctoFim} onChange={e => setFiltroFormasVenctoFim(e.target.value)} className="h-9 text-[13px] w-36" />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] text-gray-400 font-medium">De</span>
+                <Input type="date" value={filtroFormasVenctoIni} onChange={e => setFiltroFormasVenctoIni(e.target.value)} className="h-9 text-[13px] w-full" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] text-gray-400 font-medium">Até</span>
+                <Input type="date" value={filtroFormasVenctoFim} onChange={e => setFiltroFormasVenctoFim(e.target.value)} className="h-9 text-[13px] w-full" />
+              </div>
             </div>
           </div>
         </div>

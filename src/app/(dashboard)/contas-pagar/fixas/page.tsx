@@ -484,44 +484,44 @@ export default function FixasPage() {
     <div className="flex flex-col h-full">
       <Header title="Despesas Fixas" description="Controle mensal por posto" />
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-5">
+      <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-5">
 
         {/* Filtros topo */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex-1 min-w-[180px]">
-              <Label className="text-[12px] text-gray-500 mb-1 block">Posto</Label>
-              <Select value={selectedPosto} onValueChange={setSelectedPosto}>
-                <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">Todos os postos</SelectItem>
-                  {postos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
+          <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-[12px] text-gray-500 mb-1 block">Posto</Label>
+                <Select value={selectedPosto} onValueChange={setSelectedPosto}>
+                  <SelectTrigger className="h-9 text-[13px] w-full"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Todos os postos</SelectItem>
+                    {postos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {tab === 'mes' && (
+                <div>
+                  <Label className="text-[12px] text-gray-500 mb-1 block">Competência</Label>
+                  <Input type="month" value={competencia} onChange={e => setCompetencia(e.target.value)} className="h-9 text-[13px] w-full" />
+                </div>
+              )}
             </div>
 
             {tab === 'mes' && (
-              <>
-                <div>
-                  <Label className="text-[12px] text-gray-500 mb-1 block">Competência</Label>
-                  <Input type="month" value={competencia} onChange={e => setCompetencia(e.target.value)} className="h-9 text-[13px] w-36" />
-                </div>
-                <div className="flex-1 min-w-[160px]">
-                  <Label className="text-[12px] text-gray-500 mb-1 block">Filtrar fornecedor / descrição</Label>
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                    <Input value={filtroParceiro} onChange={e => setFiltroParceiro(e.target.value)}
-                      placeholder="Ex: COPEL, Aluguel..." className="h-9 text-[13px] pl-8" />
-                  </div>
-                </div>
-              </>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                <Input value={filtroParceiro} onChange={e => setFiltroParceiro(e.target.value)}
+                  placeholder="Filtrar fornecedor / descrição..." className="h-9 text-[13px] pl-8 w-full" />
+              </div>
             )}
 
-            <div className="flex gap-2 ml-auto">
+            <div className="flex gap-2">
               <Button size="sm" variant={tab === 'mes' ? 'default' : 'outline'}
-                onClick={() => setTab('mes')} className="h-9 text-[12px]">Mês atual</Button>
+                onClick={() => setTab('mes')} className="h-9 text-[12px] flex-1">Mês atual</Button>
               <Button size="sm" variant={tab === 'fixas' ? 'default' : 'outline'}
-                onClick={() => setTab('fixas')} className="h-9 text-[12px]">Cadastro</Button>
+                onClick={() => setTab('fixas')} className="h-9 text-[12px] flex-1">Cadastro</Button>
             </div>
           </div>
         </div>
@@ -732,6 +732,7 @@ export default function FixasPage() {
               </div>
             ) : (
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="w-full text-[13px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
@@ -790,6 +791,7 @@ export default function FixasPage() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
           </>

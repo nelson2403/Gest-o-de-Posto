@@ -189,7 +189,7 @@ export default function AcoesPage() {
     <div className="flex flex-col h-full">
       <Header title="Ações de Marketing" description="Campanhas e comprovantes por posto" />
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-5">
+      <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-5">
         <div className="flex items-center justify-between">
           <p className="text-[13px] text-gray-500">{acoes.length} ação(ões) encontrada(s)</p>
           {podeCriar && (

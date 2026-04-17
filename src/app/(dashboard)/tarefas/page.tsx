@@ -589,15 +589,15 @@ export default function TarefasPage() {
             <Filter className="w-3.5 h-3.5" />
             Filtros
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-3">
             <Input
               placeholder="Buscar por título, descrição..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="h-9 text-[13px] w-full sm:w-64"
+              className="h-9 text-[13px] w-full"
             />
             <Select value={filterPrioridade} onValueChange={v => setFilterPrioridade(v as PrioridadeTarefa | 'todos')}>
-              <SelectTrigger className="h-9 text-[13px] w-36"><SelectValue placeholder="Prioridade" /></SelectTrigger>
+              <SelectTrigger className="h-9 text-[13px] w-full"><SelectValue placeholder="Prioridade" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todas prioridades</SelectItem>
                 {(Object.keys(PRIORIDADE_CONFIG) as PrioridadeTarefa[]).map(p => (

@@ -158,7 +158,7 @@ export default function FormasPagamentoAdquirentePage() {
         }
       />
 
-      <div className="p-6 space-y-3">
+      <div className="p-3 md:p-6 space-y-3">
         {/* Busca */}
         <div className="relative max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />

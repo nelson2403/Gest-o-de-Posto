@@ -219,7 +219,7 @@ export default function PatrocinioPage() {
     <div className="flex flex-col h-full">
       <Header title="Patrocínios" description="Solicitações e aprovações de patrocínio" />
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-5">
+      <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-5">
 
         {/* Barra de ações */}
         <div className="flex items-center justify-between gap-4 flex-wrap">

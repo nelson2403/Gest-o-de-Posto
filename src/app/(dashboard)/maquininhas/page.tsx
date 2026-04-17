@@ -161,7 +161,7 @@ export default function MaquininhasPage() {
         }
       />
 
-      <div className="p-6 space-y-4">
+      <div className="p-3 md:p-6 space-y-4">
 
         {/* Filtros */}
         <div className="flex flex-wrap items-center gap-2">

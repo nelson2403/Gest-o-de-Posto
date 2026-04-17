@@ -90,25 +90,25 @@ export default function ConciliacaoPage() {
     <div className="flex flex-col h-full">
       <Header title="Conciliação" description="Sistema interno vs AutoSystem" />
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-5">
+      <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-5">
 
         {/* Filtros */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-[12px] text-gray-500 whitespace-nowrap">De:</span>
-              <Input type="date" value={dataIni} onChange={e => setDataIni(e.target.value)} className="h-9 text-[13px] w-36" />
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] text-gray-500 font-medium">De</span>
+              <Input type="date" value={dataIni} onChange={e => setDataIni(e.target.value)} className="h-9 text-[13px] w-full" />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[12px] text-gray-500 whitespace-nowrap">Até:</span>
-              <Input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} className="h-9 text-[13px] w-36" />
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] text-gray-500 font-medium">Até</span>
+              <Input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} className="h-9 text-[13px] w-full" />
             </div>
-            <Button size="sm" onClick={buscar} disabled={loading} className="gap-1.5 text-[13px]">
+            <Button size="sm" onClick={buscar} disabled={loading} className="gap-1.5 text-[13px] col-span-2 sm:col-span-1">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               Buscar
             </Button>
             {buscado && (
-              <Button variant="outline" size="sm" onClick={buscar} disabled={loading} className="gap-1.5 text-[13px]">
+              <Button variant="outline" size="sm" onClick={buscar} disabled={loading} className="gap-1.5 text-[13px] col-span-2 sm:col-span-1">
                 <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
                 Atualizar
               </Button>

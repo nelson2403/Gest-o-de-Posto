@@ -241,6 +241,7 @@ function ConciliacaoDemonstrativo() {
             {filtroUsuario ? `Nenhum posto encontrado para "${filtroUsuario}".` : 'Nenhum posto encontrado.'}
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-[12px]">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
@@ -283,6 +284,7 @@ function ConciliacaoDemonstrativo() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>
@@ -730,7 +732,7 @@ export default function RelatoriosPage() {
         description="Exporte dados do sistema em PDF ou Excel"
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-3 md:p-6 space-y-6">
         {/* Aviso para operadores */}
         {isOperador && (
           <div className="flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-[13px] text-amber-800">

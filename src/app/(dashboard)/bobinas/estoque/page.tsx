@@ -113,7 +113,7 @@ export default function EstoquePage() {
         ))}
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="p-3 md:p-6 space-y-6">
         {loading ? (
           <div className="animate-pulse space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

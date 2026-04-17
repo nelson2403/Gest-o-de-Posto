@@ -128,7 +128,7 @@ export default function DashboardPage() {
         description={`${saudacao}, ${usuario?.nome?.split(' ')[0] ?? ''}!`}
       />
 
-      <div className="p-6 space-y-8">
+      <div className="p-3 md:p-6 space-y-8">
 
         {/* ── Visão geral + Maquininhas — somente admin/master ── */}
         {!isRestrito && (
