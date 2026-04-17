@@ -196,20 +196,20 @@ function DreTab() {
       {/* Filtros */}
       <Card className="border-gray-200 shadow-sm">
         <CardContent className="p-4">
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-end gap-3">
             <div className="space-y-1">
               <p className="text-[11px] font-medium text-gray-500">Data início</p>
-              <Input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} className="h-8 text-[13px] w-36" />
+              <Input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} className="h-8 text-[13px] w-full" />
             </div>
             <div className="space-y-1">
               <p className="text-[11px] font-medium text-gray-500">Data fim</p>
-              <Input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} className="h-8 text-[13px] w-36" />
+              <Input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} className="h-8 text-[13px] w-full" />
             </div>
-            <div className="space-y-1 relative">
+            <div className="space-y-1 relative col-span-2 sm:col-span-1">
               <p className="text-[11px] font-medium text-gray-500">
                 Postos {postosSel.length > 0 && <span className="text-orange-500">({postosSel.length} sel.)</span>}
               </p>
-              <Button variant="outline" size="sm" className="h-8 text-[12px] w-44 justify-between" onClick={() => setMostrarSel(v => !v)}>
+              <Button variant="outline" size="sm" className="h-8 text-[12px] w-full sm:w-44 justify-between" onClick={() => setMostrarSel(v => !v)}>
                 {postosSel.length === 0 ? 'Todos os postos' : `${postosSel.length} selecionados`}
                 <span className="text-gray-400">▾</span>
               </Button>
@@ -495,7 +495,7 @@ export default function AnaliticoPage() {
 
       <div className="p-3 md:p-6 space-y-6">
         {/* Abas */}
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto max-w-full">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTabAtiva(id)}
               className={cn('flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-medium transition-all duration-150',

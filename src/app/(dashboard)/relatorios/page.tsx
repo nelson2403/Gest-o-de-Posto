@@ -165,7 +165,7 @@ function ConciliacaoDemonstrativo() {
         <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">
           Demonstrativo — Conciliação Bancária por Posto
         </p>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap overflow-x-auto">
           {/* Filtro por usuário */}
           {usuariosUnicos.length > 0 && (
             <select

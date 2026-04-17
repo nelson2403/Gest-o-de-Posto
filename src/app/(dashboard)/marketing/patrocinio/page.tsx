@@ -225,7 +225,7 @@ export default function PatrocinioPage() {
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2">
             <Select value={filtroStatus} onValueChange={setFiltroStatus}>
-              <SelectTrigger className="w-40 h-9 text-[13px]">
+              <SelectTrigger className="w-full sm:w-40 h-9 text-[13px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>

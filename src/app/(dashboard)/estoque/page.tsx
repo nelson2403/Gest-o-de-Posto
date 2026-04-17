@@ -410,9 +410,9 @@ export default function EstoquePage() {
       <div className="p-3 md:p-6 space-y-5">
 
         {/* ── Filtro de posto ── */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
           <Select value={filtroEmpresa} onValueChange={setFiltroEmpresa}>
-            <SelectTrigger className="h-9 w-[220px] text-[13px]">
+            <SelectTrigger className="h-9 w-full sm:w-[220px] text-[13px]">
               <SelectValue placeholder="Todos os postos" />
             </SelectTrigger>
             <SelectContent>
@@ -422,11 +422,11 @@ export default function EstoquePage() {
               ))}
             </SelectContent>
           </Select>
-          <span className="text-[12px] text-gray-400">Saldo atual — última atualização do AUTOSYSTEM</span>
+          <span className="text-[12px] text-gray-400 hidden sm:block">Saldo atual — última atualização do AUTOSYSTEM</span>
         </div>
 
         {/* ── Abas ── */}
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto max-w-full">
           {tabs.map(t => (
             <button
               key={t.key}

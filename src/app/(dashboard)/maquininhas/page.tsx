@@ -164,37 +164,39 @@ export default function MaquininhasPage() {
       <div className="p-3 md:p-6 space-y-4">
 
         {/* Filtros */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[200px] max-w-xs">
+        <div className="flex flex-col gap-2">
+          <div className="relative w-full">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <Input
               placeholder="Buscar posto, adquirente, série..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="pl-8 h-9 text-[13px]"
+              className="pl-8 h-9 text-[13px] w-full"
             />
           </div>
-          <button
-            onClick={() => setFilterStatus('all')}
-            className={cn(
-              'px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors',
-              filterStatus === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            )}
-          >
-            Todas ({maquininhas.length})
-          </button>
-          {STATUS_OPTS.map(s => (
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              key={s.value}
-              onClick={() => setFilterStatus(s.value)}
+              onClick={() => setFilterStatus('all')}
               className={cn(
-                'px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors',
-                filterStatus === s.value ? `${s.pill} ring-2 ring-offset-1 ring-current` : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                'px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors whitespace-nowrap',
+                filterStatus === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               )}
             >
-              {s.label} ({maquininhas.filter(m => m.status === s.value).length})
+              Todas ({maquininhas.length})
             </button>
-          ))}
+            {STATUS_OPTS.map(s => (
+              <button
+                key={s.value}
+                onClick={() => setFilterStatus(s.value)}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors whitespace-nowrap',
+                  filterStatus === s.value ? `${s.pill} ring-2 ring-offset-1 ring-current` : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                )}
+              >
+                {s.label} ({maquininhas.filter(m => m.status === s.value).length})
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Blocos por posto */}
