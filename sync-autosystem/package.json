@@ -8,6 +8,7 @@
     "build":              "tsc",
     "start":              "node dist/index.js",
     "sync-inicial":       "ts-node src/sync-inicial.ts",
+    "sync-reprocessar":   "ts-node src/sync-reprocessar.ts",
     "instalar-servico":   "node scripts/instalar-servico.js",
     "desinstalar-servico":"node scripts/desinstalar-servico.js"
   },

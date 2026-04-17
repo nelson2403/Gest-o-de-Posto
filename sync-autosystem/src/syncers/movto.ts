@@ -80,14 +80,16 @@ export async function syncMovtoHoje(empresas: number[]) {
   }
 }
 
-// Sync noturno: ontem (para pegar lançamentos retroativos)
+// Sync noturno: últimos 7 dias (para pegar lançamentos retroativos)
 export async function syncMovtoOntem(empresas: number[]) {
   try {
-    const data = ontem()
-    const n = await syncMovtoPorData(empresas, data, data)
-    if (n > 0) logger.ok(`as_movto (ontem ${data}): ${n} registros`)
+    const d = new Date(); d.setDate(d.getDate() - 7)
+    const dataIni = d.toISOString().slice(0, 10)
+    const dataFim = ontem()
+    const n = await syncMovtoPorData(empresas, dataIni, dataFim)
+    if (n > 0) logger.ok(`as_movto (últimos 7 dias ${dataIni}→${dataFim}): ${n} registros`)
   } catch (e: any) {
-    logger.error(`as_movto ontem: ${e.message}`)
+    logger.error(`as_movto últimos 7 dias: ${e.message}`)
   }
 }
 
