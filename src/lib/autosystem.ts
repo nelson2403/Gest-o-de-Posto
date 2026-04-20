@@ -42,7 +42,8 @@ export interface MovtoResumo extends Record<string, unknown> {
 
 export async function buscarMovtosAutosystem(empresaId: number, datas: string[]): Promise<MovtoResumo[]> {
   return query<MovtoResumo>(
-    `SELECT conta_debitar::text, conta_creditar::text, valor::float, data::text
+    `SELECT conta_debitar::text, conta_creditar::text, valor::float,
+            to_char(data, 'YYYY-MM-DD') AS data
      FROM movto WHERE empresa = $1 AND data = ANY($2::date[])`,
     [empresaId, datas],
   )
@@ -56,7 +57,7 @@ export async function buscarMovtosContasReceber(
   const params: unknown[] = [empresaIds, venctoIni]
   let sql = `
     SELECT grid::bigint, data::text, vencto::text, documento::text, tipo_doc::text,
-           valor::float, empresa::bigint, conta_debitar::text, pessoa::bigint, child::bigint
+           valor::float, empresa::bigint, conta_debitar::text, pessoa::bigint, child::float
     FROM movto
     WHERE empresa = ANY($1::bigint[])
       AND conta_debitar LIKE '1.3.%'
@@ -81,13 +82,15 @@ export async function buscarMovtosFormas(
   const { venctoIni = '2026-01-01', venctoFim } = opts
   const params: unknown[] = [empresaIds, venctoIni]
   let sql = `
-    SELECT conta_debitar::text, empresa::bigint, pessoa::bigint, vencto::text, valor::float, child::bigint
+    SELECT conta_debitar::text, empresa::bigint, pessoa::bigint, vencto::text, valor::float, child::float
     FROM movto
     WHERE empresa = ANY($1::bigint[])
       AND conta_debitar LIKE '1.3.%'
+      AND child >= 0
       AND vencto >= $2::date`
 
   if (venctoFim) { params.push(venctoFim); sql += ` AND vencto <= $${params.length}::date` }
+  sql += ` LIMIT 100000`
   return query(sql, params)
 }
 
@@ -100,7 +103,7 @@ export async function buscarMovtosMotivoFormas(
   const { dataIni = '2026-01-01', dataFim } = opts
   const params: unknown[] = [empresaIds, motivoGrids, dataIni]
   let sql = `
-    SELECT motivo::bigint, empresa::bigint, data::text, child::bigint, valor::float
+    SELECT motivo::bigint, empresa::bigint, data::text, child::float, valor::float
     FROM movto
     WHERE empresa = ANY($1::bigint[])
       AND motivo = ANY($2::bigint[])
@@ -120,10 +123,11 @@ export async function buscarMovtosDetalhe(
   let sql = `
     SELECT grid::bigint, mlid::bigint, data::text, vencto::text, documento::text,
            tipo_doc::text, valor::float, empresa::bigint, conta_debitar::text,
-           pessoa::bigint, child::bigint, obs::text
+           pessoa::bigint, child::float, obs::text
     FROM movto
     WHERE empresa = ANY($1::bigint[])
       AND conta_debitar = $2
+      AND child >= 0
       AND vencto >= $3::date`
 
   if (venctoFim) { params.push(venctoFim); sql += ` AND vencto <= $${params.length}::date` }
@@ -136,7 +140,7 @@ export async function buscarMovtosContrapartida(mlids: number[]): Promise<Record
   if (!mlids.length) return []
   return query(
     `SELECT grid::bigint, mlid::bigint, data::text, documento::text, valor::float,
-            conta_debitar::text, conta_creditar::text, child::bigint
+            conta_debitar::text, conta_creditar::text, child::float
      FROM movto WHERE mlid = ANY($1::bigint[]) LIMIT 5000`,
     [mlids],
   )
@@ -151,7 +155,7 @@ export async function buscarMovtosPagar(
   const params: unknown[] = [empresaIds, venctoIni, venctoFim]
   let sql = `
     SELECT grid::bigint, data::text, vencto::text, documento::text, tipo_doc::text,
-           valor::float, empresa::bigint, conta_creditar::text, pessoa::bigint, child::bigint, obs::text
+           valor::float, empresa::bigint, conta_creditar::text, pessoa::bigint, child::float, obs::text
     FROM movto
     WHERE empresa = ANY($1::bigint[])
       AND conta_creditar LIKE '2.%'
@@ -169,7 +173,7 @@ export async function buscarMovtosByGrid(grids: number[]): Promise<Record<string
   return query(
     `SELECT grid::bigint, mlid::bigint, data::text, vencto::text, documento::text,
             tipo_doc::text, valor::float, empresa::bigint, conta_debitar::text,
-            conta_creditar::text, child::bigint, motivo::bigint, pessoa::bigint, obs::text
+            conta_creditar::text, child::float, motivo::bigint, pessoa::bigint, obs::text
      FROM movto WHERE grid = ANY($1::bigint[])`,
     [grids],
   )
@@ -347,7 +351,7 @@ export async function buscarMovtosPorMotivo(
   if (!motivoGrids.length) return []
   return query(
     `SELECT grid::bigint, mlid::bigint, empresa::bigint, valor::float,
-            motivo::bigint, data::text, vencto::text, documento::text, child::bigint
+            motivo::bigint, data::text, vencto::text, documento::text, child::float
      FROM movto
      WHERE empresa = ANY($1::bigint[])
        AND motivo = ANY($2::bigint[])
@@ -369,7 +373,7 @@ export async function buscarTitulosPagar(
   const params: unknown[] = [empresaGrid, ini, fim]
   let sql = `
     SELECT mlid::bigint, vencto::text, documento::text, valor::float,
-           obs::text, child::bigint, motivo::bigint, pessoa::bigint
+           obs::text, child::float, motivo::bigint, pessoa::bigint
     FROM movto
     WHERE empresa = $1
       AND conta_creditar = '2.1.1'
@@ -398,7 +402,7 @@ export async function buscarMovtosEmpresaDia(
 ): Promise<Record<string, unknown>[]> {
   return query(
     `SELECT mlid::bigint, valor::float, motivo::bigint, data::text,
-            documento::text, obs::text, child::bigint
+            documento::text, obs::text, child::float
      FROM movto WHERE empresa = $1 AND data = $2::date LIMIT 5000`,
     [empresaGrid, data],
   )
@@ -414,7 +418,7 @@ export async function buscarMovtosMotivoDetalhe(
 ): Promise<Record<string, unknown>[]> {
   return query(
     `SELECT data::text, documento::text, tipo_doc::text, valor::float,
-            empresa::bigint, child::bigint, motivo::bigint
+            empresa::bigint, child::float, motivo::bigint
      FROM movto
      WHERE empresa = ANY($1::bigint[])
        AND motivo = $2

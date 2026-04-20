@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { buscarMovtosFormas, buscarMovtosMotivoFormas, buscarPessoas, buscarContas, buscarMotivos } from '@/lib/autosystem'
 
 export async function GET(req: NextRequest) {
+  try {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest) {
   for (const m of movtosRaw as any[]) {
     const pessoa_nome = m.pessoa ? (pessoaLookup[m.pessoa] ?? '(sem cliente)') : '(sem cliente)'
     const mes         = (m.vencto as string)?.slice(0, 7) ?? ''
-    const pago        = m.child !== null && m.child !== 0
+    const pago        = (m.child as number) > 0
     const key         = `${m.conta_debitar}|${m.empresa}|${pessoa_nome}|${mes}|${pago}`
     if (!agg[key]) agg[key] = {
       conta_debitar: m.conta_debitar ?? '',
@@ -96,7 +97,7 @@ export async function GET(req: NextRequest) {
     const aggM: Record<string, { motivo: number; empresa: string; mes: string; pago: boolean; qtd: number; valor_total: number }> = {}
     for (const m of motivoMovtos as any[]) {
       const mes  = (m.data as string)?.slice(0, 7) ?? ''
-      const pago = m.child !== null && m.child !== 0
+      const pago = (m.child as number) > 0
       const key  = `${m.motivo}|${m.empresa}|${mes}|${pago}`
       if (!aggM[key]) aggM[key] = { motivo: m.motivo, empresa: String(m.empresa), mes, pago, qtd: 0, valor_total: 0 }
       aggM[key].qtd         += 1
@@ -121,4 +122,8 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({ resumo: [...rows, ...motivoRows] })
+  } catch (err: any) {
+    console.error('[contas-receber/formas]', err)
+    return NextResponse.json({ error: String(err?.message ?? err) }, { status: 500 })
+  }
 }

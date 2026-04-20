@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
       valor:      m.valor,
       empresa:    String(m.empresa),
       child:      m.child,
-      pago:       m.child !== null && m.child !== 0,
+      pago:       (m.child as number) > 0,
       data_baixa: null,
       posto_nome: postoMap[String(m.empresa)] ?? String(m.empresa),
     }))
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
       valor:       m.valor,
       empresa:     String(m.empresa),
       child:       m.child,
-      pago:        m.child !== null && m.child !== 0,
+      pago:        (m.child as number) > 0,
       data_baixa:  (m.child && m.child > 0) ? (baixaLookup[m.child] ?? null) : null,
       pessoa_nome: m.pessoa ? (pessoaLookup[m.pessoa] ?? '(sem cliente)') : '(sem cliente)',
       posto_nome:  postoMap[String(m.empresa)] ?? String(m.empresa),

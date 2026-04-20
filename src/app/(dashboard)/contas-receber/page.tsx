@@ -225,9 +225,15 @@ export default function ContasReceberPage() {
       if (filtroFormasVenctoIni) params.set('vencto_ini', filtroFormasVenctoIni)
       if (filtroFormasVenctoFim) params.set('vencto_fim', filtroFormasVenctoFim)
       const res  = await fetch(`/api/contas-receber/formas?${params}`)
-      const json = await res.json()
-      if (!res.ok) { toast({ variant: 'destructive', title: 'Erro ao carregar', description: json.error }); return }
+      let json: any = {}
+      try { json = await res.json() } catch { /* resposta não é JSON */ }
+      if (!res.ok) {
+        toast({ variant: 'destructive', title: 'Erro ao carregar', description: json.error ?? `HTTP ${res.status}` })
+        return
+      }
       setResumoLinhas(json.resumo ?? [])
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Erro inesperado', description: String(err?.message ?? err) })
     } finally {
       setLoadingFormas(false)
     }
