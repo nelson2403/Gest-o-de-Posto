@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buscarMovtosDetalhe, buscarMovtosMotivoDetalhe, buscarMovtosContrapartida, buscarPessoas } from '@/lib/autosystem'
+import { buscarMovtosDetalhe, buscarMovtosMotivoDetalhe, buscarMovtosContrapartida, buscarMlidsLiquidados, buscarPessoas } from '@/lib/autosystem'
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
@@ -73,19 +73,42 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    movtos = data.map((m: any) => ({
-      vencto:      m.vencto,
-      data:        m.data,
-      documento:   m.documento,
-      tipo_doc:    m.tipo_doc,
-      valor:       m.valor,
-      empresa:     String(m.empresa),
-      child:       m.child,
-      pago:        (m.child as number) > 0,
-      data_baixa:  (m.child && m.child > 0) ? (baixaLookup[m.child] ?? null) : null,
-      pessoa_nome: m.pessoa ? (pessoaLookup[m.pessoa] ?? '(sem cliente)') : '(sem cliente)',
-      posto_nome:  postoMap[String(m.empresa)] ?? String(m.empresa),
-    })).sort((a: any, b: any) => (a.pessoa_nome ?? '').localeCompare(b.pessoa_nome ?? '') || a.vencto?.localeCompare(b.vencto ?? '') || 0)
+    // For child=0 entries (Stone/card), detect settlements via credit counterpart (mlid match)
+    const mlidsChildZero = [...new Set(data.filter((m: any) => (m.child as number) === 0 && m.mlid).map((m: any) => Number(m.mlid)))]
+    const liquidadosSet = new Set(await buscarMlidsLiquidados(mlidsChildZero))
+
+    // Also look up baixa dates for child=0 liquidados via mlid
+    const baixasPorMlid: Record<number, string> = {}
+    if (mlidsChildZero.length) {
+      const baixas = await buscarMovtosContrapartida(mlidsChildZero) as any[]
+      for (const b of baixas) {
+        if (b.mlid && b.conta_creditar && String(b.conta_creditar).startsWith('1.3.') && !baixasPorMlid[Number(b.mlid)]) {
+          baixasPorMlid[Number(b.mlid)] = b.data
+        }
+      }
+    }
+
+    movtos = data.map((m: any) => {
+      const childPago     = (m.child as number) > 0
+      const childZeroPago = (m.child as number) === 0 && liquidadosSet.has(Number(m.mlid))
+      const pago          = childPago || childZeroPago
+      const data_baixa    = childPago
+        ? (baixaLookup[m.child] ?? null)
+        : childZeroPago ? (baixasPorMlid[Number(m.mlid)] ?? null) : null
+      return {
+        vencto:      m.vencto,
+        data:        m.data,
+        documento:   m.documento,
+        tipo_doc:    m.tipo_doc,
+        valor:       m.valor,
+        empresa:     String(m.empresa),
+        child:       m.child,
+        pago,
+        data_baixa,
+        pessoa_nome: m.pessoa ? (pessoaLookup[m.pessoa] ?? '(sem cliente)') : '(sem cliente)',
+        posto_nome:  postoMap[String(m.empresa)] ?? String(m.empresa),
+      }
+    }).sort((a: any, b: any) => (a.pessoa_nome ?? '').localeCompare(b.pessoa_nome ?? '') || a.vencto?.localeCompare(b.vencto ?? '') || 0)
   }
 
   return NextResponse.json({ transacoes: movtos })

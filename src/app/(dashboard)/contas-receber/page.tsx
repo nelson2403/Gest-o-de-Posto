@@ -195,6 +195,7 @@ export default function ContasReceberPage() {
   const [filtroFormasEmpresa,   setFiltroFormasEmpresa]   = useState('todos')
   const [filtroFormasDataIni, setFiltroFormasDataIni] = useState(`${anoAtual()}-01-01`)
   const [filtroFormasDataFim, setFiltroFormasDataFim] = useState(`${anoAtual()}-12-31`)
+  const [filtroStatus, setFiltroStatus] = useState<'todos' | 'aberto' | 'baixado'>('todos')
   const [searchFormas,          setSearchFormas]          = useState('')
   const [expandidosGrupo,       setExpandidosGrupo]       = useState<Set<string>>(new Set())
   const [expandidosForma,       setExpandidosForma]       = useState<Set<string>>(new Set())
@@ -291,9 +292,9 @@ export default function ContasReceberPage() {
       postoMap: Map<string, { postoNome: string; clienteMap: Map<string, Map<string, { pago: number; pagoVal: number; aberto: number; abertoVal: number }>> }>
     }>()
 
-    const lista = searchFormas
-      ? resumoLinhas.filter(r => r.conta_nome?.toLowerCase().includes(searchFormas.toLowerCase()))
-      : resumoLinhas
+    const lista = resumoLinhas
+      .filter(r => searchFormas ? r.conta_nome?.toLowerCase().includes(searchFormas.toLowerCase()) : true)
+      .filter(r => filtroStatus === 'todos' ? true : filtroStatus === 'aberto' ? !r.pago : r.pago)
 
     for (const r of lista) {
       if (!formaMap.has(r.conta_debitar))
@@ -380,7 +381,7 @@ export default function ContasReceberPage() {
       })
       .filter(g => g.postos.length > 0)
       .sort((a, b) => b.mesesEmAndamento - a.mesesEmAndamento || a.contaNome.localeCompare(b.contaNome))
-  }, [resumoLinhas, searchFormas])
+  }, [resumoLinhas, searchFormas, filtroStatus])
 
   // ── Agrupa formas pelos 5 grupos ──
   const gruposPrincipais = useMemo<GrupoPrincipal[]>(() => {
@@ -560,6 +561,29 @@ export default function ContasReceberPage() {
                 <span className="text-[11px] text-gray-400 font-medium">até</span>
                 <Input type="date" value={filtroFormasDataFim} onChange={e => setFiltroFormasDataFim(e.target.value)} className="h-9 text-[13px] w-full" />
               </div>
+            </div>
+            <div className="flex gap-1.5">
+              {([
+                { v: 'todos',  label: 'Todos',      icon: null },
+                { v: 'aberto', label: 'Em Aberto',  icon: Clock },
+                { v: 'baixado',label: 'Baixado',     icon: CheckCircle2 },
+              ] as const).map(({ v, label, icon: Icon }) => (
+                <button
+                  key={v}
+                  onClick={() => setFiltroStatus(v)}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors',
+                    filtroStatus === v
+                      ? v === 'aberto'  ? 'bg-orange-100 text-orange-700 border-orange-300'
+                      : v === 'baixado' ? 'bg-green-100 text-green-700 border-green-300'
+                      : 'bg-gray-100 text-gray-700 border-gray-300'
+                      : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                  )}
+                >
+                  {Icon && <Icon className="w-3 h-3" />}
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
         </div>

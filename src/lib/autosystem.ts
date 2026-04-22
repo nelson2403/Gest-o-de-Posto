@@ -82,7 +82,7 @@ export async function buscarMovtosFormas(
   const { dataIni = '2026-01-01', dataFim } = opts
   const params: unknown[] = [empresaIds, dataIni]
   let sql = `
-    SELECT conta_debitar::text, empresa::bigint, pessoa::bigint, data::text, vencto::text, valor::float, child::float
+    SELECT conta_debitar::text, empresa::bigint, pessoa::bigint, data::text, vencto::text, valor::float, child::float, mlid::bigint
     FROM movto
     WHERE empresa = ANY($1::bigint[])
       AND conta_debitar LIKE '1.3.%'
@@ -142,6 +142,18 @@ export async function buscarMovtosContrapartida(mlids: number[]): Promise<Record
      FROM movto WHERE mlid = ANY($1::bigint[]) LIMIT 5000`,
     [mlids],
   )
+}
+
+// Returns mlids that have a corresponding settlement credit entry (conta_creditar LIKE '1.3.%').
+// Used to detect Stone/card entries (child=0) that were settled via automatic batch baixa.
+export async function buscarMlidsLiquidados(mlids: number[]): Promise<number[]> {
+  if (!mlids.length) return []
+  const rows = await query<{ mlid: number }>(
+    `SELECT DISTINCT mlid::bigint AS mlid FROM movto
+     WHERE mlid = ANY($1::bigint[]) AND conta_creditar LIKE '1.3.%'`,
+    [mlids],
+  )
+  return rows.map(r => Number(r.mlid))
 }
 
 export async function buscarMovtosPagar(
