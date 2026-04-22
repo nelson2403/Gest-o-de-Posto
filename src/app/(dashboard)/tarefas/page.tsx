@@ -126,12 +126,13 @@ export default function TarefasPage() {
   const canEdit        = can(role ?? null, 'tarefas.edit')
   const canCreate      = can(role ?? null, 'tarefas.create')
 
-  // ── State ──────────────────────────────────────────────────────────
+  // ── State ─────────────────────────────────���────────────────────────
   const [tarefas,  setTarefas]  = useState<Tarefa[]>([])
   const [usuarios, setUsuarios] = useState<Pick<Usuario, 'id' | 'nome'>[]>([])
   const [loading,  setLoading]  = useState(true)
   const [saving,   setSaving]   = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [ultimoCaixaByPostoId, setUltimoCaixaByPostoId] = useState<Record<string, string | null>>({})
 
   const [openForm,    setOpenForm]    = useState(false)
   const [openView,    setOpenView]    = useState(false)
@@ -256,12 +257,28 @@ export default function TarefasPage() {
       q = q.in('posto_id', postosIds)
     }
 
-    const { data, error } = await q
+    const [{ data, error }, postosRes, caixaRes] = await Promise.all([
+      q,
+      supabase.from('postos').select('id, codigo_empresa_externo').not('codigo_empresa_externo', 'is', null),
+      fetch('/api/caixa-externo'),
+    ])
     if (error) {
       toast({ variant: 'destructive', title: 'Erro ao carregar tarefas', description: error.message })
     } else {
       setTarefas((data ?? []) as Tarefa[])
     }
+    // Monta mapa postoId → ultimo_caixa_fechado
+    try {
+      const caixaJson = await caixaRes.json()
+      const caixaRows: { codigo: string; ultimo_caixa_fechado: string | null }[] = caixaJson.data ?? []
+      const codigoToData: Record<string, string | null> = {}
+      for (const c of caixaRows) codigoToData[c.codigo] = c.ultimo_caixa_fechado
+      const map: Record<string, string | null> = {}
+      for (const p of postosRes.data ?? []) {
+        if (p.codigo_empresa_externo) map[p.id] = codigoToData[p.codigo_empresa_externo] ?? null
+      }
+      setUltimoCaixaByPostoId(map)
+    } catch { /* caixa-externo inacessível — ignora */ }
     setLoading(false)
   }
 
@@ -655,7 +672,7 @@ export default function TarefasPage() {
                       className="flex-1 flex items-center justify-between px-4 py-3 text-left"
                       onClick={() => togglePosto(grupo.postoId)}
                     >
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-2.5 flex-wrap">
                         <div className="w-7 h-7 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
                           <MapPin className="w-3.5 h-3.5 text-orange-600" />
                         </div>
@@ -663,6 +680,21 @@ export default function TarefasPage() {
                         <span className="text-[11px] text-gray-400 font-medium">
                           {grupo.items.length} tarefa{grupo.items.length !== 1 ? 's' : ''}
                         </span>
+                        {grupo.postoId !== 'sem-posto' && (() => {
+                          const uc = ultimoCaixaByPostoId[grupo.postoId]
+                          if (uc === undefined) return null
+                          const dias = uc ? Math.floor((Date.now() - new Date(uc + 'T12:00:00').getTime()) / 86_400_000) : null
+                          const cor = dias === null ? 'bg-gray-100 text-gray-500'
+                            : dias <= 1 ? 'bg-emerald-100 text-emerald-700'
+                            : dias <= 3 ? 'bg-amber-100 text-amber-700'
+                            : 'bg-red-100 text-red-700'
+                          return (
+                            <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium', cor)}>
+                              <Landmark className="w-3 h-3" />
+                              Últ. caixa: {uc ? (() => { const [y,m,d] = uc.split('-'); return `${d}/${m}/${y}` })() : '—'}
+                            </span>
+                          )
+                        })()}
                       </div>
                       <div className="flex items-center gap-1.5">
                         {atrasadas > 0 && (
