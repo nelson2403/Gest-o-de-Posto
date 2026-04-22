@@ -11,8 +11,8 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const empresaId = searchParams.get('empresa')
-  const venctoIni = searchParams.get('vencto_ini')
-  const venctoFim = searchParams.get('vencto_fim')
+  const venctoIni = searchParams.get('data_ini') ?? searchParams.get('vencto_ini')
+  const venctoFim = searchParams.get('data_fim') ?? searchParams.get('vencto_fim')
 
   const admin = createAdminClient()
 
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const movtosRaw = await buscarMovtosFormas(empresaIds, { venctoIni: venctoIniEfetivo, venctoFim })
+  const movtosRaw = await buscarMovtosFormas(empresaIds, { dataIni: venctoIniEfetivo, dataFim: venctoFim })
 
   const pessoaIds = [...new Set((movtosRaw as any[]).map(m => m.pessoa).filter(Boolean))] as number[]
   const pessoaLookup: Record<number, string> = {}
@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
 
   for (const m of movtosRaw as any[]) {
     const pessoa_nome = m.pessoa ? (pessoaLookup[m.pessoa] ?? '(sem cliente)') : '(sem cliente)'
-    const mes         = (m.vencto as string)?.slice(0, 7) ?? ''
+    const mes         = (m.data as string)?.slice(0, 7) ?? ''
     const pago        = (m.child as number) > 0
     const key         = `${m.conta_debitar}|${m.empresa}|${pessoa_nome}|${mes}|${pago}`
     if (!agg[key]) agg[key] = {

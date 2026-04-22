@@ -77,19 +77,19 @@ export async function buscarMovtosContasReceber(
 
 export async function buscarMovtosFormas(
   empresaIds: number[],
-  opts: { venctoIni?: string; venctoFim?: string | null },
+  opts: { dataIni?: string; dataFim?: string | null },
 ): Promise<Record<string, unknown>[]> {
-  const { venctoIni = '2026-01-01', venctoFim } = opts
-  const params: unknown[] = [empresaIds, venctoIni]
+  const { dataIni = '2026-01-01', dataFim } = opts
+  const params: unknown[] = [empresaIds, dataIni]
   let sql = `
-    SELECT conta_debitar::text, empresa::bigint, pessoa::bigint, vencto::text, valor::float, child::float
+    SELECT conta_debitar::text, empresa::bigint, pessoa::bigint, data::text, vencto::text, valor::float, child::float
     FROM movto
     WHERE empresa = ANY($1::bigint[])
       AND conta_debitar LIKE '1.3.%'
       AND child >= 0
-      AND vencto >= $2::date`
+      AND data >= $2::date`
 
-  if (venctoFim) { params.push(venctoFim); sql += ` AND vencto <= $${params.length}::date` }
+  if (dataFim) { params.push(dataFim); sql += ` AND data <= $${params.length}::date` }
   sql += ` LIMIT 100000`
   return query(sql, params)
 }
@@ -116,10 +116,10 @@ export async function buscarMovtosMotivoFormas(
 export async function buscarMovtosDetalhe(
   empresaIds: number[],
   contaCod: string,
-  opts: { venctoIni?: string; venctoFim?: string | null; pessoa?: string | null },
+  opts: { dataIni?: string; dataFim?: string | null; pessoa?: string | null },
 ): Promise<Record<string, unknown>[]> {
-  const { venctoIni = '2026-01-01', venctoFim, pessoa } = opts
-  const params: unknown[] = [empresaIds, contaCod, venctoIni]
+  const { dataIni = '2026-01-01', dataFim, pessoa } = opts
+  const params: unknown[] = [empresaIds, contaCod, dataIni]
   let sql = `
     SELECT grid::bigint, mlid::bigint, data::text, vencto::text, documento::text,
            tipo_doc::text, valor::float, empresa::bigint, conta_debitar::text,
@@ -128,11 +128,11 @@ export async function buscarMovtosDetalhe(
     WHERE empresa = ANY($1::bigint[])
       AND conta_debitar = $2
       AND child >= 0
-      AND vencto >= $3::date`
+      AND data >= $3::date`
 
-  if (venctoFim) { params.push(venctoFim); sql += ` AND vencto <= $${params.length}::date` }
-  if (pessoa)    { params.push(Number(pessoa)); sql += ` AND pessoa = $${params.length}` }
-  sql += ` ORDER BY vencto ASC LIMIT 2000`
+  if (dataFim) { params.push(dataFim); sql += ` AND data <= $${params.length}::date` }
+  if (pessoa)  { params.push(Number(pessoa)); sql += ` AND pessoa = $${params.length}` }
+  sql += ` ORDER BY data ASC LIMIT 2000`
   return query(sql, params)
 }
 

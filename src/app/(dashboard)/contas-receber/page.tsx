@@ -193,8 +193,8 @@ export default function ContasReceberPage() {
   const [resumoLinhas,  setResumoLinhas]  = useState<ResumoLinha[]>([])
   const [loadingFormas, setLoadingFormas] = useState(false)
   const [filtroFormasEmpresa,   setFiltroFormasEmpresa]   = useState('todos')
-  const [filtroFormasVenctoIni, setFiltroFormasVenctoIni] = useState(`${anoAtual()}-01-01`)
-  const [filtroFormasVenctoFim, setFiltroFormasVenctoFim] = useState(`${anoAtual()}-12-31`)
+  const [filtroFormasDataIni, setFiltroFormasDataIni] = useState(`${anoAtual()}-01-01`)
+  const [filtroFormasDataFim, setFiltroFormasDataFim] = useState(`${anoAtual()}-12-31`)
   const [searchFormas,          setSearchFormas]          = useState('')
   const [expandidosGrupo,       setExpandidosGrupo]       = useState<Set<string>>(new Set())
   const [expandidosForma,       setExpandidosForma]       = useState<Set<string>>(new Set())
@@ -222,8 +222,8 @@ export default function ContasReceberPage() {
     try {
       const params = new URLSearchParams()
       if (filtroFormasEmpresa !== 'todos') params.set('empresa', filtroFormasEmpresa)
-      if (filtroFormasVenctoIni) params.set('vencto_ini', filtroFormasVenctoIni)
-      if (filtroFormasVenctoFim) params.set('vencto_fim', filtroFormasVenctoFim)
+      if (filtroFormasDataIni) params.set('data_ini', filtroFormasDataIni)
+      if (filtroFormasDataFim) params.set('data_fim', filtroFormasDataFim)
       const res  = await fetch(`/api/contas-receber/formas?${params}`)
       let json: any = {}
       try { json = await res.json() } catch { /* resposta não é JSON */ }
@@ -237,7 +237,7 @@ export default function ContasReceberPage() {
     } finally {
       setLoadingFormas(false)
     }
-  }, [filtroFormasEmpresa, filtroFormasVenctoIni, filtroFormasVenctoFim])
+  }, [filtroFormasEmpresa, filtroFormasDataIni, filtroFormasDataFim])
 
   async function loadDetalhe(conta: string, mes: string, empresa?: string) {
     const key = `${conta}|${empresa ?? ''}|${mes}`
@@ -553,12 +553,12 @@ export default function ContasReceberPage() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="flex flex-col gap-1">
-                <span className="text-[11px] text-gray-400 font-medium">De</span>
-                <Input type="date" value={filtroFormasVenctoIni} onChange={e => setFiltroFormasVenctoIni(e.target.value)} className="h-9 text-[13px] w-full" />
+                <span className="text-[11px] text-gray-400 font-medium">Lançamento de</span>
+                <Input type="date" value={filtroFormasDataIni} onChange={e => setFiltroFormasDataIni(e.target.value)} className="h-9 text-[13px] w-full" />
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-[11px] text-gray-400 font-medium">Até</span>
-                <Input type="date" value={filtroFormasVenctoFim} onChange={e => setFiltroFormasVenctoFim(e.target.value)} className="h-9 text-[13px] w-full" />
+                <span className="text-[11px] text-gray-400 font-medium">até</span>
+                <Input type="date" value={filtroFormasDataFim} onChange={e => setFiltroFormasDataFim(e.target.value)} className="h-9 text-[13px] w-full" />
               </div>
             </div>
           </div>

@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
       posto_nome: postoMap[String(m.empresa)] ?? String(m.empresa),
     }))
   } else {
-    const data = await buscarMovtosDetalhe(empresaIds, conta, { venctoIni: dataIni, venctoFim: dataFim }) as any[]
+    const data = await buscarMovtosDetalhe(empresaIds, conta, { dataIni, dataFim }) as any[]
 
     const pessoaIds = [...new Set(data.map((m: any) => m.pessoa).filter(Boolean))] as number[]
     const pessoaLookup: Record<number, string> = {}
