@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Header } from '@/components/layout/Header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -79,9 +80,17 @@ const QUICK_ACCESS = [
 export default function DashboardPage() {
   const { usuario, canUser } = useAuthContext()
   const supabase = createClient()
+  const router = useRouter()
   const role = usuario?.role as Role | undefined
   // Sem dashboard.view = só vê acesso rápido (admin, operador, conciliador)
   const isRestrito = !canUser('dashboard.view')
+
+  // Redireciona roles sem dashboard para sua página principal
+  useEffect(() => {
+    if (!usuario) return
+    if (role === 'transpombal') { router.replace('/transpombal'); return }
+    if (role === 'gerente')     { router.replace('/tanques');     return }
+  }, [usuario, role])
 
   const [data, setData]     = useState<DashboardEmpresa | null>(null)
   const [loading, setLoading] = useState(true)

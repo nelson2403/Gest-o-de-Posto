@@ -107,12 +107,13 @@ function StatusBadge({ status }: { status: string }) {
 // ─── Modal de Carregamento ────────────────────────────────────────────────────
 
 function ModalCarregamento({
-  onClose, onSave, motoristas, veiculos, inicial,
+  onClose, onSave, motoristas, veiculos, postoNomes, inicial,
 }: {
   onClose: () => void
   onSave:  (data: any) => Promise<void>
   motoristas: Motorista[]
   veiculos:   Veiculo[]
+  postoNomes: string[]
   inicial?: Carregamento | null
 }) {
   const editando = !!inicial
@@ -121,6 +122,7 @@ function ModalCarregamento({
   const [origem,        setOrigem]        = useState(inicial?.origem ?? 'CAXIAS')
   const [motoristaId,   setMotoristaId]   = useState(inicial?.motorista_id ?? '')
   const [motoristaNome, setMotoristaNome] = useState(inicial?.motorista_nome ?? '')
+  const [placasSel,     setPlacasSel]     = useState<string[]>(inicial?.placas ?? [])
   const [placasInput,   setPlacasInput]   = useState(inicial?.placas?.join(' / ') ?? '')
   const [statusCar,     setStatusCar]     = useState(inicial?.status ?? 'planejado')
   const [obs,           setObs]           = useState(inicial?.observacoes ?? '')
@@ -137,7 +139,9 @@ function ModalCarregamento({
   const [saving, setSaving] = useState(false)
 
   // Compartimentos disponíveis das placas selecionadas
-  const placasSelecionadas = placasInput.split(/[\s,/]+/).map(p => p.trim().toUpperCase()).filter(Boolean)
+  const placasSelecionadas = placasSel.length > 0
+    ? placasSel
+    : placasInput.split(/[\s,/]+/).map(p => p.trim().toUpperCase()).filter(Boolean)
   const veiculosSelecionados = veiculos.filter(v => placasSelecionadas.includes(v.placa))
   const compartimentosDisponiveis = veiculosSelecionados.flatMap(v => v.compartimentos).sort((a, b) => b - a)
   const volumeUsado = itens.reduce((s, i) => s + i.capacidade_m3, 0)
@@ -159,7 +163,9 @@ function ModalCarregamento({
     if (!data) { toast({ variant: 'destructive', title: 'Data obrigatória' }); return }
     setSaving(true)
     try {
-      const placas = placasInput.split(/[\s,/]+/).map(p => p.trim().toUpperCase()).filter(Boolean)
+      const placas = placasSel.length > 0
+        ? placasSel
+        : placasInput.split(/[\s,/]+/).map(p => p.trim().toUpperCase()).filter(Boolean)
       await onSave({
         data_carregamento: data,
         origem,
@@ -234,9 +240,30 @@ function ModalCarregamento({
           {/* Placas + Compartimentos */}
           <div className="space-y-2">
             <label className="block text-[11px] font-semibold text-gray-500">Placas (cavalinho / carretas)</label>
-            <input value={placasInput} onChange={e => setPlacasInput(e.target.value.toUpperCase())}
-              placeholder="ex: TOO1F54 / SGG9D63 / SGG9D61"
-              className="w-full px-3 py-2 text-[13px] font-mono rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400/30" />
+            {veiculos.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {veiculos.map(v => {
+                  const sel = placasSel.includes(v.placa)
+                  return (
+                    <button key={v.id} type="button"
+                      onClick={() => setPlacasSel(prev => sel ? prev.filter(p => p !== v.placa) : [...prev, v.placa])}
+                      className={cn(
+                        'flex flex-col items-start px-3 py-2 rounded-xl border text-left transition-all',
+                        sel ? 'bg-orange-500 border-orange-500 text-white' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-orange-300'
+                      )}>
+                      <span className="font-mono font-bold text-[13px]">{v.placa}</span>
+                      <span className={cn('text-[10px] mt-0.5', sel ? 'text-orange-100' : 'text-gray-400')}>
+                        {v.tipo} · {v.compartimentos.length > 0 ? v.compartimentos.map(c => `${c}m³`).join('+') : 'sem comp.'}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <input value={placasInput} onChange={e => setPlacasInput(e.target.value.toUpperCase())}
+                placeholder="ex: TOO1F54 / SGG9D63 / SGG9D61"
+                className="w-full px-3 py-2 text-[13px] font-mono rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400/30" />
+            )}
             {compartimentosDisponiveis.length > 0 && (
               <div className="flex flex-wrap gap-1.5 items-center">
                 <span className="text-[11px] text-gray-500 font-medium">Compartimentos registrados:</span>
@@ -309,9 +336,17 @@ function ModalCarregamento({
                           </select>
                         </td>
                         <td className="px-3 py-1.5">
-                          <input value={item.posto_nome} onChange={e => updateItem(idx, 'posto_nome', e.target.value.toUpperCase())}
-                            placeholder="Nome do posto"
-                            className="w-full px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none uppercase" />
+                          {postoNomes.length > 0 ? (
+                            <select value={item.posto_nome} onChange={e => updateItem(idx, 'posto_nome', e.target.value)}
+                              className="w-full px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none text-[12px]">
+                              <option value="">— Posto —</option>
+                              {postoNomes.map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                          ) : (
+                            <input value={item.posto_nome} onChange={e => updateItem(idx, 'posto_nome', e.target.value.toUpperCase())}
+                              placeholder="Nome do posto"
+                              className="w-full px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none uppercase" />
+                          )}
                         </td>
                         <td className="px-3 py-1.5">
                           <input value={item.numero_pedido} onChange={e => updateItem(idx, 'numero_pedido', e.target.value)}
@@ -706,6 +741,7 @@ export default function TranspombalPage() {
   const [carregamentos,   setCarregamentos]   = useState<Carregamento[]>([])
   const [motoristas,      setMotoristas]      = useState<Motorista[]>([])
   const [veiculos,        setVeiculos]        = useState<Veiculo[]>([])
+  const [postoNomes,      setPostoNomes]      = useState<string[]>([])
   const [loading,         setLoading]         = useState(true)
   const [dataIni,         setDataIni]         = useState(hoje)
   const [dataFim,         setDataFim]         = useState(hoje)
@@ -719,15 +755,17 @@ export default function TranspombalPage() {
     try {
       const params = new URLSearchParams({ data_ini: dataIni, data_fim: dataFim })
       if (filtroStatus !== 'todos') params.set('status', filtroStatus)
-      const [r1, r2, r3] = await Promise.all([
+      const [r1, r2, r3, r4] = await Promise.all([
         fetch(`/api/transpombal/carregamentos?${params}`),
         fetch('/api/transpombal/motoristas'),
         fetch('/api/transpombal/veiculos'),
+        fetch('/api/tanques'),
       ])
-      const [j1, j2, j3] = await Promise.all([r1.json(), r2.json(), r3.json()])
+      const [j1, j2, j3, j4] = await Promise.all([r1.json(), r2.json(), r3.json(), r4.json()])
       setCarregamentos(j1.carregamentos ?? [])
       setMotoristas(j2.motoristas ?? [])
       setVeiculos(j3.veiculos ?? [])
+      setPostoNomes(Object.keys(j4.porPosto ?? {}).sort())
     } catch (err) {
       toast({ variant: 'destructive', title: 'Erro ao carregar dados' })
     } finally {
@@ -926,6 +964,7 @@ export default function TranspombalPage() {
           onSave={handleSalvarCarregamento}
           motoristas={motoristas}
           veiculos={veiculos}
+          postoNomes={postoNomes}
           inicial={editando}
         />
       )}
