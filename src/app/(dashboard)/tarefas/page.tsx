@@ -270,9 +270,9 @@ export default function TarefasPage() {
     // Monta mapa postoId → ultimo_caixa_fechado
     try {
       const caixaJson = await caixaRes.json()
-      const caixaRows: { codigo: string; ultimo_caixa_fechado: string | null }[] = caixaJson.data ?? []
+      const caixaRows: { grid: string; ultimo_caixa_fechado: string | null }[] = caixaJson.data ?? []
       const codigoToData: Record<string, string | null> = {}
-      for (const c of caixaRows) codigoToData[c.codigo] = c.ultimo_caixa_fechado
+      for (const c of caixaRows) codigoToData[c.grid] = c.ultimo_caixa_fechado
       const map: Record<string, string | null> = {}
       for (const p of postosRes.data ?? []) {
         if (p.codigo_empresa_externo) map[p.id] = codigoToData[p.codigo_empresa_externo] ?? null
