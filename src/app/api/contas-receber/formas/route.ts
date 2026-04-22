@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buscarMovtosFormas, buscarMovtosMotivoFormas, buscarPessoas, buscarContas, buscarMotivos, buscarMlidsLiquidados } from '@/lib/autosystem'
+import { buscarMovtosFormas, buscarMovtosMotivoFormas, buscarPessoas, buscarContas, buscarMotivos } from '@/lib/autosystem'
 
 export async function GET(req: NextRequest) {
   try {
@@ -55,12 +55,6 @@ export async function GET(req: NextRequest) {
   const contaLookup: Record<string, string> = {}
   for (const c of contasData) contaLookup[c.codigo] = c.nome ?? ''
 
-  // For child=0 entries (Stone/card), detect settlements via credit counterpart (mlid match)
-  const mlidsChildZero = [...new Set(
-    (movtosRaw as any[]).filter(m => (m.child as number) === 0 && m.mlid).map(m => Number(m.mlid))
-  )]
-  const liquidadosSet = new Set(await buscarMlidsLiquidados(mlidsChildZero))
-
   const agg: Record<string, {
     conta_debitar: string; conta_nome: string | null; empresa: string
     pessoa_nome: string; mes: string; pago: boolean; qtd: number; valor_total: number
@@ -69,7 +63,7 @@ export async function GET(req: NextRequest) {
   for (const m of movtosRaw as any[]) {
     const pessoa_nome = m.pessoa ? (pessoaLookup[m.pessoa] ?? '(sem cliente)') : '(sem cliente)'
     const mes         = (m.data as string)?.slice(0, 7) ?? ''
-    const pago        = (m.child as number) > 0 || ((m.child as number) === 0 && liquidadosSet.has(Number(m.mlid)))
+    const pago        = (m.child as number) !== 0
     const key         = `${m.conta_debitar}|${m.empresa}|${pessoa_nome}|${mes}|${pago}`
     if (!agg[key]) agg[key] = {
       conta_debitar: m.conta_debitar ?? '',
