@@ -148,6 +148,10 @@ export const PERMISSIONS = {
   'transpombal.view': ['master', 'admin', 'transpombal'],
   'transpombal.edit': ['master', 'admin', 'transpombal'],
 
+  // Medição de Tanques — gerentes registram o nível diário
+  'tanques.view': ['master', 'admin', 'operador', 'gerente'],
+  'tanques.edit': ['master', 'admin', 'gerente'],
+
   // Marketing
   // gerente: só cria patrocínio e anexa documentos do seu posto
   // operador: mesmo acesso que gerente
