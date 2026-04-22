@@ -25,6 +25,20 @@ interface PostoConciliacao {
   prazo: string | null
   data_conclusao: string | null
   usuario_nome: string | null
+  ultimo_caixa: string | null
+  dias_caixa: number | null
+}
+
+function diffDias(dataISO: string): number {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
+  const ref  = new Date(dataISO + 'T12:00:00'); ref.setHours(0, 0, 0, 0)
+  return Math.floor((hoje.getTime() - ref.getTime()) / 86_400_000)
+}
+
+function formatDataBR(iso: string | null): string {
+  if (!iso) return '—'
+  const [ano, mes, dia] = iso.split('-')
+  return `${dia}/${mes}/${ano}`
 }
 
 function calcStatus(
@@ -71,8 +85,28 @@ export default function DemonstrativoConciliacaoPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase.rpc('get_conciliacao_por_posto')
+      const [{ data, error }, postosRes, caixaRes] = await Promise.all([
+        supabase.rpc('get_conciliacao_por_posto'),
+        fetch('/api/postos-mapeamento'),
+        fetch('/api/caixa-externo'),
+      ])
       if (error) throw error
+
+      const postosJson = await postosRes.json()
+      const caixaJson  = await caixaRes.json()
+
+      // Mapa grid → ultimo_caixa_fechado
+      const caixaByGrid = new Map<string, string | null>()
+      for (const c of caixaJson.data ?? []) {
+        caixaByGrid.set(String(c.grid), c.ultimo_caixa_fechado ?? null)
+      }
+      // Mapa posto_id → ultimo_caixa_fechado
+      const caixaByPosto = new Map<string, string | null>()
+      for (const p of postosJson.data ?? []) {
+        if (p.codigo_empresa_externo) {
+          caixaByPosto.set(p.id, caixaByGrid.get(String(p.codigo_empresa_externo)) ?? null)
+        }
+      }
 
       const result: PostoConciliacao[] = (data ?? []).map((row: {
         posto_id: string
@@ -83,20 +117,25 @@ export default function DemonstrativoConciliacaoPage() {
         data_conclusao_real: string | null
         ultima_conclusao: string | null
         usuario_nome: string | null
-      }) => ({
-        posto_id: row.posto_id,
-        posto_nome: row.posto_nome,
-        status: calcStatus(
-          row.status_tarefa
-            ? { status: row.status_tarefa, data_conclusao_prevista: row.data_conclusao_prevista }
-            : undefined,
-          row.ultima_conclusao
-        ),
-        data_referencia: row.data_inicio ?? null,
-        prazo: row.data_conclusao_prevista ?? null,
-        data_conclusao: row.ultima_conclusao ?? null,
-        usuario_nome: row.usuario_nome ?? null,
-      }))
+      }) => {
+        const ultimoCaixa = caixaByPosto.get(row.posto_id) ?? null
+        return {
+          posto_id: row.posto_id,
+          posto_nome: row.posto_nome,
+          status: calcStatus(
+            row.status_tarefa
+              ? { status: row.status_tarefa, data_conclusao_prevista: row.data_conclusao_prevista }
+              : undefined,
+            row.ultima_conclusao
+          ),
+          data_referencia: row.data_inicio ?? null,
+          prazo: row.data_conclusao_prevista ?? null,
+          data_conclusao: row.ultima_conclusao ?? null,
+          usuario_nome: row.usuario_nome ?? null,
+          ultimo_caixa: ultimoCaixa,
+          dias_caixa: ultimoCaixa ? diffDias(ultimoCaixa) : null,
+        }
+      })
 
       setRows(result)
     } catch (err) {
@@ -113,11 +152,12 @@ export default function DemonstrativoConciliacaoPage() {
     setExporting(true)
     try {
       const columns: ReportColumn[] = [
-        { header: 'Posto',       key: 'posto_nome',     width: 32 },
-        { header: 'Responsável', key: 'usuario_nome',   width: 20 },
-        { header: 'Situação',    key: 'situacao',       width: 16 },
-        { header: 'Dia a Fazer', key: 'dia_a_fazer',    width: 16 },
-        { header: 'Concluídos',  key: 'data_conclusao', width: 18 },
+        { header: 'Posto',            key: 'posto_nome',     width: 30 },
+        { header: 'Responsável',      key: 'usuario_nome',   width: 18 },
+        { header: 'Situação',         key: 'situacao',       width: 14 },
+        { header: 'Dia a Fazer',      key: 'dia_a_fazer',    width: 14 },
+        { header: 'Concluídos',       key: 'data_conclusao', width: 14 },
+        { header: 'Últ. Caixa Fech.', key: 'ultimo_caixa',  width: 16 },
       ]
       const exportRows = rowsFiltradas.map(r => ({
         posto_nome:     r.posto_nome,
@@ -125,6 +165,7 @@ export default function DemonstrativoConciliacaoPage() {
         situacao:       STATUS_CONFIG[r.status].label,
         dia_a_fazer:    r.status !== 'em_dia' && r.prazo ? formatDate(r.prazo) : '—',
         data_conclusao: r.data_conclusao ? formatDate(r.data_conclusao) : '—',
+        ultimo_caixa:   r.ultimo_caixa ? formatDataBR(r.ultimo_caixa) + (r.dias_caixa !== null ? ` (${r.dias_caixa}d)` : '') : '—',
       }))
       const data: ReportData = {
         title: 'Demonstrativo de Conciliação Bancária',
@@ -225,11 +266,12 @@ export default function DemonstrativoConciliacaoPage() {
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 w-[35%]">Posto</th>
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 w-[16%]">Responsável</th>
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 w-[16%]">Situação</th>
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 w-[15%]">Dia a Fazer</th>
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 w-[18%]">Concluídos</th>
+                  <th className="text-left px-5 py-3 font-semibold text-gray-600 w-[28%]">Posto</th>
+                  <th className="text-left px-5 py-3 font-semibold text-gray-600 w-[14%]">Responsável</th>
+                  <th className="text-left px-5 py-3 font-semibold text-gray-600 w-[14%]">Situação</th>
+                  <th className="text-left px-5 py-3 font-semibold text-gray-600 w-[13%]">Dia a Fazer</th>
+                  <th className="text-left px-5 py-3 font-semibold text-gray-600 w-[13%]">Concluídos</th>
+                  <th className="text-left px-5 py-3 font-semibold text-gray-600 w-[18%]">Últ. Caixa Fechado</th>
                 </tr>
               </thead>
               <tbody>
@@ -258,6 +300,25 @@ export default function DemonstrativoConciliacaoPage() {
                       </td>
                       <td className="px-5 py-3 text-gray-600">
                         {row.data_conclusao ? formatDate(row.data_conclusao) : '—'}
+                      </td>
+                      <td className="px-5 py-3">
+                        {row.ultimo_caixa ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-medium text-gray-700">{formatDataBR(row.ultimo_caixa)}</span>
+                            {row.dias_caixa !== null && (
+                              <span className={cn(
+                                'text-[11px] font-semibold',
+                                row.dias_caixa === 0 ? 'text-emerald-600' :
+                                row.dias_caixa === 1 ? 'text-emerald-600' :
+                                row.dias_caixa <= 3  ? 'text-amber-600'   : 'text-red-600'
+                              )}>
+                                {row.dias_caixa === 0 ? 'Hoje' : row.dias_caixa === 1 ? '1 dia atrás' : `${row.dias_caixa} dias atrás`}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
                       </td>
                     </tr>
                   )
