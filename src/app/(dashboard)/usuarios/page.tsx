@@ -360,7 +360,7 @@ export default function UsuariosPage() {
           nome: form.nome,
           role: form.role,
           empresa_id: form.empresa_id || null,
-          posto_fechamento_id: form.role === 'fechador' ? (form.posto_fechamento_id || null) : null,
+          posto_fechamento_id: (form.role === 'fechador' || form.role === 'gerente') ? (form.posto_fechamento_id || null) : null,
           perfil_id: form.perfil_id || null,
         })
         .eq('id', selected.id)
@@ -381,7 +381,7 @@ export default function UsuariosPage() {
           senha: form.senha,
           role: form.role,
           empresa_id: form.empresa_id || null,
-          posto_fechamento_id: form.role === 'fechador' ? (form.posto_fechamento_id || null) : null,
+          posto_fechamento_id: (form.role === 'fechador' || form.role === 'gerente') ? (form.posto_fechamento_id || null) : null,
         }),
       })
       const data = await res.json()

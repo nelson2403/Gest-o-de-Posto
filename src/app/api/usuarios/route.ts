@@ -32,26 +32,45 @@ export async function POST(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
-    email,
-    password: senha,
-    email_confirm: true,
-  })
+  // Verifica se já existe um auth user com esse e-mail (pode ser soft-deleted)
+  const { data: listData } = await adminSupabase.auth.admin.listUsers({ perPage: 1000 })
+  const existingAuthUser = (listData?.users ?? []).find(
+    u => u.email?.toLowerCase() === email.toLowerCase()
+  )
 
-  if (authError) return NextResponse.json({ error: authError.message }, { status: 400 })
+  let newUserId: string
 
-  const newUserId = authData.user.id
+  if (existingAuthUser) {
+    // Recupera o usuário existente: atualiza senha e garante que está ativo
+    const { error: updateAuthErr } = await adminSupabase.auth.admin.updateUserById(existingAuthUser.id, {
+      password: senha,
+      email_confirm: true,
+      ban_duration: 'none',
+    })
+    if (updateAuthErr) return NextResponse.json({ error: updateAuthErr.message }, { status: 400 })
+    newUserId = existingAuthUser.id
+  } else {
+    const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
+      email,
+      password: senha,
+      email_confirm: true,
+    })
+    if (authError) return NextResponse.json({ error: authError.message }, { status: 400 })
+    newUserId = authData.user.id
+  }
+
   const resolvedEmpresaId = empresa_id || requester.empresa_id
 
-  const { error: insertError } = await adminSupabase.from('usuarios').insert({
+  // Upsert na tabela usuarios (pode já existir de tentativa anterior)
+  const { error: insertError } = await adminSupabase.from('usuarios').upsert({
     id: newUserId,
     nome,
     email,
     role,
     empresa_id: resolvedEmpresaId,
-    posto_fechamento_id: role === 'operador' ? (posto_fechamento_id || null) : null,
+    posto_fechamento_id: (role === 'operador' || role === 'fechador' || role === 'gerente') ? (posto_fechamento_id || null) : null,
     ativo: true,
-  })
+  }, { onConflict: 'id' })
 
   if (insertError) return NextResponse.json({ error: insertError.message }, { status: 400 })
 
