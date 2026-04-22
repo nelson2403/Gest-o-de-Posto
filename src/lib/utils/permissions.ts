@@ -144,6 +144,10 @@ export const PERMISSIONS = {
   // Estoque — master, admin e operador
   'estoque.view': ['master', 'admin', 'operador'],
 
+  // Transpombal — logística de abastecimento
+  'transpombal.view': ['master', 'admin', 'transpombal'],
+  'transpombal.edit': ['master', 'admin', 'transpombal'],
+
   // Marketing
   // gerente: só cria patrocínio e anexa documentos do seu posto
   // operador: mesmo acesso que gerente
@@ -176,6 +180,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   fechador:     'Fechador de Caixa',
   marketing:    'Marketing',
   gerente:      'Gerente de Posto',
+  transpombal:  'Transpombal',
 }
 
 export const ROLE_COLORS: Record<Role, string> = {
@@ -186,4 +191,5 @@ export const ROLE_COLORS: Record<Role, string> = {
   fechador:     'bg-orange-100 text-orange-800',
   marketing:    'bg-pink-100 text-pink-800',
   gerente:      'bg-teal-100 text-teal-800',
+  transpombal:  'bg-yellow-100 text-yellow-800',
 }

@@ -1,4 +1,4 @@
-export type Role = 'master' | 'admin' | 'operador' | 'conciliador' | 'fechador' | 'marketing' | 'gerente'
+export type Role = 'master' | 'admin' | 'operador' | 'conciliador' | 'fechador' | 'marketing' | 'gerente' | 'transpombal'
 export type StatusEmpresa = 'ativo' | 'inativo' | 'suspenso'
 export type StatusMaquininha = 'ativo' | 'inativo' | 'estoque' | 'manutencao' | 'extraviada' | 'devolvida'
 
