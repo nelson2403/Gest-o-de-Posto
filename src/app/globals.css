@@ -4,65 +4,66 @@
 
 @layer base {
   :root {
-    --background: 220 20% 97%;
-    --foreground: 222 25% 8%;
+    /* ── Grupo Pedra do Pombal — burgúndy HSL(4,75%,31%) ── */
+    --background: 0 0% 97%;
+    --foreground: 4 20% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 222 25% 8%;
+    --card-foreground: 4 20% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 25% 8%;
-    --primary: 24 95% 53%;
+    --popover-foreground: 4 20% 10%;
+    --primary: 4 75% 31%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 95%;
-    --secondary-foreground: 222 20% 22%;
-    --muted: 220 14% 95%;
-    --muted-foreground: 220 10% 48%;
-    --accent: 220 14% 93%;
-    --accent-foreground: 222 20% 22%;
+    --secondary: 0 8% 94%;
+    --secondary-foreground: 4 20% 22%;
+    --muted: 0 8% 94%;
+    --muted-foreground: 4 6% 48%;
+    --accent: 0 8% 92%;
+    --accent-foreground: 4 20% 22%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 90%;
-    --input: 220 13% 90%;
-    --ring: 24 95% 53%;
-    --radius: 0.625rem;
-    --sidebar-background: 222 44% 8%;
-    --sidebar-foreground: 220 20% 88%;
-    --sidebar-primary: 24 95% 53%;
+    --border: 0 8% 88%;
+    --input: 0 8% 88%;
+    --ring: 4 75% 31%;
+    --radius: 0.75rem;
+    --sidebar-background: 4 50% 9%;
+    --sidebar-foreground: 0 10% 88%;
+    --sidebar-primary: 4 75% 45%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 222 30% 14%;
-    --sidebar-accent-foreground: 220 20% 88%;
-    --sidebar-border: 222 30% 14%;
-    --sidebar-ring: 24 95% 53%;
+    --sidebar-accent: 4 40% 15%;
+    --sidebar-accent-foreground: 0 10% 88%;
+    --sidebar-border: 4 40% 15%;
+    --sidebar-ring: 4 75% 45%;
   }
 }
 
 .dark {
-  --background: 222 25% 8%;
-  --foreground: 220 20% 92%;
-  --card: 222 25% 11%;
-  --card-foreground: 220 20% 92%;
-  --popover: 222 25% 11%;
-  --popover-foreground: 220 20% 92%;
-  --primary: 24 95% 53%;
+  --background: 4 25% 7%;
+  --foreground: 0 10% 92%;
+  --card: 4 22% 10%;
+  --card-foreground: 0 10% 92%;
+  --popover: 4 22% 10%;
+  --popover-foreground: 0 10% 92%;
+  --primary: 4 75% 45%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 222 20% 16%;
-  --secondary-foreground: 220 20% 88%;
-  --muted: 222 20% 16%;
-  --muted-foreground: 220 10% 55%;
-  --accent: 222 20% 18%;
-  --accent-foreground: 220 20% 88%;
+  --secondary: 4 18% 15%;
+  --secondary-foreground: 0 10% 88%;
+  --muted: 4 18% 15%;
+  --muted-foreground: 0 8% 55%;
+  --accent: 4 18% 17%;
+  --accent-foreground: 0 10% 88%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
-  --border: 222 20% 18%;
-  --input: 222 20% 18%;
-  --ring: 24 95% 53%;
-  --sidebar-background: 222 44% 5%;
-  --sidebar-foreground: 220 20% 80%;
-  --sidebar-primary: 24 95% 53%;
+  --border: 4 18% 17%;
+  --input: 4 18% 17%;
+  --ring: 4 75% 45%;
+  --sidebar-background: 4 50% 6%;
+  --sidebar-foreground: 0 10% 80%;
+  --sidebar-primary: 4 75% 45%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 222 30% 10%;
-  --sidebar-accent-foreground: 220 20% 80%;
-  --sidebar-border: 222 30% 10%;
-  --sidebar-ring: 24 95% 53%;
+  --sidebar-accent: 4 40% 11%;
+  --sidebar-accent-foreground: 0 10% 80%;
+  --sidebar-border: 4 40% 11%;
+  --sidebar-ring: 4 75% 45%;
 }
 
 @layer base {
@@ -90,52 +91,72 @@ body {
   }
 }
 
-/* ── Dark mode global overrides ────────────── */
-/* Cobre todos os bg-white / bg-gray-* / text-gray-* hardcoded nas páginas */
-.dark .bg-white          { background-color: hsl(222 25% 11%) !important; }
-.dark .bg-gray-50        { background-color: hsl(222 25% 13%) !important; }
-.dark .bg-gray-100       { background-color: hsl(222 20% 16%) !important; }
-.dark .bg-gray-200       { background-color: hsl(222 20% 20%) !important; }
+/* ── Brand: orange-* → burgúndy Pedra do Pombal ── */
+.bg-orange-500                           { background-color: #8b1a14 !important; }
+.bg-orange-600                           { background-color: #711510 !important; }
+.bg-orange-400                           { background-color: #a82520 !important; }
+.bg-orange-50                            { background-color: #fef2f1 !important; }
+.bg-orange-100                           { background-color: #fde3e1 !important; }
+.text-orange-500                         { color: #8b1a14 !important; }
+.text-orange-600                         { color: #711510 !important; }
+.text-orange-400                         { color: #a82520 !important; }
+.border-orange-500                       { border-color: #8b1a14 !important; }
+.border-orange-300                       { border-color: #d4756f !important; }
+.ring-orange-400,
+.focus\:ring-orange-400:focus            { --tw-ring-color: rgba(139,26,20,0.3) !important; }
+.shadow-orange-500\/20                   { --tw-shadow-color: rgba(139,26,20,0.2) !important; }
+.hover\:bg-orange-600:hover              { background-color: #711510 !important; }
+.hover\:bg-orange-50:hover              { background-color: #fef2f1 !important; }
+.hover\:bg-orange-50\/40:hover          { background-color: rgba(254,242,241,0.4) !important; }
+.hover\:border-orange-300:hover         { border-color: #d4756f !important; }
+.hover\:text-orange-600:hover           { color: #711510 !important; }
+.focus-visible\:border-orange-500:focus-visible { border-color: #8b1a14 !important; }
+.focus-visible\:ring-orange-500\/20:focus-visible { --tw-ring-color: rgba(139,26,20,0.2) !important; }
+.focus\:ring-2.focus\:ring-orange-400:focus { --tw-ring-color: rgba(139,26,20,0.3) !important; }
 
-.dark .text-gray-900     { color: hsl(220 20% 94%) !important; }
-.dark .text-gray-800     { color: hsl(220 20% 88%) !important; }
-.dark .text-gray-700     { color: hsl(220 15% 78%) !important; }
-.dark .text-gray-600     { color: hsl(220 12% 65%) !important; }
-.dark .text-gray-500     { color: hsl(220 10% 52%) !important; }
-.dark .text-gray-400     { color: hsl(220 10% 45%) !important; }
+/* ── Dark mode overrides ────────────────────── */
+.dark .bg-white          { background-color: hsl(4 22% 10%) !important; }
+.dark .bg-gray-50        { background-color: hsl(4 18% 12%) !important; }
+.dark .bg-gray-100       { background-color: hsl(4 15% 15%) !important; }
+.dark .bg-gray-200       { background-color: hsl(4 12% 18%) !important; }
 
-.dark .border-gray-100   { border-color: hsl(222 20% 16%) !important; }
-.dark .border-gray-200   { border-color: hsl(222 20% 20%) !important; }
+.dark .text-gray-900     { color: hsl(0 10% 94%) !important; }
+.dark .text-gray-800     { color: hsl(0 8% 88%) !important; }
+.dark .text-gray-700     { color: hsl(0 6% 78%) !important; }
+.dark .text-gray-600     { color: hsl(0 5% 65%) !important; }
+.dark .text-gray-500     { color: hsl(0 4% 52%) !important; }
+.dark .text-gray-400     { color: hsl(0 3% 45%) !important; }
 
-.dark .divide-gray-50 > * + *  { border-color: hsl(222 20% 15%) !important; }
-.dark .divide-gray-100 > * + * { border-color: hsl(222 20% 16%) !important; }
+.dark .border-gray-100   { border-color: hsl(4 15% 15%) !important; }
+.dark .border-gray-200   { border-color: hsl(4 12% 18%) !important; }
 
-/* Cards e painéis */
-.dark .shadow-sm         { box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4) !important; }
+.dark .divide-gray-50 > * + *  { border-color: hsl(4 15% 14%) !important; }
+.dark .divide-gray-100 > * + * { border-color: hsl(4 15% 15%) !important; }
 
-/* Hover rows em tabelas */
-.dark .hover\:bg-gray-50\/60:hover { background-color: hsl(222 20% 14%) !important; }
-.dark .hover\:bg-gray-50\/50:hover { background-color: hsl(222 20% 14%) !important; }
-.dark .hover\:bg-gray-50:hover     { background-color: hsl(222 20% 14%) !important; }
+.dark .shadow-sm         { box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.5) !important; }
 
-/* Inputs */
+.dark .hover\:bg-gray-50\/60:hover { background-color: hsl(4 15% 13%) !important; }
+.dark .hover\:bg-gray-50\/50:hover { background-color: hsl(4 15% 13%) !important; }
+.dark .hover\:bg-gray-50:hover     { background-color: hsl(4 15% 13%) !important; }
+
 .dark input:not([type="range"]),
 .dark textarea,
 .dark select {
-  background-color: hsl(222 25% 14%) !important;
-  border-color: hsl(222 20% 22%) !important;
-  color: hsl(220 20% 90%) !important;
+  background-color: hsl(4 22% 13%) !important;
+  border-color: hsl(4 15% 20%) !important;
+  color: hsl(0 10% 90%) !important;
 }
 .dark input::placeholder,
-.dark textarea::placeholder {
-  color: hsl(220 10% 45%) !important;
-}
+.dark textarea::placeholder { color: hsl(0 5% 45%) !important; }
 
-/* Badges coloridas — preserva as cores originais */
+/* dark overrides — brand */
+.dark .bg-orange-500  { background-color: #8b1a14 !important; }
+.dark .bg-orange-50   { background-color: hsl(4 40% 13%) !important; }
+.dark .bg-orange-100  { background-color: hsl(4 45% 16%) !important; }
+
+/* Badges semânticas — preserva */
 .dark .bg-emerald-100 { background-color: hsl(152 60% 14%) !important; }
 .dark .bg-red-100     { background-color: hsl(0 60% 15%) !important; }
-.dark .bg-orange-100  { background-color: hsl(24 60% 14%) !important; }
-.dark .bg-orange-50   { background-color: hsl(24 50% 11%) !important; }
 .dark .bg-amber-100   { background-color: hsl(43 60% 14%) !important; }
 .dark .bg-blue-100    { background-color: hsl(213 60% 14%) !important; }
 .dark .bg-blue-50     { background-color: hsl(213 50% 11%) !important; }
@@ -148,10 +169,9 @@ body {
 .dark .bg-yellow-50   { background-color: hsl(50 50% 11%) !important; }
 .dark .bg-yellow-100  { background-color: hsl(50 55% 13%) !important; }
 .dark .bg-red-50      { background-color: hsl(0 50% 11%) !important; }
-.dark .bg-orange-500  { background-color: hsl(24 95% 53%) !important; }
 
 /* Scrollbar */
-.dark .scrollbar-thin { scrollbar-color: hsl(222 20% 22%) transparent; }
+.dark .scrollbar-thin { scrollbar-color: hsl(4 18% 22%) transparent; }
 
 /* ── Animações ─────────────────────────────── */
 @keyframes fade-up {

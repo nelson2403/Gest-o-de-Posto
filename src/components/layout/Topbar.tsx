@@ -371,15 +371,16 @@ export function Topbar() {
 
   return (
     <>
-    <header className="sticky top-0 z-40 w-full bg-[hsl(222,44%,8%)] border-b border-white/[0.06] flex-shrink-0">
+    <header className="sticky top-0 z-40 w-full bg-[#1a0704] border-b border-white/[0.06] flex-shrink-0">
       <div className="flex items-center h-[52px] px-3 md:px-4 gap-2">
 
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5 flex-shrink-0 mr-2">
-          <div className="w-7 h-7 bg-orange-500 rounded-lg flex items-center justify-center shadow-sm flex-shrink-0">
-            <Fuel className="w-3.5 h-3.5 text-white" />
+          <img src="/logo.svg" alt="Pedra do Pombal" className="w-7 h-7 flex-shrink-0" />
+          <div className="hidden md:block leading-tight">
+            <p className="text-[9px] font-bold text-white/40 tracking-[0.15em] uppercase">Grupo</p>
+            <p className="text-[13px] font-extrabold text-white leading-none -mt-0.5">Pedra do Pombal</p>
           </div>
-          <span className="hidden md:block font-bold text-[13px] text-white leading-tight">Gestão de Postos</span>
         </Link>
 
         {/* Dashboard link — apenas para quem tem permissão */}
@@ -387,8 +388,8 @@ export function Topbar() {
           <Link href="/"
             className={cn('hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-medium transition-colors flex-shrink-0',
               pathname === '/'
-                ? 'bg-orange-500 text-white'
-                : 'text-[hsl(220,20%,60%)] hover:text-white hover:bg-white/[0.08]'
+                ? 'bg-[#8b1a14] text-white'
+                : 'text-white/50 hover:text-white hover:bg-white/[0.08]'
             )}>
             <LayoutDashboard className="w-3.5 h-3.5" />
             <span>Dashboard</span>
@@ -412,10 +413,10 @@ export function Topbar() {
                 <Link key={group.label} href={item.href!}
                   className={cn('flex items-center gap-1 px-3 py-1.5 h-[52px] text-[12.5px] font-medium transition-colors whitespace-nowrap border-b-2 flex-shrink-0',
                     active
-                      ? 'text-white border-orange-500 bg-white/[0.06]'
+                      ? 'text-white border-[#8b1a14] bg-white/[0.06]'
                       : isGroupActive
-                        ? 'text-white border-orange-400/60'
-                        : 'text-[hsl(220,20%,60%)] hover:text-white hover:bg-white/[0.05] border-transparent'
+                        ? 'text-white border-[#8b1a14]/60'
+                        : 'text-white/50 hover:text-white hover:bg-white/[0.05] border-transparent'
                   )}>
                   {group.label}
                 </Link>
@@ -428,10 +429,10 @@ export function Topbar() {
                   onClick={() => setOpenGroup(isOpen ? null : group.label)}
                   className={cn('flex items-center gap-1 px-3 py-1.5 h-[52px] text-[12.5px] font-medium transition-colors whitespace-nowrap border-b-2',
                     isOpen
-                      ? 'text-white border-orange-500 bg-white/[0.06]'
+                      ? 'text-white border-[#8b1a14] bg-white/[0.06]'
                       : isGroupActive
-                        ? 'text-white border-orange-400/60 bg-transparent'
-                        : 'text-[hsl(220,20%,60%)] hover:text-white hover:bg-white/[0.05] border-transparent'
+                        ? 'text-white border-[#8b1a14]/60 bg-transparent'
+                        : 'text-white/50 hover:text-white hover:bg-white/[0.05] border-transparent'
                   )}
                 >
                   {group.label}
@@ -441,7 +442,7 @@ export function Topbar() {
                 {/* Dropdown */}
                 {isOpen && (
                   <div
-                    className="absolute left-0 top-full mt-0 min-w-[230px] bg-[hsl(222,44%,10%)] border border-white/[0.1] rounded-b-xl shadow-2xl z-50 py-1"
+                    className="absolute left-0 top-full mt-0 min-w-[230px] bg-[#220806] border border-white/[0.1] rounded-b-xl shadow-2xl z-50 py-1"
                     onMouseLeave={() => setOpenFlyout(null)}
                   >
                     {visibleItems.map((item, idx) => {
@@ -460,9 +461,9 @@ export function Topbar() {
                             <div className={cn(
                               'flex items-center gap-2.5 px-4 py-2 text-[12.5px] font-medium cursor-default select-none transition-colors',
                               flyoutOpen
-                                ? 'bg-orange-500 text-white'
+                                ? 'bg-[#8b1a14] text-white'
                                 : anyChildActive
-                                  ? 'text-orange-300 hover:bg-white/[0.08]'
+                                  ? 'text-[#ffaa99] hover:bg-white/[0.08]'
                                   : 'text-[hsl(220,20%,65%)] hover:text-white hover:bg-white/[0.08]'
                             )}>
                               <Icon className="w-3.5 h-3.5 flex-shrink-0 opacity-70" />
@@ -472,7 +473,7 @@ export function Topbar() {
 
                             {/* Flyout panel */}
                             {flyoutOpen && (
-                              <div className="absolute left-full top-0 min-w-[220px] bg-[hsl(222,44%,10%)] border border-white/[0.1] rounded-xl shadow-2xl z-50 py-1 ml-px">
+                              <div className="absolute left-full top-0 min-w-[220px] bg-[#220806] border border-white/[0.1] rounded-xl shadow-2xl z-50 py-1 ml-px">
                                 {visibleChildren.map(child => {
                                   const ChildIcon = child.icon
                                   const active = isActive(child.href)
@@ -480,7 +481,7 @@ export function Topbar() {
                                     <Link key={child.href} href={child.href}
                                       className={cn('flex items-center gap-2.5 px-4 py-2 text-[12.5px] font-medium transition-colors',
                                         active
-                                          ? 'bg-orange-500 text-white'
+                                          ? 'bg-[#8b1a14] text-white'
                                           : 'text-[hsl(220,20%,65%)] hover:text-white hover:bg-white/[0.08]'
                                       )}>
                                       <ChildIcon className="w-3.5 h-3.5 flex-shrink-0 opacity-70" />
@@ -505,7 +506,7 @@ export function Topbar() {
                           <Link href={item.href!}
                             className={cn('flex items-center gap-2.5 px-4 py-2 text-[12.5px] font-medium transition-colors',
                               active
-                                ? 'bg-orange-500 text-white'
+                                ? 'bg-[#8b1a14] text-white'
                                 : 'text-[hsl(220,20%,65%)] hover:text-white hover:bg-white/[0.08]'
                             )}>
                             <Icon className="w-3.5 h-3.5 flex-shrink-0 opacity-70" />
@@ -536,7 +537,7 @@ export function Topbar() {
           <div ref={userRef} className="relative ml-1">
             <button onClick={() => setUserOpen(v => !v)}
               className="flex items-center gap-2 pl-2 ml-1 border-l border-white/[0.1] hover:opacity-80 transition-opacity">
-              <div className="w-7 h-7 rounded-full bg-orange-500 flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">
+              <div className="w-7 h-7 rounded-full bg-[#8b1a14] flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">
                 {initials}
               </div>
               <div className="hidden md:block text-left">
@@ -547,17 +548,17 @@ export function Topbar() {
             </button>
 
             {userOpen && (
-              <div className="absolute right-0 top-[calc(100%+8px)] w-[200px] bg-[hsl(222,44%,11%)] border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden z-50 py-1">
+              <div className="absolute right-0 top-[calc(100%+8px)] w-[200px] bg-[#260908] border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden z-50 py-1">
                 <div className="px-4 py-3 border-b border-white/[0.06]">
                   <p className="text-[12px] font-semibold text-white truncate">{usuario?.nome}</p>
                   <p className="text-[11px] text-white/30 truncate">{usuario?.email}</p>
                 </div>
                 <button onClick={() => { setUserOpen(false); setShowSenha(true) }}
-                  className="flex items-center gap-2.5 w-full px-4 py-2.5 text-[12.5px] text-[hsl(220,20%,60%)] hover:bg-white/[0.06] hover:text-white transition-colors">
+                  className="flex items-center gap-2.5 w-full px-4 py-2.5 text-[12.5px] text-white/50 hover:bg-white/[0.06] hover:text-white transition-colors">
                   <Lock className="w-4 h-4" /> Trocar Senha
                 </button>
                 <button onClick={() => { setUserOpen(false); abrirConta() }}
-                  className="flex items-center gap-2.5 w-full px-4 py-2.5 text-[12.5px] text-[hsl(220,20%,60%)] hover:bg-white/[0.06] hover:text-white transition-colors">
+                  className="flex items-center gap-2.5 w-full px-4 py-2.5 text-[12.5px] text-white/50 hover:bg-white/[0.06] hover:text-white transition-colors">
                   <ArrowLeftRight className="w-4 h-4" /> Trocar Conta
                 </button>
                 <button onClick={() => { setUserOpen(false); signOut() }}
@@ -580,10 +581,10 @@ export function Topbar() {
 
       {/* Mobile nav drawer */}
       {mobileOpen && (
-        <div className="md:hidden border-t border-white/[0.06] bg-[hsl(222,44%,6%)] max-h-[70vh] overflow-y-auto">
+        <div className="md:hidden border-t border-white/[0.06] bg-[#140503] max-h-[70vh] overflow-y-auto">
           {canUser('dashboard.view') && (
             <Link href="/" className={cn('flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium border-b border-white/[0.04]',
-              pathname === '/' ? 'text-orange-300' : 'text-[hsl(220,20%,60%)]')}>
+              pathname === '/' ? 'text-[#ffaa99]' : 'text-white/50')}>
               <LayoutDashboard className="w-4 h-4" /> Dashboard
             </Link>
           )}
@@ -599,7 +600,7 @@ export function Topbar() {
                   return (
                     <Link key={item.href} href={item.href!}
                       className={cn('flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium border-b border-white/[0.03] transition-colors',
-                        active ? 'text-orange-300 bg-orange-500/10' : 'text-[hsl(220,20%,60%)] hover:text-white hover:bg-white/[0.05]')}>
+                        active ? 'text-[#ffaa99] bg-[#8b1a14]/10' : 'text-white/50 hover:text-white hover:bg-white/[0.05]')}>
                       <Icon className="w-4 h-4 flex-shrink-0" />
                       {item.label}
                     </Link>
@@ -610,7 +611,7 @@ export function Topbar() {
           })}
           <div className="border-t border-white/[0.06] py-2">
             <button onClick={() => { setMobileOpen(false); setShowSenha(true) }}
-              className="flex items-center gap-2.5 w-full px-4 py-3 text-[13px] text-[hsl(220,20%,60%)] hover:text-white">
+              className="flex items-center gap-2.5 w-full px-4 py-3 text-[13px] text-white/50 hover:text-white">
               <Lock className="w-4 h-4" /> Trocar Senha
             </button>
             <button onClick={() => { setMobileOpen(false); signOut() }}
@@ -627,7 +628,7 @@ export function Topbar() {
       <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
           <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
-            <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center"><Lock className="w-4 h-4 text-orange-600" /></div>
+            <div className="w-8 h-8 rounded-lg bg-[#8b1a14]/20 flex items-center justify-center"><Lock className="w-4 h-4 text-[#8b1a14]" /></div>
             <div><h2 className="font-semibold text-gray-900 text-[15px]">Trocar Senha</h2><p className="text-[11px] text-gray-400">{usuario?.email}</p></div>
             <button onClick={() => setShowSenha(false)} className="ml-auto text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
           </div>
@@ -641,7 +642,7 @@ export function Topbar() {
                 <label className="block text-[11px] font-medium text-gray-500 mb-1">{label}</label>
                 <div className="relative">
                   <input type={show ? 'text' : 'password'} value={val} onChange={e => set(e.target.value)}
-                    className="w-full px-3 py-2 pr-9 text-[13px] rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-500/30" required />
+                    className="w-full px-3 py-2 pr-9 text-[13px] rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#8b1a14]/30" required />
                   <button type="button" onClick={() => setShow(!show)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                     {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -649,7 +650,7 @@ export function Topbar() {
               </div>
             ))}
             <button type="submit" disabled={savingSenha}
-              className="w-full py-2.5 bg-orange-500 text-white text-[13px] font-semibold rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors">
+              className="w-full py-2.5 bg-[#8b1a14] text-white text-[13px] font-semibold rounded-lg hover:bg-[#711510] disabled:opacity-50 transition-colors">
               {savingSenha ? 'Salvando...' : 'Alterar Senha'}
             </button>
           </form>
@@ -708,7 +709,7 @@ export function Topbar() {
                 <input value={addNome} onChange={e => setAddNome(e.target.value)} placeholder="Nome" className="flex-1 px-2 py-1.5 text-[12px] rounded-lg border border-gray-200 focus:outline-none" />
                 <input value={addEmail} onChange={e => setAddEmail(e.target.value)} placeholder="Email" className="flex-1 px-2 py-1.5 text-[12px] rounded-lg border border-gray-200 focus:outline-none" />
                 <button onClick={addConta} disabled={addSaving || !addEmail.trim()}
-                  className="px-3 py-1.5 text-[12px] font-medium bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50">
+                  className="px-3 py-1.5 text-[12px] font-medium bg-[#8b1a14] text-white rounded-lg hover:bg-[#711510] disabled:opacity-50">
                   {addSaving ? '...' : 'Add'}
                 </button>
               </div>
