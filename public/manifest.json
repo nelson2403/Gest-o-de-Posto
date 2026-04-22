@@ -4,8 +4,8 @@
   "description": "Sistema de controle de postos de combustíveis",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#f97316",
+  "background_color": "#8B1A14",
+  "theme_color": "#8B1A14",
   "orientation": "portrait",
   "icons": [
     {

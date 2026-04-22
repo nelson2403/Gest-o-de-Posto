@@ -1,4 +1,20 @@
-<svg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'>
-  <rect width='512' height='512' rx='80' fill='#f97316'/>
-  <text x='256' y='320' font-family='Arial,sans-serif' font-size='220' font-weight='bold' text-anchor='middle' fill='white'>GP</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Fundo arredondado na cor da marca -->
+  <rect width="512" height="512" rx="96" fill="#8B1A14"/>
+
+  <!-- Hexágono centralizado e escalado -->
+  <g transform="translate(256,256) scale(3.8)">
+    <!-- Hexágono externo -->
+    <path d="M0 -54 C0 -54 1.9 -54 3.2 -53.3 L46.7 -27.6 C47.9 -26.9 48.6 -25.6 48.6 -24.2 L48.6 24.2 C48.6 25.6 47.9 26.9 46.7 27.6 L3.2 53.3 C1.9 54 0 54 0 54 C0 54 -1.9 54 -3.2 53.3 L-46.7 27.6 C-47.9 26.9 -48.6 25.6 -48.6 24.2 L-48.6 -24.2 C-48.6 -25.6 -47.9 -26.9 -46.7 -27.6 L-3.2 -53.3 C-1.9 -54 0 -54 0 -54 Z" fill="#6e1410"/>
+    <!-- Borda interna do hexágono -->
+    <path d="M0 -47 C0 -47 1.5 -47 2.7 -46.3 L42.5 -23.3 C43.6 -22.6 44.2 -21.3 44.2 -19.9 L44.2 19.9 C44.2 21.3 43.6 22.6 42.5 23.3 L2.7 46.3 C1.5 47 0 47 0 47 C0 47 -1.5 47 -2.7 46.3 L-42.5 23.3 C-43.6 22.6 -44.2 21.3 -44.2 19.9 L-44.2 -19.9 C-44.2 -21.3 -43.6 -22.6 -42.5 -23.3 L-2.7 -46.3 C-1.5 -47 0 -47 0 -47 Z" stroke="rgba(255,255,255,0.5)" stroke-width="2" fill="none"/>
+    <!-- Montanha esquerda -->
+    <path d="M-31 22 L-18 -2 L-8 8" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- Pico central (mais alto) -->
+    <path d="M-11 12 L0 -20 L11 12" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- Montanha direita -->
+    <path d="M8 8 L18 -2 L31 22" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- Rio/linha de base -->
+    <path d="M-31 22 Q-14 14 0 18 Q14 22 31 16" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>
+  </g>
 </svg>
