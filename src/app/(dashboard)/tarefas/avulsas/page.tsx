@@ -109,7 +109,7 @@ export default function TarefasAvulsasPage() {
     const { data, error } = await supabase
       .from('tarefas')
       .select('*, usuario:usuarios(id, nome, email), empresa:empresas(id, nome), posto:postos(id, nome)')
-      .neq('categoria', 'conciliacao_bancaria')
+      .or('categoria.neq.conciliacao_bancaria,categoria.is.null')
       .order('data_inicio', { ascending: false })
     if (error) {
       toast({ variant: 'destructive', title: 'Erro ao carregar tarefas', description: error.message })
