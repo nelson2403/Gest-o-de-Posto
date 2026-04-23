@@ -88,6 +88,7 @@ function CustomTooltip({ active, payload, label }: any) {
 // ─── Página ───────────────────────────────────────────────────────────────────
 
 interface CaixaRow { grid: string; nome: string; ultimo_caixa_fechado: string | null }
+interface TarefaResumida { id: string; titulo: string; descricao: string | null; status: string; prioridade: string; data_conclusao_prevista: string | null; posto: { nome: string } | null }
 
 function diffDias(iso: string) {
   const hoje = new Date(); hoje.setHours(0,0,0,0)
@@ -110,6 +111,7 @@ export default function DashboardPage() {
 
   const [data,    setData]    = useState<DashboardEmpresa | null>(null)
   const [caixas,  setCaixas]  = useState<CaixaRow[]>([])
+  const [tarefas, setTarefas] = useState<TarefaResumida[]>([])
   const [loading, setLoading] = useState(true)
   const [lastSync, setLastSync] = useState<string | null>(null)
 
@@ -117,13 +119,18 @@ export default function DashboardPage() {
     async function load() {
       if (!usuario || isRestrito) { setLoading(false); return }
 
-      const [viewRes, caixaRes] = await Promise.all([
+      const [viewRes, caixaRes, tarefasRes] = await Promise.all([
         (() => {
           let q = supabase.from('vw_dashboard_empresa').select('*')
           if (usuario.role !== 'master') q = q.eq('empresa_id', usuario.empresa_id)
           return q
         })(),
         fetch('/api/caixa-externo'),
+        supabase.from('tarefas').select('id, titulo, descricao, status, prioridade, data_conclusao_prevista, posto:postos(nome)')
+          .or('categoria.neq.conciliacao_bancaria,categoria.is.null')
+          .in('status', ['pendente', 'em_andamento'])
+          .order('data_conclusao_prevista', { ascending: true, nullsFirst: false })
+          .limit(6),
       ])
 
       const { data: rows } = viewRes
@@ -148,6 +155,8 @@ export default function DashboardPage() {
         const cj = await caixaRes.json()
         setCaixas(cj.data ?? [])
       } catch {}
+
+      if (tarefasRes.data) setTarefas(tarefasRes.data as unknown as TarefaResumida[])
 
       setLastSync(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))
       setLoading(false)
@@ -347,6 +356,64 @@ export default function DashboardPage() {
                         {dias !== null ? `${dias}d atrás` : 'sem dados'}
                       </span>
                     </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Tarefas pendentes ── */}
+        {!isRestrito && !loading && tarefas.length > 0 && (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+                  <ClipboardList className="w-4 h-4 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-[13px] font-semibold text-gray-800">Tarefas em Aberto</p>
+                  <p className="text-[11px] text-gray-400">{tarefas.length} pendentes</p>
+                </div>
+              </div>
+              <Link href="/tarefas/avulsas" className="text-[11px] text-[#8B1A14] font-medium hover:underline flex items-center gap-1">
+                Ver todas <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
+            <div className="space-y-2">
+              {tarefas.map(t => {
+                const isOverdueDash = t.data_conclusao_prevista
+                  ? new Date(t.data_conclusao_prevista) < new Date(new Date().toDateString())
+                  : false
+                const prioColors: Record<string, string> = {
+                  urgente: 'bg-red-500', alta: 'bg-orange-500', media: 'bg-yellow-400', baixa: 'bg-slate-300'
+                }
+                return (
+                  <div key={t.id} className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <span className={cn('w-2 h-2 rounded-full mt-1.5 flex-shrink-0', prioColors[t.prioridade] ?? 'bg-gray-300')} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-medium text-gray-800 leading-tight">{t.titulo}</p>
+                      {t.descricao && <p className="text-[11px] text-gray-500 mt-0.5 truncate">{t.descricao}</p>}
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        {t.posto && (
+                          <span className="flex items-center gap-1 text-[10px] text-[#8B1A14] font-medium">
+                            <MapPin className="w-3 h-3" />{(t.posto as any).nome}
+                          </span>
+                        )}
+                        {t.data_conclusao_prevista && (
+                          <span className={cn('flex items-center gap-1 text-[10px]', isOverdueDash ? 'text-red-600 font-semibold' : 'text-gray-400')}>
+                            <Clock className="w-3 h-3" />
+                            {isOverdueDash ? 'Atrasada — ' : ''}Prazo: {(() => { const [y,m,d] = t.data_conclusao_prevista!.split('-'); return `${d}/${m}/${y}` })()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className={cn(
+                      'text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0',
+                      t.status === 'em_andamento' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200'
+                    )}>
+                      {t.status === 'em_andamento' ? 'Em andamento' : 'Pendente'}
+                    </span>
                   </div>
                 )
               })}
