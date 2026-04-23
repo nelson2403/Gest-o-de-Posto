@@ -38,7 +38,6 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/empresas',                   label: 'Empresas',           icon: Building2,   permission: 'empresas.view' as Permission },
       { href: '/postos',                      label: 'Postos',              icon: MapPin,      permission: 'postos.view' as Permission },
       { href: '/usuarios',                    label: 'Usuários',            icon: Users,       permission: 'usuarios.view' as Permission },
-      { href: '/perfis',                      label: 'Perfis de Acesso',    icon: ShieldCheck, permission: 'usuarios.edit' as Permission },
       { href: '/formas-pagamento-adquirente', label: 'Formas de Pagamento', icon: Wallet,      permission: 'formas_pagamento.view' as Permission },
       { href: '/maquininhas',                 label: 'Maquininhas',         icon: Smartphone,  permission: 'maquininhas.view' as Permission },
       { href: '/taxas',                       label: 'Taxas',               icon: Percent,     permission: 'taxas.view' as Permission },
@@ -119,6 +118,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Config.',
     items: [
+      { href: '/perfis',                         label: 'Perfis de Acesso',         icon: ShieldCheck, permission: 'usuarios.edit' as Permission },
       { href: '/controle-caixas/configuracoes', label: 'Config. de Caixas',        icon: Settings,    permission: 'controle_caixas.configurar' as Permission },
       { href: '/contas-receber/configuracao',   label: 'Config. Contas a Receber', icon: ReceiptText, permission: 'contas_receber.view' as Permission },
     ],
