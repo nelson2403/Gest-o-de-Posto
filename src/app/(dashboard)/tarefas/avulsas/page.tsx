@@ -87,11 +87,12 @@ export default function TarefasAvulsasPage() {
   const canCreate = can(role ?? null, 'tarefas.create')
   const isMasterAdmin = role === 'master' || role === 'admin'
 
-  const [tarefas,  setTarefas]  = useState<Tarefa[]>([])
-  const [usuarios, setUsuarios] = useState<Pick<Usuario, 'id' | 'nome'>[]>([])
-  const [loading,  setLoading]  = useState(true)
-  const [saving,   setSaving]   = useState(false)
-  const [deleting, setDeleting] = useState(false)
+  const [tarefas,   setTarefas]   = useState<Tarefa[]>([])
+  const [usuarios,  setUsuarios]  = useState<Pick<Usuario, 'id' | 'nome'>[]>([])
+  const [empresaId, setEmpresaId] = useState<string | null>(usuario?.empresa_id ?? null)
+  const [loading,   setLoading]   = useState(true)
+  const [saving,    setSaving]    = useState(false)
+  const [deleting,  setDeleting]  = useState(false)
 
   const [openForm,   setOpenForm]   = useState(false)
   const [openDelete, setOpenDelete] = useState(false)
@@ -123,6 +124,11 @@ export default function TarefasAvulsasPage() {
     if (isMasterAdmin) {
       supabase.from('usuarios').select('id, nome').eq('ativo', true).order('nome')
         .then(({ data }) => { if (data) setUsuarios(data) })
+    }
+    // Master/admin não têm empresa_id no JWT — busca do banco
+    if (!usuario?.empresa_id) {
+      supabase.from('empresas').select('id').limit(1).single()
+        .then(({ data }) => { if (data) setEmpresaId(data.id) })
     }
   }, [])
 
@@ -193,7 +199,7 @@ export default function TarefasAvulsasPage() {
         ? (selected?.data_conclusao_real ?? new Date().toISOString())
         : null,
     }
-    if (!selected) payload.empresa_id = usuario?.empresa_id ?? null
+    if (!selected) payload.empresa_id = empresaId
 
     const { error } = selected
       ? await supabase.from('tarefas').update(payload).eq('id', selected.id)
@@ -242,7 +248,7 @@ export default function TarefasAvulsasPage() {
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       <Header
-        title="Tarefas Avulsas"
+        title="Tarefas"
         description="Tarefas rotineiras e pontuais da equipe"
         actions={
           canCreate && (
