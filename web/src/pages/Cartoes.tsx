@@ -1,14 +1,29 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { Plus, CreditCard, CheckCircle, XCircle, Scan, Pencil, X, ChevronDown, ChevronRight } from 'lucide-react';
-import { getCartoes, getPostos, createCartao, renomearCartao, toggleCartao, deleteCartao } from '../services/api';
+import { getCartoes, getPostos, createCartao, renomearCartao, toggleCartao, alterarNivelCartao, deleteCartao } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+
+const NIVEIS = [
+  { value: 0, label: 'Sem desconto', color: 'bg-gray-800 text-gray-400' },
+  { value: 1, label: 'Nível 1', color: 'bg-blue-900/40 text-blue-400' },
+  { value: 2, label: 'Nível 2', color: 'bg-purple-900/40 text-purple-400' },
+];
+
+function NivelBadge({ nivel }: { nivel: number }) {
+  const n = NIVEIS.find((x) => x.value === nivel) ?? NIVEIS[1];
+  return (
+    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${n.color}`}>
+      {n.label}
+    </span>
+  );
+}
 
 export default function Cartoes() {
   const { isAdmin, usuario } = useAuth();
   const [cartoes, setCartoes] = useState<any[]>([]);
   const [postos, setPostos] = useState<any[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ codigo: '', nome_funcionario: '', posto_id: '' });
+  const [form, setForm] = useState({ codigo: '', nome_funcionario: '', posto_id: '', nivel: 1 });
   const [scanning, setScanning] = useState(false);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
@@ -32,7 +47,6 @@ export default function Cartoes() {
     setCartoes(data);
   }
 
-  // Agrupar cartões por posto
   const grupos = useMemo(() => {
     const map: Record<string, { postoNome: string; cartoes: any[] }> = {};
     for (const c of cartoes) {
@@ -41,14 +55,8 @@ export default function Cartoes() {
       if (!map[postoId]) map[postoId] = { postoNome, cartoes: [] };
       map[postoId].cartoes.push(c);
     }
-    return Object.entries(map).sort((a, b) =>
-      a[1].postoNome.localeCompare(b[1].postoNome)
-    );
+    return Object.entries(map).sort((a, b) => a[1].postoNome.localeCompare(b[1].postoNome));
   }, [cartoes]);
-
-  function toggleCollapse(postoId: string) {
-    setCollapsed((prev) => ({ ...prev, [postoId]: !prev[postoId] }));
-  }
 
   function iniciarScan() {
     setScanning(true);
@@ -57,9 +65,7 @@ export default function Cartoes() {
   }
 
   function handleScanInput(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter' && form.codigo.length >= 4) {
-      setScanning(false);
-    }
+    if (e.key === 'Enter' && form.codigo.length >= 4) setScanning(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -68,7 +74,7 @@ export default function Cartoes() {
     try {
       await createCartao(form);
       setSucesso('Cartão cadastrado com sucesso!');
-      setForm({ codigo: '', nome_funcionario: '', posto_id: usuario?.posto_id || '' });
+      setForm({ codigo: '', nome_funcionario: '', posto_id: usuario?.posto_id || '', nivel: 1 });
       setShowForm(false);
       carregar();
       setTimeout(() => setSucesso(''), 3000);
@@ -82,15 +88,15 @@ export default function Cartoes() {
     carregar();
   }
 
+  async function handleNivel(id: string, nivel: number) {
+    await alterarNivelCartao(id, nivel);
+    setCartoes((prev) => prev.map((c) => c.id === id ? { ...c, nivel, sincronizado: false } : c));
+  }
+
   async function handleDelete(id: string) {
     if (!confirm('Remover cartão permanentemente?')) return;
     await deleteCartao(id);
     carregar();
-  }
-
-  function iniciarEdicao(cartao: any) {
-    setEditandoId(cartao.id);
-    setEditNome(cartao.nome_funcionario);
   }
 
   async function salvarEdicao(id: string) {
@@ -182,6 +188,29 @@ export default function Cartoes() {
               />
             </div>
 
+            {/* Nível de desconto */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Nível de Desconto</label>
+              <div className="flex gap-2">
+                {NIVEIS.map((n) => (
+                  <button
+                    key={n.value}
+                    type="button"
+                    onClick={() => setForm({ ...form, nivel: n.value })}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      form.nivel === n.value
+                        ? n.value === 0 ? 'bg-gray-700 border-gray-500 text-white'
+                          : n.value === 1 ? 'bg-blue-600 border-blue-500 text-white'
+                          : 'bg-purple-700 border-purple-500 text-white'
+                        : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+                    }`}
+                  >
+                    {n.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {isAdmin && (
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Posto</label>
@@ -204,17 +233,10 @@ export default function Cartoes() {
             )}
 
             <div className="flex gap-2">
-              <button
-                type="submit"
-                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
-              >
+              <button type="submit" className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors">
                 Cadastrar Cartão
               </button>
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors"
-              >
+              <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors">
                 Cancelar
               </button>
             </div>
@@ -224,26 +246,22 @@ export default function Cartoes() {
 
       {/* Grupos por posto */}
       <div className="space-y-3">
-        {cartoes.length === 0 && (
-          <p className="text-gray-500 text-sm">Nenhum cartão cadastrado.</p>
-        )}
+        {cartoes.length === 0 && <p className="text-gray-500 text-sm">Nenhum cartão cadastrado.</p>}
 
         {grupos.map(([postoId, grupo]) => {
           const isOpen = !collapsed[postoId];
-          const ativos = grupo.cartoes.filter(c => c.ativo).length;
+          const ativos = grupo.cartoes.filter((c) => c.ativo).length;
 
           return (
             <div key={postoId} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-              {/* Cabeçalho do grupo */}
               <button
-                onClick={() => toggleCollapse(postoId)}
+                onClick={() => setCollapsed((prev) => ({ ...prev, [postoId]: !prev[postoId] }))}
                 className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-800/50 transition-colors"
               >
                 <div className="flex items-center gap-3">
                   {isOpen
                     ? <ChevronDown className="w-4 h-4 text-gray-400" />
-                    : <ChevronRight className="w-4 h-4 text-gray-400" />
-                  }
+                    : <ChevronRight className="w-4 h-4 text-gray-400" />}
                   <span className="font-semibold text-white">{grupo.postoNome}</span>
                   <span className="text-xs text-gray-500">
                     {grupo.cartoes.length} cartão{grupo.cartoes.length !== 1 ? 'ões' : ''} · {ativos} ativo{ativos !== 1 ? 's' : ''}
@@ -251,11 +269,11 @@ export default function Cartoes() {
                 </div>
               </button>
 
-              {/* Cartões do grupo */}
               {isOpen && (
                 <div className="border-t border-gray-800 divide-y divide-gray-800">
                   {grupo.cartoes.map((cartao) => (
-                    <div key={cartao.id} className="flex items-center justify-between px-5 py-3.5">
+                    <div key={cartao.id} className="flex items-center justify-between px-5 py-3.5 gap-3">
+                      {/* Info */}
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <CreditCard className={`w-5 h-5 flex-shrink-0 ${cartao.ativo ? 'text-blue-400' : 'text-gray-600'}`} />
                         <div className="flex-1 min-w-0">
@@ -272,16 +290,10 @@ export default function Cartoes() {
                                 className="px-2 py-1 bg-gray-800 border border-blue-500 rounded text-white text-sm focus:outline-none"
                                 autoFocus
                               />
-                              <button
-                                onClick={() => salvarEdicao(cartao.id)}
-                                className="text-green-400 hover:text-green-300"
-                              >
+                              <button onClick={() => salvarEdicao(cartao.id)} className="text-green-400 hover:text-green-300">
                                 <CheckCircle className="w-4 h-4" />
                               </button>
-                              <button
-                                onClick={() => setEditandoId(null)}
-                                className="text-gray-500 hover:text-white"
-                              >
+                              <button onClick={() => setEditandoId(null)} className="text-gray-500 hover:text-white">
                                 <X className="w-4 h-4" />
                               </button>
                             </div>
@@ -289,7 +301,7 @@ export default function Cartoes() {
                             <div className="flex items-center gap-2">
                               <p className="font-medium text-white truncate">{cartao.nome_funcionario}</p>
                               <button
-                                onClick={() => iniciarEdicao(cartao)}
+                                onClick={() => { setEditandoId(cartao.id); setEditNome(cartao.nome_funcionario); }}
                                 className="text-gray-600 hover:text-blue-400 flex-shrink-0"
                               >
                                 <Pencil className="w-3.5 h-3.5" />
@@ -300,8 +312,21 @@ export default function Cartoes() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                      {/* Controles */}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {/* Selector de nível inline */}
+                        <select
+                          value={cartao.nivel ?? 1}
+                          onChange={(e) => handleNivel(cartao.id, Number(e.target.value))}
+                          className="text-xs px-2 py-1 bg-gray-800 border border-gray-700 rounded-lg text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                        >
+                          {NIVEIS.map((n) => (
+                            <option key={n.value} value={n.value}>{n.label}</option>
+                          ))}
+                        </select>
+
+                        {/* Status sync */}
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                           cartao.sincronizado
                             ? 'bg-green-900/40 text-green-400'
                             : 'bg-yellow-900/40 text-yellow-400'
@@ -309,6 +334,7 @@ export default function Cartoes() {
                           {cartao.sincronizado ? 'Sincronizado' : 'Pendente'}
                         </span>
 
+                        {/* Ativo / Inativo */}
                         <button
                           onClick={() => handleToggle(cartao.id, cartao.ativo)}
                           className={`flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg transition-colors ${
@@ -319,14 +345,13 @@ export default function Cartoes() {
                         >
                           {cartao.ativo
                             ? <><CheckCircle className="w-4 h-4" /> Ativo</>
-                            : <><XCircle className="w-4 h-4" /> Inativo</>
-                          }
+                            : <><XCircle className="w-4 h-4" /> Inativo</>}
                         </button>
 
                         {isAdmin && (
                           <button
                             onClick={() => handleDelete(cartao.id)}
-                            className="text-gray-600 hover:text-red-400 text-sm transition-colors p-1"
+                            className="text-gray-600 hover:text-red-400 text-lg leading-none transition-colors p-1"
                           >
                             ×
                           </button>

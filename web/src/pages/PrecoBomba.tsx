@@ -1,12 +1,12 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { CheckCircle, Gauge, Fuel, Search, ChevronDown, ChevronRight, Layers, List } from 'lucide-react';
-import { getPostos, getProdutos, getTodosBicos, getTodosDescontos, updatePrecoBase } from '../services/api';
+import { getPostos, getProdutos, getTodosBicos, updatePrecoBase } from '../services/api';
 
 // ─── Aba 1: por posto (visão individual) ────────────────────────────────────
 
 function AbaIndividual({
-  postos, produtos, bicos, descontos,
-}: { postos: any[]; produtos: any[]; bicos: any[]; descontos: any[] }) {
+  postos, produtos, bicos,
+}: { postos: any[]; produtos: any[]; bicos: any[] }) {
   const [filtro, setFiltro] = useState('');
   const [editando, setEditando] = useState<Record<string, string>>({});
   const [salvando, setSalvando] = useState<string | null>(null);
@@ -15,15 +15,6 @@ function AbaIndividual({
   const [bicosState, setBicosState] = useState<any[]>(bicos);
 
   useEffect(() => { setBicosState(bicos); }, [bicos]);
-
-  const descontoMap = useMemo(() => {
-    const m: Record<string, Record<string, number>> = {};
-    for (const d of descontos) {
-      if (!m[d.posto_id]) m[d.posto_id] = {};
-      m[d.posto_id][d.produto_id] = Number(d.valor);
-    }
-    return m;
-  }, [descontos]);
 
   const bicosPorPosto = useMemo(() => {
     const m: Record<string, Record<string, any[]>> = {};
@@ -92,23 +83,18 @@ function AbaIndividual({
                 {totalBicos === 0 && <p className="px-5 py-4 text-sm text-gray-500">Nenhum bico cadastrado.</p>}
                 {produtos.filter((pr) => gruposProd[pr.id]?.length > 0).map((produto) => {
                   const bicosProd = (gruposProd[produto.id] ?? []).sort((a, b) => a.bico_forecourt - b.bico_forecourt);
-                  const desconto = descontoMap[posto.id]?.[produto.id] ?? 0;
                   return (
                     <div key={produto.id} className="border-b border-gray-800 last:border-0">
-                      <div className="flex items-center justify-between px-5 py-2 bg-gray-800/30">
-                        <div className="flex items-center gap-2">
-                          <Fuel className="w-4 h-4 text-blue-400" />
-                          <span className="text-sm font-medium text-white">{produto.nome}</span>
-                        </div>
-                        {desconto > 0 && (
-                          <span className="text-xs text-green-400 bg-green-900/20 px-2 py-0.5 rounded-full">
-                            desc. func. R$ {desconto.toFixed(3)}
-                          </span>
-                        )}
+                      <div className="flex items-center gap-2 px-5 py-2 bg-gray-800/30">
+                        <Fuel className="w-4 h-4 text-blue-400" />
+                        <span className="text-sm font-medium text-white">{produto.nome}</span>
                       </div>
                       {bicosProd.map((bico) => {
                         const precoBase = Number(bico.preco_base);
-                        const precoFunc = desconto > 0 ? precoBase - desconto : null;
+                        const n1 = Number(bico.desconto_nivel1 ?? 0);
+                        const n2 = Number(bico.desconto_nivel2 ?? 0);
+                        const precoN1 = n1 > 0 ? precoBase - n1 : null;
+                        const precoN2 = n2 > 0 ? precoBase - n2 : null;
                         const valorEd = editando[bico.id];
                         const modificado = valorEd !== undefined;
                         return (
@@ -117,15 +103,21 @@ function AbaIndividual({
                               <Gauge className="w-3.5 h-3.5 text-gray-500" />
                               <span className="text-sm text-gray-300">Bico {bico.bico_forecourt}</span>
                             </div>
-                            <div className="flex items-center gap-6 flex-1 px-4">
+                            <div className="flex items-center gap-5 flex-1 px-4">
                               <div>
                                 <p className="text-xs text-gray-500">Tabela</p>
                                 <p className="text-base font-mono font-bold text-white">R$ {precoBase.toFixed(3)}</p>
                               </div>
-                              {precoFunc !== null && (
+                              {precoN1 !== null && (
                                 <div>
-                                  <p className="text-xs text-gray-500">Funcionário</p>
-                                  <p className="text-base font-mono font-semibold text-green-400">R$ {precoFunc.toFixed(3)}</p>
+                                  <p className="text-xs text-blue-400">Nível 1</p>
+                                  <p className="text-base font-mono font-semibold text-blue-300">R$ {precoN1.toFixed(3)}</p>
+                                </div>
+                              )}
+                              {precoN2 !== null && (
+                                <div>
+                                  <p className="text-xs text-purple-400">Nível 2</p>
+                                  <p className="text-base font-mono font-semibold text-purple-300">R$ {precoN2.toFixed(3)}</p>
                                 </div>
                               )}
                             </div>
@@ -411,14 +403,12 @@ export default function PrecoBomba() {
   const [postos, setPostos] = useState<any[]>([]);
   const [produtos, setProdutos] = useState<any[]>([]);
   const [bicos, setBicos] = useState<any[]>([]);
-  const [descontos, setDescontos] = useState<any[]>([]);
   const [aba, setAba] = useState<'individual' | 'lote'>('individual');
 
   useEffect(() => {
     getPostos().then(setPostos).catch(() => {});
     getProdutos().then(setProdutos).catch(() => {});
     getTodosBicos().then(setBicos).catch(() => {});
-    getTodosDescontos().then(setDescontos).catch(() => {});
   }, []);
 
   return (
@@ -447,7 +437,7 @@ export default function PrecoBomba() {
       </div>
 
       {aba === 'individual' && (
-        <AbaIndividual postos={postos} produtos={produtos} bicos={bicos} descontos={descontos} />
+        <AbaIndividual postos={postos} produtos={produtos} bicos={bicos} />
       )}
       {aba === 'lote' && (
         <AbaLote postos={postos} produtos={produtos} bicos={bicos} />

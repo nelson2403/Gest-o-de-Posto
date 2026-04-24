@@ -42,22 +42,29 @@ export const getBicosPorPosto = (posto_id: string) =>
   api.get(`/bicos/posto/${posto_id}`).then((r) => r.data);
 export const updatePrecoBase = (id: string, preco_base: number) =>
   api.put(`/bicos/${id}/preco`, { preco_base }).then((r) => r.data);
-
-// --- Descontos ---
-export const getTodosDescontos = () => api.get('/descontos').then((r) => r.data);
-export const getDescontosPorPosto = (posto_id: string) =>
-  api.get(`/descontos/posto/${posto_id}`).then((r) => r.data);
-export const setDesconto = (posto_id: string, produto_id: string, valor: number) =>
-  api.put(`/descontos/posto/${posto_id}`, { produto_id, valor }).then((r) => r.data);
+export const setDescontosNivel = (
+  posto_id: string,
+  produto_id: string,
+  desconto_nivel1: number,
+  desconto_nivel2: number,
+) =>
+  api.put('/bicos/descontos/posto', { posto_id, produto_id, desconto_nivel1, desconto_nivel2 })
+    .then((r) => r.data);
 
 // --- Cartões ---
 export const getCartoes = () => api.get('/cartoes').then((r) => r.data);
-export const createCartao = (data: { codigo: string; nome_funcionario: string; posto_id: string }) =>
-  api.post('/cartoes', data).then((r) => r.data);
+export const createCartao = (data: {
+  codigo: string;
+  nome_funcionario: string;
+  posto_id: string;
+  nivel?: number;
+}) => api.post('/cartoes', data).then((r) => r.data);
 export const renomearCartao = (id: string, nome_funcionario: string) =>
   api.put(`/cartoes/${id}/nome`, { nome_funcionario }).then((r) => r.data);
 export const toggleCartao = (id: string, ativo: boolean) =>
   api.put(`/cartoes/${id}/status`, { ativo }).then((r) => r.data);
+export const alterarNivelCartao = (id: string, nivel: number) =>
+  api.put(`/cartoes/${id}/nivel`, { nivel }).then((r) => r.data);
 export const deleteCartao = (id: string) => api.delete(`/cartoes/${id}`).then((r) => r.data);
 
 // --- Vendas ---

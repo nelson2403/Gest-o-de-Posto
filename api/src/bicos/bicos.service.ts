@@ -64,6 +64,29 @@ export class BicosService {
     return data;
   }
 
+  async atualizarDescontos(
+    posto_id: string,
+    produto_id: string,
+    desconto_nivel1: number,
+    desconto_nivel2: number,
+    usuario: any,
+  ) {
+    const { data, error } = await this.supabase.db
+      .from('bicos')
+      .update({ desconto_nivel1, desconto_nivel2 })
+      .eq('posto_id', posto_id)
+      .eq('produto_id', produto_id)
+      .select();
+    if (error) throw error;
+
+    await this.auditoria.registrar(
+      usuario, 'DESCONTOS_ATUALIZADOS', 'bicos',
+      `${posto_id}|${produto_id}`, null,
+      { desconto_nivel1, desconto_nivel2, bicos_afetados: data?.length },
+    );
+    return data;
+  }
+
   async remover(id: string, usuario: any) {
     const { data: antes } = await this.supabase.db.from('bicos').select('*').eq('id', id).single();
     const { error } = await this.supabase.db.from('bicos').delete().eq('id', id);

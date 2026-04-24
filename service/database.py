@@ -29,19 +29,6 @@ def get_bicos_por_posto(posto_id: str):
     )
     return res.data or []
 
-def get_desconto(posto_id: str, produto_id: str) -> float:
-    res = (
-        get_client()
-        .table("descontos")
-        .select("valor")
-        .eq("posto_id", posto_id)
-        .eq("produto_id", produto_id)
-        .execute()
-    )
-    if res.data:
-        return float(res.data[0]["valor"])
-    return 0.0
-
 def get_cartoes_pendentes(posto_id: str):
     res = (
         get_client()

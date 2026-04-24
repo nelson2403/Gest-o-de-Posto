@@ -39,6 +39,19 @@ export class BicosController {
     return this.service.atualizarPrecoBase(id, body.preco_base, usuario);
   }
 
+  @Put('descontos/posto')
+  @GerenteOuAdmin()
+  atualizarDescontos(
+    @Body() body: { posto_id: string; produto_id: string; desconto_nivel1: number; desconto_nivel2: number },
+    @UsuarioAtual() usuario: any,
+  ) {
+    return this.service.atualizarDescontos(
+      body.posto_id, body.produto_id,
+      body.desconto_nivel1, body.desconto_nivel2,
+      usuario,
+    );
+  }
+
   @Delete(':id')
   @AdminOnly()
   remover(@Param('id') id: string, @UsuarioAtual() usuario: any) {

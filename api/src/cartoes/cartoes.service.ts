@@ -34,7 +34,10 @@ export class CartoesService {
     return data;
   }
 
-  async criar(dto: { codigo: string; nome_funcionario: string; posto_id: string }, usuario: any) {
+  async criar(
+    dto: { codigo: string; nome_funcionario: string; posto_id: string; nivel?: number },
+    usuario: any,
+  ) {
     const { data: existente } = await this.supabase.db
       .from('cartoes')
       .select('id')
@@ -46,7 +49,7 @@ export class CartoesService {
 
     const { data, error } = await this.supabase.db
       .from('cartoes')
-      .insert({ ...dto, ativo: true, sincronizado: false })
+      .insert({ ...dto, nivel: dto.nivel ?? 1, ativo: true, sincronizado: false })
       .select()
       .single();
 
@@ -67,6 +70,21 @@ export class CartoesService {
     if (error) throw error;
     const acao = ativo ? 'CARTAO_ATIVADO' : 'CARTAO_DESATIVADO';
     await this.auditoria.registrar(usuario, acao, 'cartoes', id, antes, data);
+    return data;
+  }
+
+  async alterarNivel(id: string, nivel: number, usuario: any) {
+    const antes = await this.buscar(id);
+    const { data, error } = await this.supabase.db
+      .from('cartoes')
+      .update({ nivel, sincronizado: false })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    await this.auditoria.registrar(usuario, 'CARTAO_NIVEL_ALTERADO', 'cartoes', id,
+      { nivel: antes.nivel }, { nivel });
     return data;
   }
 
@@ -97,7 +115,8 @@ export class CartoesService {
       .select()
       .single();
     if (error) throw error;
-    await this.auditoria.registrar(usuario, 'CARTAO_RENOMEADO', 'cartoes', id, { nome_funcionario: antes.nome_funcionario }, { nome_funcionario });
+    await this.auditoria.registrar(usuario, 'CARTAO_RENOMEADO', 'cartoes', id,
+      { nome_funcionario: antes.nome_funcionario }, { nome_funcionario });
     return data;
   }
 
