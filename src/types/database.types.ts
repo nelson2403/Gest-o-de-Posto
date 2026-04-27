@@ -319,6 +319,23 @@ export interface MascaraLinha {
   atualizado_em: string
 }
 
+export interface MascaraMapeamento {
+  id: string
+  mascara_id: string
+  linha_id: string
+  // bigint do banco — supabase pode retornar como number ou string. Tratamos como string.
+  conta_grid: string
+  criado_em: string
+}
+
+export interface MascaraMapeamentoGrupo {
+  id: string
+  mascara_id: string
+  linha_id: string
+  grupo_grid: string
+  criado_em: string
+}
+
 export interface DashboardEmpresa {
   empresa_id: string
   empresa_nome: string

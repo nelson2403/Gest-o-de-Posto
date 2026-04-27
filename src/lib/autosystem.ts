@@ -219,7 +219,8 @@ export async function buscarContas(like: string): Promise<{ codigo: string; nome
 export interface PlanoContaRow extends Record<string, unknown> {
   hierarquia: string
   nome:       string
-  grid:       number
+  // pg serializa bigint como string por padrão (preserva precisão de int64)
+  grid:       string
   natureza:   'Débito' | 'Crédito'
 }
 
@@ -230,6 +231,24 @@ export async function buscarPlanoContas(): Promise<PlanoContaRow[]> {
             grid::bigint   AS grid,
             CASE WHEN credor = false THEN 'Débito' ELSE 'Crédito' END AS natureza
      FROM conta
+     ORDER BY codigo`,
+  )
+}
+
+// Grupos de produtos — usado para mapeamento de vendas/custos nas máscaras
+export interface GrupoProdutoRow extends Record<string, unknown> {
+  // bigint serializado como string pelo pg
+  id:     string
+  codigo: number
+  nome:   string
+}
+
+export async function buscarGruposProduto(): Promise<GrupoProdutoRow[]> {
+  return query<GrupoProdutoRow>(
+    `SELECT grid::bigint AS id,
+            codigo::int  AS codigo,
+            nome::text   AS nome
+     FROM grupo_produto
      ORDER BY codigo`,
   )
 }

@@ -12,9 +12,10 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
-  ArrowLeft, Plus, GripVertical, ChevronDown, Layers,
-  Pencil, Trash2, Loader2, X, Equal, Database, AlertCircle, Search,
+  ArrowLeft, Plus, GripVertical, ChevronDown, ChevronRight, Layers,
+  Pencil, Trash2, Loader2, X, Equal,
 } from 'lucide-react'
+import { MapeamentosPanel } from './MapeamentosPanel'
 import { Header } from '@/components/layout/Header'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from '@/hooks/use-toast'
@@ -97,12 +98,15 @@ function projectDrop(
 interface RowProps {
   item: FlatItem
   projectedDepth: number | null
+  hasChildren: boolean
+  collapsed: boolean
+  onToggleCollapse: () => void
   onEdit: () => void
   onDelete: () => void
   onAddChild: () => void
 }
 
-function SortableRow({ item, projectedDepth, onEdit, onDelete, onAddChild }: RowProps) {
+function SortableRow({ item, projectedDepth, hasChildren, collapsed, onToggleCollapse, onEdit, onDelete, onAddChild }: RowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id })
   const depth = projectedDepth ?? item.depth
   const isSubtotal = item.tipo_linha === 'subtotal'
@@ -134,8 +138,17 @@ function SortableRow({ item, projectedDepth, onEdit, onDelete, onAddChild }: Row
         <span className="w-5 h-5 flex items-center justify-center text-purple-500 flex-shrink-0" aria-hidden>
           <Equal className="w-4 h-4" />
         </span>
+      ) : hasChildren ? (
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          title={collapsed ? 'Expandir' : 'Recolher'}
+          className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0 transition-colors"
+        >
+          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
       ) : (
-        <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" aria-hidden />
+        <span className="w-5 h-5 flex-shrink-0" aria-hidden />
       )}
 
       <span className="flex-1 text-[13px] font-semibold uppercase tracking-tight text-gray-900 dark:text-gray-100 truncate">
@@ -180,123 +193,6 @@ function SortableRow({ item, projectedDepth, onEdit, onDelete, onAddChild }: Row
   )
 }
 
-// ─── Plano de Contas (Mapeamentos) ────────────────────────────
-
-interface PlanoContaRow {
-  hierarquia: string
-  nome:       string
-  grid:       number
-  natureza:   'Débito' | 'Crédito'
-}
-
-function PlanoContasPanel() {
-  const [contas, setContas]   = useState<PlanoContaRow[] | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [erro, setErro]       = useState<string | null>(null)
-  const [filtro, setFiltro]   = useState('')
-
-  useEffect(() => {
-    let cancelado = false
-    fetch('/api/autosystem/plano-contas')
-      .then(async r => {
-        const json = await r.json()
-        if (cancelado) return
-        if (!r.ok || json.error) setErro(json.error ?? `Erro HTTP ${r.status}`)
-        else setContas((json.contas ?? []) as PlanoContaRow[])
-      })
-      .catch(e => { if (!cancelado) setErro(e instanceof Error ? e.message : String(e)) })
-      .finally(() => { if (!cancelado) setLoading(false) })
-    return () => { cancelado = true }
-  }, [])
-
-  const filtrado = useMemo(() => {
-    if (!contas) return []
-    if (!filtro.trim()) return contas
-    const q = filtro.trim().toLowerCase()
-    return contas.filter(c =>
-      c.hierarquia.toLowerCase().includes(q) ||
-      c.nome.toLowerCase().includes(q) ||
-      String(c.grid).includes(q)
-    )
-  }, [contas, filtro])
-
-  return (
-    <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-800">
-        <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
-          <Database className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-[14px] font-semibold text-gray-900 dark:text-gray-100">Plano de Contas</h2>
-          <p className="text-[11.5px] text-gray-400 dark:text-gray-500">
-            {contas?.length ?? 0} conta{contas?.length === 1 ? '' : 's'} — base para mapeamento das linhas da máscara
-          </p>
-        </div>
-        <div className="relative w-56">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-          <input
-            type="text"
-            value={filtro}
-            onChange={(e) => setFiltro(e.target.value)}
-            placeholder="Filtrar por código, nome ou grid"
-            className="w-full pl-8 pr-3 h-9 border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 rounded-lg text-[12.5px] focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-12 text-gray-400">
-          <Loader2 className="w-5 h-5 animate-spin" />
-        </div>
-      ) : erro ? (
-        <div className="flex items-start gap-2 mx-4 my-4 px-4 py-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-[13px]">
-          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <p className="font-medium">Erro ao carregar plano de contas</p>
-            <p className="text-[12px] opacity-80 break-words">{erro}</p>
-          </div>
-        </div>
-      ) : !filtrado.length ? (
-        <p className="text-center py-12 text-[13px] text-gray-500 dark:text-gray-400">
-          {filtro ? 'Nenhuma conta corresponde ao filtro' : 'Nenhuma conta encontrada'}
-        </p>
-      ) : (
-        <div className="max-h-[60vh] overflow-y-auto">
-          {filtrado.map(c => {
-            const depth = Math.max(0, c.hierarquia.split('.').filter(Boolean).length - 1)
-            const isCredor = c.natureza === 'Crédito'
-            return (
-              <div
-                key={c.grid}
-                style={{ paddingLeft: 12 + depth * 20 }}
-                className="flex items-center gap-3 h-10 pr-3 border-b border-gray-100 dark:border-gray-800 last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
-              >
-                <span className="text-[11.5px] font-mono text-gray-400 dark:text-gray-500 w-24 truncate flex-shrink-0">
-                  {c.hierarquia}
-                </span>
-                <span className="flex-1 text-[12.5px] text-gray-900 dark:text-gray-100 truncate">
-                  {c.nome}
-                </span>
-                <span className="text-[10.5px] font-mono text-gray-400 dark:text-gray-500 flex-shrink-0">
-                  #{c.grid}
-                </span>
-                <span className={cn(
-                  'text-[10.5px] font-medium px-2 py-0.5 rounded-full flex-shrink-0',
-                  isCredor
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-                    : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-                )}>
-                  {c.natureza}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ─── Editor ───────────────────────────────────────────────────
 
 type AbaMascara = 'mascara' | 'mapeamentos'
@@ -316,6 +212,7 @@ export function MascaraEditor({ tipo, basePath, tituloTipo, mascaraId }: Props) 
   const [linhas, setLinhas]   = useState<MascaraLinha[]>([])
   const [loading, setLoading] = useState(true)
   const [aba, setAba]         = useState<AbaMascara>('mascara')
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   // Drag state
   const [activeId, setActiveId]     = useState<string | null>(null)
@@ -336,11 +233,36 @@ export function MascaraEditor({ tipo, basePath, tituloTipo, mascaraId }: Props) 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
   const flat = useMemo(() => flattenTree(linhas), [linhas])
+
+  const hasChildrenById = useMemo(() => {
+    const set = new Set<string>()
+    linhas.forEach(l => { if (l.parent_id) set.add(l.parent_id) })
+    return set
+  }, [linhas])
+
   const visibleFlat = useMemo(() => {
-    if (!activeId) return flat
-    const descendants = new Set(getDescendantIds(flat, activeId))
-    return flat.filter(i => !descendants.has(i.id))
-  }, [flat, activeId])
+    const hidden = new Set<string>()
+    // Esconde descendentes de itens recolhidos
+    flat.forEach(item => {
+      if (collapsed.has(item.id)) {
+        getDescendantIds(flat, item.id).forEach(d => hidden.add(d))
+      }
+    })
+    // Esconde descendentes do item sendo arrastado (eles viajam junto)
+    if (activeId) {
+      getDescendantIds(flat, activeId).forEach(d => hidden.add(d))
+    }
+    return flat.filter(i => !hidden.has(i.id))
+  }, [flat, collapsed, activeId])
+
+  function toggleCollapse(id: string) {
+    setCollapsed(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else              next.add(id)
+      return next
+    })
+  }
 
   const projection = useMemo(() => {
     if (!activeId || !overId) return null
@@ -590,7 +512,7 @@ export function MascaraEditor({ tipo, basePath, tituloTipo, mascaraId }: Props) 
         </div>
 
         {aba === 'mapeamentos' ? (
-          <PlanoContasPanel />
+          <MapeamentosPanel mascaraId={mascaraId} linhas={linhas} />
         ) : (
         /* Card da estrutura */
         <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden">
@@ -638,6 +560,9 @@ export function MascaraEditor({ tipo, basePath, tituloTipo, mascaraId }: Props) 
                     key={item.id}
                     item={item}
                     projectedDepth={item.id === activeId && projection ? projection.depth : null}
+                    hasChildren={hasChildrenById.has(item.id)}
+                    collapsed={collapsed.has(item.id)}
+                    onToggleCollapse={() => toggleCollapse(item.id)}
                     onEdit={() => abrirEdicao(item)}
                     onDelete={() => setExcluindoLinha(item)}
                     onAddChild={() => abrirNovaLinha(item.id)}
