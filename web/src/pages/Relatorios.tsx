@@ -1,33 +1,33 @@
 import { useEffect, useState, useMemo } from 'react';
 import { BarChart3, CreditCard, TrendingDown, Clock, AlertCircle } from 'lucide-react';
-import { getPostos, getProdutos, getTodosDescontos, getCartoes } from '../services/api';
+import { getPostos, getProdutos, getTodosBicos, getCartoes } from '../services/api';
 
 export default function Relatorios() {
   const [postos, setPostos] = useState<any[]>([]);
   const [produtos, setProdutos] = useState<any[]>([]);
-  const [descontos, setDescontos] = useState<any[]>([]);
+  const [bicos, setBicos] = useState<any[]>([]);
   const [cartoes, setCartoes] = useState<any[]>([]);
   const [aba, setAba] = useState<'descontos' | 'cartoes'>('descontos');
   const [filtro, setFiltro] = useState('');
 
   useEffect(() => {
-    Promise.all([getPostos(), getProdutos(), getTodosDescontos(), getCartoes()]).then(
-      ([ps, prs, ds, cs]) => {
+    Promise.all([getPostos(), getProdutos(), getTodosBicos(), getCartoes()]).then(
+      ([ps, prs, bs, cs]) => {
         setPostos(ps);
         setProdutos(prs);
-        setDescontos(ds);
+        setBicos(bs);
         setCartoes(cs);
       }
     );
   }, []);
 
-  // Resumo de descontos por posto
+  // Resumo de descontos por posto (usando desconto_nivel1 do bico)
   const resumoPosto = useMemo(() => {
     return postos.map((posto) => {
-      const desc = descontos.filter((d) => d.posto_id === posto.id);
-      const comDesconto = desc.filter((d) => Number(d.valor) > 0);
+      const bicosPosto = bicos.filter((b) => b.posto_id === posto.id);
+      const comDesconto = bicosPosto.filter((b) => Number(b.desconto_nivel1 ?? 0) > 0);
       const mediaDesconto = comDesconto.length > 0
-        ? comDesconto.reduce((sum, d) => sum + Number(d.valor), 0) / comDesconto.length
+        ? comDesconto.reduce((sum, b) => sum + Number(b.desconto_nivel1 ?? 0), 0) / comDesconto.length
         : 0;
       const cartoesPosto = cartoes.filter((c) => c.posto_id === posto.id);
       const ativos = cartoesPosto.filter((c) => c.ativo).length;
@@ -36,14 +36,14 @@ export default function Relatorios() {
         posto,
         totalCombustiveis: comDesconto.length,
         mediaDesconto,
-        maiorDesconto: comDesconto.length > 0 ? Math.max(...comDesconto.map((d) => Number(d.valor))) : 0,
+        maiorDesconto: comDesconto.length > 0 ? Math.max(...comDesconto.map((b) => Number(b.desconto_nivel1 ?? 0))) : 0,
         totalCartoes: cartoesPosto.length,
         cartoesAtivos: ativos,
         cartoesInativos: cartoesPosto.length - ativos,
-        descontos: desc,
+        bicos: bicosPosto,
       };
     }).filter((r) => r.totalCartoes > 0 || r.totalCombustiveis > 0);
-  }, [postos, descontos, cartoes]);
+  }, [postos, bicos, cartoes]);
 
   // Uso de cartões
   const cartoesOrdenados = useMemo(() => {
@@ -61,7 +61,7 @@ export default function Relatorios() {
   }, [cartoes, filtro]);
 
   const semUso = cartoes.filter((c) => (c.total_usos ?? 0) === 0).length;
-  const totalDesconto = descontos.reduce((sum, d) => sum + Number(d.valor), 0);
+  const totalDesconto = bicos.reduce((sum: number, b: any) => sum + Number(b.desconto_nivel1 ?? 0), 0);
 
   return (
     <div className="space-y-6">
@@ -89,8 +89,8 @@ export default function Relatorios() {
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Desc. médio configurado</p>
           <p className="text-3xl font-bold text-green-400 mt-1">
-            R$ {descontos.length > 0
-              ? (totalDesconto / descontos.length).toFixed(3)
+            R$ {bicos.length > 0
+              ? (totalDesconto / bicos.length).toFixed(3)
               : '0.000'}
           </p>
           <p className="text-xs text-gray-500 mt-1">média entre todos os postos</p>
@@ -136,7 +136,7 @@ export default function Relatorios() {
             <tbody className="divide-y divide-gray-800">
               {resumoPosto
                 .sort((a, b) => b.mediaDesconto - a.mediaDesconto)
-                .map(({ posto, descontos: dsPosto, mediaDesconto, totalCartoes, cartoesAtivos }) => (
+                .map(({ posto, bicos: bicosPosto, mediaDesconto, totalCartoes, cartoesAtivos }) => (
                   <tr key={posto.id} className="hover:bg-gray-800/30">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
@@ -145,8 +145,8 @@ export default function Relatorios() {
                       </div>
                     </td>
                     {produtos.map((p) => {
-                      const desc = dsPosto.find((d) => d.produto_id === p.id);
-                      const valor = desc ? Number(desc.valor) : 0;
+                      const bico = bicosPosto.find((b: any) => b.produto_id === p.id);
+                      const valor = bico ? Number(bico.desconto_nivel1 ?? 0) : 0;
                       return (
                         <td key={p.id} className="py-3 px-3 text-center">
                           {valor > 0
