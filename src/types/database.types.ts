@@ -295,6 +295,30 @@ export interface SenhaTef {
   posto?: Pick<Posto, 'id' | 'nome' | 'cnpj'>
 }
 
+export type TipoMascara     = 'dre' | 'fluxo_caixa'
+export type TipoLinhaMascara = 'grupo' | 'subtotal'
+
+export interface Mascara {
+  id: string
+  tipo: TipoMascara
+  nome: string
+  descricao: string | null
+  criado_em: string
+  atualizado_em: string
+  total_linhas?: number
+}
+
+export interface MascaraLinha {
+  id: string
+  mascara_id: string
+  parent_id: string | null
+  ordem: number
+  nome: string
+  tipo_linha: TipoLinhaMascara
+  criado_em: string
+  atualizado_em: string
+}
+
 export interface DashboardEmpresa {
   empresa_id: string
   empresa_nome: string

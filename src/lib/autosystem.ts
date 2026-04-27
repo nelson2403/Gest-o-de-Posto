@@ -215,6 +215,25 @@ export async function buscarContas(like: string): Promise<{ codigo: string; nome
   )
 }
 
+// Plano de contas completo — usado para mapeamento de máscaras (DRE / Fluxo de Caixa)
+export interface PlanoContaRow extends Record<string, unknown> {
+  hierarquia: string
+  nome:       string
+  grid:       number
+  natureza:   'Débito' | 'Crédito'
+}
+
+export async function buscarPlanoContas(): Promise<PlanoContaRow[]> {
+  return query<PlanoContaRow>(
+    `SELECT codigo::text   AS hierarquia,
+            nome::text     AS nome,
+            grid::bigint   AS grid,
+            CASE WHEN credor = false THEN 'Débito' ELSE 'Crédito' END AS natureza
+     FROM conta
+     ORDER BY codigo`,
+  )
+}
+
 // ── pessoa ───────────────────────────────────────────────────────────────────
 
 export async function buscarPessoas(grids: number[]): Promise<{ grid: number; nome: string }[]> {

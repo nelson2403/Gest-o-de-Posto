@@ -152,6 +152,10 @@ export const PERMISSIONS = {
   'tanques.view': ['master', 'admin', 'operador', 'gerente', 'transpombal'],
   'tanques.edit': ['master', 'admin', 'gerente'],
 
+  // Máscaras (DRE / Fluxo de Caixa) — somente master
+  'mascaras.view': ['master'],
+  'mascaras.edit': ['master'],
+
   // Marketing
   // gerente: só cria patrocínio e anexa documentos do seu posto
   // operador: mesmo acesso que gerente

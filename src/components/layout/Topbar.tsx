@@ -26,7 +26,7 @@ import type { Permission } from '@/lib/utils/permissions'
 // ─── Nav types ────────────────────────────────────────────────────────────────
 
 type NavChild = { href: string; label: string; icon: React.ElementType; permission: Permission | null }
-type NavItem  = { href?: string; label: string; icon: React.ElementType; permission: Permission | null; children?: NavChild[] }
+type NavItem  = { href?: string; label: string; icon: React.ElementType; permission: Permission | null; children?: NavChild[]; divider?: boolean }
 type NavGroup = { label: string; items: NavItem[] }
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
@@ -42,6 +42,13 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/maquininhas',                 label: 'Maquininhas',         icon: Smartphone,  permission: 'maquininhas.view' as Permission },
       { href: '/taxas',                       label: 'Taxas',               icon: Percent,     permission: 'taxas.view' as Permission },
       { href: '/adquirentes',                 label: 'Adquirentes',         icon: CreditCard,  permission: 'adquirentes.view' as Permission },
+      {
+        label: 'Máscaras', icon: Layers, permission: 'mascaras.view' as Permission, divider: true,
+        children: [
+          { href: '/mascaras/dre',          label: 'DRE',             icon: BarChart2,  permission: 'mascaras.view' as Permission },
+          { href: '/mascaras/fluxo-caixa',  label: 'Fluxo de Caixa',  icon: TrendingUp, permission: 'mascaras.view' as Permission },
+        ],
+      },
     ],
   },
   {
@@ -447,6 +454,8 @@ export function Topbar() {
                   >
                     {visibleItems.map((item, idx) => {
                       const Icon = item.icon
+                      const prevItem = visibleItems[idx - 1]
+                      const showDivider = idx > 0 && (item.divider || prevItem?.children !== undefined)
 
                       // Item com flyout (sub-filhos)
                       if (item.children) {
@@ -458,10 +467,11 @@ export function Topbar() {
                           <div key={item.label} className="relative"
                             onMouseEnter={() => setOpenFlyout(item.label)}
                           >
+                            {showDivider && <div className="my-1 border-t border-white/[0.06]" />}
                             <div className={cn(
                               'flex items-center gap-2.5 px-4 py-2 text-[12.5px] font-medium cursor-default select-none transition-colors',
                               flyoutOpen
-                                ? 'bg-[#8b1a14] text-white'
+                                ? 'text-white bg-white/[0.08]'
                                 : anyChildActive
                                   ? 'text-[#ffaa99] hover:bg-white/[0.08]'
                                   : 'text-[hsl(220,20%,65%)] hover:text-white hover:bg-white/[0.08]'
@@ -495,14 +505,10 @@ export function Topbar() {
                         )
                       }
 
-                      // Separador entre grupos de itens (opcional: linha quando vem após subgrupo)
-                      const prevItem = visibleItems[idx - 1]
-                      const hasDivider = idx > 0 && prevItem?.children !== undefined
-
                       const active = item.href ? isActive(item.href) : false
                       return (
                         <div key={item.href}>
-                          {hasDivider && <div className="my-1 border-t border-white/[0.06]" />}
+                          {showDivider && <div className="my-1 border-t border-white/[0.06]" />}
                           <Link href={item.href!}
                             className={cn('flex items-center gap-2.5 px-4 py-2 text-[12.5px] font-medium transition-colors',
                               active
