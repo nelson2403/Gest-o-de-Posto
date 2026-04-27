@@ -106,6 +106,12 @@ export const PERMISSIONS = {
 
   // Relatórios — todos os roles (conteúdo filtrado por permissão)
   'relatorios.view':          ['master', 'admin', 'operador', 'conciliador'],
+
+  // Fiscal — master e admin veem tudo; fiscal lança; gerente anexa documentos
+  'fiscal.view':    ['master', 'admin', 'fiscal', 'gerente', 'conciliador'],
+  'fiscal.geracao': ['master', 'admin', 'fiscal'],
+  'fiscal.lancar':  ['master', 'admin', 'fiscal'],
+  'fiscal.gerente': ['master', 'admin', 'fiscal', 'gerente'],
   'relatorios.conciliacao':   ['master', 'admin', 'conciliador'],
 
   // Painel de Extrato Bancário — somente master

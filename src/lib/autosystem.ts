@@ -838,6 +838,65 @@ export async function buscarContasReceberDistinct(
   )
 }
 
+// ── fiscal — nfe_resumo (manifestos de NF recebidas) ────────────────────────
+
+export interface NfeResumoRow extends Record<string, unknown> {
+  grid:           number
+  empresa:        number
+  nfe:            number
+  emitente_nome:  string
+  emitente_cpf:   string
+  data_emissao:   string
+  valor:          number
+}
+
+export async function buscarNfeManifestos(
+  empresaGrids: number[],
+  dataIni: string,
+): Promise<NfeResumoRow[]> {
+  return query<NfeResumoRow>(
+    `SELECT nr.grid::bigint, nr.empresa::bigint, nr.nfe::bigint,
+            nr.emitente_nome::text, nr.emitente_cpf::text,
+            to_char(nr.data_emissao, 'YYYY-MM-DD') AS data_emissao,
+            nr.valor::float
+     FROM nfe_resumo nr
+     WHERE nr.empresa = ANY($1::bigint[])
+       AND nr.data_emissao >= $2::date
+     ORDER BY nr.data_emissao DESC
+     LIMIT 1000`,
+    [empresaGrids, dataIni],
+  )
+}
+
+export async function buscarNfeManifestosPorGrids(
+  grids: number[],
+): Promise<NfeResumoRow[]> {
+  if (!grids.length) return []
+  return query<NfeResumoRow>(
+    `SELECT nr.grid::bigint, nr.empresa::bigint, nr.nfe::bigint,
+            nr.emitente_nome::text, nr.emitente_cpf::text,
+            to_char(nr.data_emissao, 'YYYY-MM-DD') AS data_emissao,
+            nr.valor::float
+     FROM nfe_resumo nr
+     WHERE nr.grid = ANY($1::bigint[])`,
+    [grids],
+  )
+}
+
+// Detecta se uma NF já foi lançada no estoque via lmc_entrada.documento
+export async function verificarLancamentoNfe(
+  documentos: string[],
+): Promise<{ documento: string; lancto: number; data_emissao: string }[]> {
+  if (!documentos.length) return []
+  return query(
+    `SELECT documento::text, lancto::bigint,
+            to_char(data_emissao, 'YYYY-MM-DD') AS data_emissao
+     FROM lmc_entrada
+     WHERE documento = ANY($1::text[])`,
+    [documentos],
+  )
+}
+
 // ── calcularMovimento ────────────────────────────────────────────────────────
 
 export function calcularMovimento(

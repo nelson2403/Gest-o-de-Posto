@@ -217,3 +217,11 @@ body {
 
 /* ── Table row hover ───────────────────────── */
 .data-table tbody tr:hover td { background: hsl(220 14% 97%); }
+
+/* ── Fiscal — utilitários ──────────────────── */
+.input-sm {
+  @apply w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+.btn-primary {
+  @apply flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer;
+}

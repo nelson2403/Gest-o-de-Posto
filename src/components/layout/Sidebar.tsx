@@ -11,7 +11,7 @@ import {
   Archive, Layers, CheckSquare, ScanSearch, ReceiptText, Lock,
   TrendingUp, Wallet, Receipt, Settings, Megaphone, Gift, Database,
   ArrowLeftRight, Plus, Trash2, Eye, EyeOff, X, Check, ChevronDown,
-  PackageSearch, Truck, CalendarDays, ShoppingCart,
+  PackageSearch, Truck, CalendarDays, ShoppingCart, Scale,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { useAuthContext } from '@/contexts/AuthContext'
@@ -140,6 +140,14 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/marketing/patrocinio',  label: 'Patrocínios', icon: Gift,       permission: 'marketing.create_patrocinio' as Permission },
       { href: '/marketing/acoes',       label: 'Ações',       icon: TrendingUp, permission: 'marketing.ver_acoes' as Permission },
       { href: '/marketing/conciliacao', label: 'Conciliação', icon: Link2,      permission: 'marketing.conciliacao' as Permission },
+    ],
+  },
+  {
+    label: 'Fiscal',
+    items: [
+      { href: '/fiscal',          label: 'Painel Fiscal',      icon: Scale,         permission: 'fiscal.view' as Permission },
+      { href: '/fiscal/tarefas',  label: 'Tarefas Fiscal',     icon: ClipboardList, permission: 'fiscal.view' as Permission },
+      { href: '/fiscal/geracao',  label: 'Geração de Tarefas', icon: FileText,      permission: 'fiscal.geracao' as Permission },
     ],
   },
   {
