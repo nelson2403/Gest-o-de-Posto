@@ -97,7 +97,7 @@ def set_preco(s: DSocket, bico_forecourt: int, preco_base: float,
         fmt_price = hi.zfill(3) + lo.ljust(3, '0')
     fmt_price = fmt_price[:6]
 
-    print(f"  Bico {bico_forecourt} grade {grade}: {preco_base} - {desconto} = {new_price} → {fmt_price}")
+    print(f"  Bico {bico_forecourt} grade {grade}: {preco_base} - {desconto} = {new_price} -> {fmt_price}")
     cmd = _monta_comando(50, str(bico_forecourt).zfill(2) + str(grade) + fmt_price)
     resp = s.tcpSend(cmd.encode())
     if isinstance(resp, bytes):
