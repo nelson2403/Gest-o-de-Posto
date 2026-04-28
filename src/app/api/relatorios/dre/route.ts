@@ -5,6 +5,8 @@ import {
   buscarContasPorGrid,
   aggregarMovtoPorContaPorMes,
   aggregarVendasCustosPorGrupoPorMes,
+  aggregarMovtoPorContaPorEmpresa,
+  aggregarVendasCustosPorGrupoPorEmpresa,
 } from '@/lib/autosystem'
 
 // ─── Tipos da resposta ────────────────────────────────────────
@@ -27,6 +29,14 @@ export interface DreResponse {
   linhas:   DreLinhaResultado[]
   periodo:  { dataIni: string; dataFim: string }
   empresas: number
+  resultadoPorEmpresa: ResultadoEmpresa[]
+}
+
+export interface ResultadoEmpresa {
+  empresa_id:    number
+  empresa_nome:  string
+  valor:         number
+  participacao_pct: number  // % do total (todas as empresas)
 }
 
 interface MascaraLinhaRow {
@@ -130,6 +140,7 @@ export async function GET(req: NextRequest) {
       linhas: [],
       periodo: { dataIni, dataFim },
       empresas: 0,
+      resultadoPorEmpresa: [],
     } as DreResponse)
   }
 
@@ -291,11 +302,112 @@ export async function GET(req: NextRequest) {
   }
   flatten(roots, 0)
 
+  // 7. Resultado por empresa — replica a mesma compute para cada empresa
+  let resultadoPorEmpresa: ResultadoEmpresa[] = []
+  try {
+    const codigos = contasDetalhes.map(c => c.codigo)
+    const [movtosPorEmp, vcPorEmp, postos2] = await Promise.all([
+      codigos.length > 0 ? aggregarMovtoPorContaPorEmpresa(empresaIds, dataIni, dataFim, codigos) : Promise.resolve([]),
+      grupoGrids.length > 0 ? aggregarVendasCustosPorGrupoPorEmpresa(empresaIds, dataIni, dataFim, grupoGrids) : Promise.resolve([]),
+      admin.from('postos').select('codigo_empresa_externo, nome').not('codigo_empresa_externo', 'is', null).eq('ativo', true),
+    ])
+
+    const empresaNomeById = new Map<number, string>()
+    for (const p of postos2.data ?? []) {
+      const id = Number(p.codigo_empresa_externo)
+      if (!Number.isNaN(id)) empresaNomeById.set(id, p.nome)
+    }
+
+    const calc = empresaIds.map(empId => {
+      const balByCod = new Map<string, number>()
+      for (const m of movtosPorEmp) {
+        if (Number(m.empresa) !== empId) continue
+        const bal = Number(m.total_creditar) - Number(m.total_debitar)
+        balByCod.set(m.codigo, (balByCod.get(m.codigo) ?? 0) + bal)
+      }
+      const vcByGrid = new Map<string, { v: number; c: number }>()
+      for (const v of vcPorEmp) {
+        if (Number(v.empresa) !== empId) continue
+        const grid = String(v.grupo_grid)
+        const cur = vcByGrid.get(grid) ?? { v: 0, c: 0 }
+        cur.v += Number(v.total_venda)
+        cur.c += Number(v.total_custo)
+        vcByGrid.set(grid, cur)
+      }
+
+      // Reaproveita a mesma topologia dos `roots` para esta empresa
+      const valEmp = new Map<string, number>()
+      linhas.forEach(l => valEmp.set(l.id, 0))
+
+      for (const m of mapContas) {
+        const codigo = codigoByGrid.get(m.conta_grid)
+        if (!codigo) continue
+        const bal = balByCod.get(codigo)
+        if (bal !== undefined) valEmp.set(m.linha_id, (valEmp.get(m.linha_id) ?? 0) + bal)
+      }
+      for (const m of mapGrupos) {
+        const data = vcByGrid.get(m.grupo_grid)
+        if (!data) continue
+        const v = m.tipo_valor === 'venda' ? data.v : data.c
+        valEmp.set(m.linha_id, (valEmp.get(m.linha_id) ?? 0) + v)
+      }
+
+      // Roll-up grupos
+      function rollUpEmp(node: Node) {
+        for (const c of node.children) rollUpEmp(c)
+        if (node.linha.tipo_linha === 'grupo' && node.children.length > 0) {
+          const sum = node.children.reduce((s, c) => s + (valEmp.get(c.linha.id) ?? 0), 0)
+          valEmp.set(node.linha.id, (valEmp.get(node.linha.id) ?? 0) + sum)
+        }
+      }
+      for (const r of roots) rollUpEmp(r)
+
+      // Subtotais
+      function subEmp(siblings: Node[]) {
+        for (let i = 0; i < siblings.length; i++) {
+          const node = siblings[i]
+          subEmp(node.children)
+          if (node.linha.tipo_linha === 'subtotal') {
+            let sum = 0
+            for (let j = 0; j < i; j++) {
+              if (siblings[j].linha.tipo_linha !== 'subtotal') {
+                sum += valEmp.get(siblings[j].linha.id) ?? 0
+              }
+            }
+            valEmp.set(node.linha.id, sum)
+          }
+        }
+      }
+      subEmp(roots)
+
+      // Resultado líquido = último subtotal raiz
+      const ultimo = [...roots].reverse().find(n => n.linha.tipo_linha === 'subtotal')
+      const valor = ultimo ? (valEmp.get(ultimo.linha.id) ?? 0) : 0
+
+      return { empId, valor }
+    })
+
+    const totalAbs = calc.reduce((s, c) => s + Math.abs(c.valor), 0) || 1
+    resultadoPorEmpresa = calc
+      .map(({ empId, valor }) => ({
+        empresa_id:       empId,
+        empresa_nome:     empresaNomeById.get(empId) ?? `Empresa ${empId}`,
+        valor,
+        participacao_pct: (Math.abs(valor) / totalAbs) * 100,
+      }))
+      .sort((a, b) => b.valor - a.valor)
+  } catch (e) {
+    // Não bloqueia o relatório principal se a parte por empresa falhar
+    console.error('[dre] erro ao calcular resultado por empresa:', e)
+    resultadoPorEmpresa = []
+  }
+
   const resp: DreResponse = {
     meses: mesesISO,
     linhas: out,
     periodo: { dataIni, dataFim },
     empresas: empresaIds.length,
+    resultadoPorEmpresa,
   }
   return NextResponse.json(resp)
 }

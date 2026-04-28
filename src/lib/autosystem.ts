@@ -411,6 +411,160 @@ export async function aggregarVendasCustosPorGrupoPorMes(
   )
 }
 
+// Variantes "por empresa" — usadas para apurar o resultado de cada empresa
+// individualmente (Análise Vertical / participação no resultado líquido).
+export interface MovtoAgregadoContaEmpresa extends Record<string, unknown> {
+  codigo:         string
+  empresa:        number
+  total_debitar:  number
+  total_creditar: number
+}
+
+export async function aggregarMovtoPorContaPorEmpresa(
+  empresaIds: number[],
+  dataIni:    string,
+  dataFim:    string,
+  contaCodigos: string[],
+): Promise<MovtoAgregadoContaEmpresa[]> {
+  if (!empresaIds.length || !contaCodigos.length) return []
+  return query<MovtoAgregadoContaEmpresa>(
+    `SELECT codigo::text                            AS codigo,
+            empresa::bigint                         AS empresa,
+            COALESCE(SUM(CASE WHEN dir='D' THEN valor END), 0)::float AS total_debitar,
+            COALESCE(SUM(CASE WHEN dir='C' THEN valor END), 0)::float AS total_creditar
+     FROM (
+       SELECT conta_debitar  AS codigo, 'D' AS dir, valor, empresa
+       FROM movto
+       WHERE empresa = ANY($1::bigint[])
+         AND data BETWEEN $2::date AND $3::date
+         AND conta_debitar = ANY($4::text[])
+       UNION ALL
+       SELECT conta_creditar AS codigo, 'C' AS dir, valor, empresa
+       FROM movto
+       WHERE empresa = ANY($1::bigint[])
+         AND data BETWEEN $2::date AND $3::date
+         AND conta_creditar = ANY($4::text[])
+     ) t
+     GROUP BY codigo, empresa`,
+    [empresaIds, dataIni, dataFim, contaCodigos],
+  )
+}
+
+export interface VendasCustosGrupoEmpresa extends Record<string, unknown> {
+  grupo_grid:  string
+  empresa:     number
+  total_venda: number
+  total_custo: number
+}
+
+export async function aggregarVendasCustosPorGrupoPorEmpresa(
+  empresaIds: number[],
+  dataIni:    string,
+  dataFim:    string,
+  grupoGrids: string[],
+): Promise<VendasCustosGrupoEmpresa[]> {
+  if (!empresaIds.length || !grupoGrids.length) return []
+  return query<VendasCustosGrupoEmpresa>(
+    `SELECT
+       p.grupo::bigint                          AS grupo_grid,
+       l.empresa::bigint                        AS empresa,
+       COALESCE(SUM(l.valor), 0)::float          AS total_venda,
+       COALESCE(SUM(
+         CASE WHEN pc.produto IS NOT NULL THEN -ev.ult_custo_medio * l.quantidade
+              ELSE el.custo_medio * el.movimento
+         END
+       ), 0)::float                              AS total_custo
+     FROM lancto l
+       LEFT JOIN estoque_lancto el ON el.lancto = l.grid
+       LEFT JOIN produto p         ON l.produto = p.grid
+       JOIN estoque_valor ev       ON l.empresa = ev.empresa
+                                  AND l.data    = ev.data
+                                  AND l.produto = ev.produto
+       LEFT JOIN (SELECT DISTINCT produto FROM produto_composicao) pc
+                                   ON pc.produto = l.produto
+     WHERE l.data BETWEEN $1::date AND $2::date
+       AND l.operacao = 'V'
+       AND l.empresa = ANY($3::bigint[])
+       AND p.grupo   = ANY($4::bigint[])
+     GROUP BY p.grupo, l.empresa`,
+    [dataIni, dataFim, empresaIds, grupoGrids],
+  )
+}
+
+// ── Balanço Financeiro ───────────────────────────────────────
+// Lista todos os títulos em aberto (child = 0) — a receber (1.3.x) e a pagar (2.1.1.x)
+// — com vencimento a partir de hoje.
+
+export interface BalancoTitulo extends Record<string, unknown> {
+  vencto:    string  // YYYY-MM-DD
+  valor:     number
+  documento: string | null
+  motivo:    string  // decoded de bytea
+  pessoa:    string  // decoded de bytea
+  conta:     string  // codigo da conta (1.3.x ou 2.1.1.x)
+  empresa:   number
+}
+
+interface BalancoTituloRaw extends Record<string, unknown> {
+  vencto:       string
+  valor:        number
+  documento:    string | null
+  motivo_b:     Buffer | null
+  pessoa_b:     Buffer | null
+  conta:        string
+  empresa:      number
+}
+
+async function listarTitulosAbertos(
+  empresaIds:   number[],
+  contaPrefix:  string,           // '1.3' | '2.1.1'
+  contaCol:     'conta_debitar' | 'conta_creditar',
+  limit:        number = 5000,
+): Promise<BalancoTitulo[]> {
+  if (!empresaIds.length) return []
+  const rows = await query<BalancoTituloRaw>(
+    `SELECT to_char(m.vencto, 'YYYY-MM-DD') AS vencto,
+            m.valor::float                  AS valor,
+            m.documento::text               AS documento,
+            mv.nome::bytea                  AS motivo_b,
+            p.nome::bytea                   AS pessoa_b,
+            m.${contaCol}::text             AS conta,
+            m.empresa::bigint               AS empresa
+     FROM movto m
+       LEFT JOIN motivo_movto mv ON mv.grid = m.motivo
+       LEFT JOIN pessoa p        ON p.grid  = m.pessoa
+     WHERE m.empresa = ANY($1::bigint[])
+       AND m.${contaCol} LIKE $2
+       AND m.child = 0
+       AND m.vencto >= CURRENT_DATE
+     ORDER BY m.vencto ASC, m.grid ASC
+     LIMIT $3`,
+    [empresaIds, `${contaPrefix}%`, limit],
+  )
+  return rows.map(r => ({
+    vencto:    r.vencto,
+    valor:     Number(r.valor),
+    documento: r.documento,
+    motivo:    decodeBytea(r.motivo_b).trim(),
+    pessoa:    decodeBytea(r.pessoa_b).trim(),
+    conta:     r.conta,
+    empresa:   Number(r.empresa),
+  }))
+}
+
+export async function buscarBalancoFinanceiro(empresaIds: number[]): Promise<{
+  receber: BalancoTitulo[]
+  pagar:   BalancoTitulo[]
+}> {
+  // Usa o ponto final no prefixo para pegar APENAS descendentes (1.3.x e 2.1.1.x),
+  // evitando matches acidentais como 1.30, 1.31, 2.1.10, etc.
+  const [receber, pagar] = await Promise.all([
+    listarTitulosAbertos(empresaIds, '1.3.',   'conta_debitar', 5000),
+    listarTitulosAbertos(empresaIds, '2.1.1.', 'conta_creditar', 5000),
+  ])
+  return { receber, pagar }
+}
+
 // Lista lançamentos individuais de uma conta no período (drill-down).
 // Retorna `data` (YYYY-MM-DD) para bucketing por mês + `observacao` já
 // formatada como "DD/MM/YYYY · DOCUMENTO · OBSERVAÇÃO" + valor.

@@ -4,15 +4,17 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Loader2, FileBarChart, AlertCircle, Calendar, Equal,
   ChevronRight, ChevronDown, FileText, Boxes,
+  Building2, TrendingDown, Wallet, Hourglass, Eye, EyeOff,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils/cn'
 import type { Mascara } from '@/types/database.types'
-import type { DreLinhaResultado, DreResponse } from '@/app/api/relatorios/dre/route'
+import type { DreLinhaResultado, DreResponse, ResultadoEmpresa } from '@/app/api/relatorios/dre/route'
 import type {
   DrillLinhaResponse, DrillLancamentosResponse,
   DrillItem, DrillLancamento,
 } from '@/app/api/relatorios/dre/drill/route'
+import { BalancoFinanceiroView } from './BalancoFinanceiroView'
 
 const fmtBRL = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 })
@@ -58,8 +60,19 @@ const LINHAS_SEM_EXPANSAO = new Set([
 
 type DrillCache = Map<string, DrillItem[] | DrillLancamento[]>
 
+type SubAba = 'dre' | 'fluxo' | 'despesas' | 'balanco'
+const SUB_ABAS: { key: SubAba; label: string; icon: React.ElementType }[] = [
+  { key: 'dre',       label: 'DRE',                  icon: FileBarChart },
+  { key: 'fluxo',     label: 'Fluxo de Caixa',       icon: Wallet       },
+  { key: 'despesas',  label: 'Análise de Despesas',  icon: TrendingDown },
+  { key: 'balanco',   label: 'Balanço Financeiro',   icon: Building2    },
+]
+
+const fmtPct = (v: number) => `${v.toFixed(1).replace('.', ',')}%`
+
 export function RelatoriosGerenciaisTab() {
   const supabase = createClient()
+  const [subAba, setSubAba] = useState<SubAba>('dre')
 
   const [mascaras, setMascaras]               = useState<Mascara[]>([])
   const [loadingMascaras, setLoadingMascaras] = useState(true)
@@ -80,6 +93,8 @@ export function RelatoriosGerenciaisTab() {
   const [drillCache, setDrillCache]           = useState<DrillCache>(new Map())
   const [loadingDrill, setLoadingDrill]       = useState<Set<string>>(new Set())
   const [drillError, setDrillError]           = useState<Map<string, string>>(new Map())
+  // Esconde contas/grupos sem movimento dentro dos drills (total === 0 em todos os meses)
+  const [ocultarZerados, setOcultarZerados]   = useState(true)
 
   // Carrega máscaras DRE
   useEffect(() => {
@@ -191,8 +206,50 @@ export function RelatoriosGerenciaisTab() {
     return ultimo ?? null
   }, [resp])
 
+  // Receita bruta para análise vertical = primeira linha-grupo no nível raiz com valor != 0.
+  // Usado como base de comparação (100%) para todas as outras linhas.
+  const receitaBruta = useMemo(() => {
+    if (!resp) return null
+    return resp.linhas.find(l => l.depth === 0 && l.tipo_linha === 'grupo' && l.total !== 0) ?? null
+  }, [resp])
+
   return (
     <div className="space-y-4">
+      {/* Sub-tabs internas (DRE / Fluxo / Despesas / Balanço) */}
+      <div className="flex flex-wrap gap-1 border-b border-gray-200">
+        {SUB_ABAS.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setSubAba(key)}
+            className={cn(
+              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 -mb-px transition-colors',
+              subAba === key
+                ? 'border-[#8b1a14] text-[#8b1a14]'
+                : 'border-transparent text-gray-500 hover:text-gray-900'
+            )}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {subAba === 'balanco' && <BalancoFinanceiroView />}
+
+      {(subAba === 'fluxo' || subAba === 'despesas') && (
+        <div className="flex flex-col items-center justify-center gap-3 py-20 text-center bg-white rounded-xl border border-dashed border-gray-300">
+          <Hourglass className="w-10 h-10 text-gray-300" />
+          <div>
+            <p className="text-[15px] font-semibold text-gray-700">Em breve</p>
+            <p className="text-[12.5px] text-gray-500 mt-1">
+              {subAba === 'fluxo'    && 'O relatório de Fluxo de Caixa estará disponível em uma próxima atualização.'}
+              {subAba === 'despesas' && 'A Análise de Despesas estará disponível em uma próxima atualização.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {subAba === 'dre' && <>
       {/* Filtros */}
       <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-white border border-gray-200">
         <div className="flex-1 min-w-[220px]">
@@ -292,6 +349,20 @@ export function RelatoriosGerenciaisTab() {
                 {fmtData(resp.periodo.dataIni)} a {fmtData(resp.periodo.dataFim)} • {resp.empresas} {resp.empresas === 1 ? 'empresa' : 'empresas'}
               </p>
             </div>
+            <button
+              type="button"
+              onClick={() => setOcultarZerados(v => !v)}
+              title={ocultarZerados ? 'Mostrar todas as contas' : 'Ocultar contas sem movimento'}
+              className={cn(
+                'flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12px] font-medium border transition-colors flex-shrink-0',
+                ocultarZerados
+                  ? 'bg-[#8b1a14] text-white border-[#8b1a14] hover:bg-[#6e1410]'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              )}
+            >
+              {ocultarZerados ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              {ocultarZerados ? 'Ocultando zerados' : 'Mostrando todas'}
+            </button>
             {resultadoFinal && (
               <div className="text-right">
                 <p className="text-[10.5px] font-semibold uppercase tracking-wide text-gray-400">{resultadoFinal.nome}</p>
@@ -314,16 +385,34 @@ export function RelatoriosGerenciaisTab() {
               <table className="w-full text-[12.5px]">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="text-left px-4 py-2.5 font-semibold text-gray-500 uppercase tracking-wide text-[10.5px] sticky left-0 bg-gray-50 z-10 min-w-[280px]">
+                    <th rowSpan={2} className="text-left px-4 py-2.5 font-semibold text-gray-500 uppercase tracking-wide text-[10.5px] sticky left-0 bg-gray-50 z-10 min-w-[280px] border-b border-gray-200">
                       Linha
                     </th>
                     {meses.map(mes => (
-                      <th key={mes} className="text-right px-3 py-2.5 font-semibold text-gray-500 uppercase tracking-wide text-[10.5px] min-w-[120px]">
+                      <th key={mes} colSpan={2} className="text-center px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide text-[10.5px] min-w-[180px] border-b border-gray-200">
                         {fmtMes(mes)}
                       </th>
                     ))}
-                    <th className="text-right px-4 py-2.5 font-semibold text-gray-500 uppercase tracking-wide text-[10.5px] min-w-[140px] bg-gray-100">
+                    <th colSpan={2} className="text-center px-4 py-2 font-semibold text-gray-500 uppercase tracking-wide text-[10.5px] min-w-[200px] bg-gray-100 border-b border-gray-200">
                       Total
+                    </th>
+                  </tr>
+                  <tr>
+                    {meses.flatMap(mes => [
+                      <th key={`${mes}-v`} className="text-right px-3 pb-2 pt-0 font-medium text-gray-400 uppercase tracking-wide text-[9.5px] min-w-[110px]">
+                        Valor
+                      </th>,
+                      <th key={`${mes}-av`} className="text-right px-2 pb-2 pt-0 font-medium text-gray-400 uppercase tracking-wide text-[9.5px] min-w-[60px]"
+                          title={receitaBruta ? `% da ${receitaBruta.nome} no mês` : 'Análise vertical'}>
+                        AV%
+                      </th>,
+                    ])}
+                    <th className="text-right px-3 pb-2 pt-0 font-medium text-gray-400 uppercase tracking-wide text-[9.5px] min-w-[120px] bg-gray-100">
+                      Valor
+                    </th>
+                    <th className="text-right px-2 pb-2 pt-0 font-medium text-gray-400 uppercase tracking-wide text-[9.5px] min-w-[60px] bg-gray-100"
+                        title={receitaBruta ? `% da ${receitaBruta.nome} no total` : 'Análise vertical'}>
+                      AV%
                     </th>
                   </tr>
                 </thead>
@@ -333,6 +422,8 @@ export function RelatoriosGerenciaisTab() {
                       key={linha.id}
                       linha={linha}
                       meses={meses}
+                      receitaBruta={receitaBruta}
+                      ocultarZerados={ocultarZerados}
                       expanded={expanded}
                       drillCache={drillCache}
                       loadingDrill={loadingDrill}
@@ -353,6 +444,51 @@ export function RelatoriosGerenciaisTab() {
           <p className="text-[13px]">Selecione uma máscara e período, depois clique em &quot;Gerar relatório&quot;</p>
         </div>
       )}
+
+      {/* Resultado por empresa */}
+      {resp && !loadingDre && resp.resultadoPorEmpresa.length > 0 && (
+        <div className="rounded-xl bg-white border border-gray-200 overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-200">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+              <Building2 className="w-5 h-5 text-blue-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-[14px] font-semibold text-gray-900">Resultado por empresa</h3>
+              <p className="text-[11.5px] text-gray-500">
+                Participação de cada empresa no resultado líquido do exercício
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-4 py-2.5 font-semibold text-gray-500 uppercase tracking-wide text-[10.5px]">Empresa</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-gray-500 uppercase tracking-wide text-[10.5px] min-w-[160px]">Resultado Líquido</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-gray-500 uppercase tracking-wide text-[10.5px] min-w-[120px]">Participação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resp.resultadoPorEmpresa.map(emp => (
+                  <tr key={emp.empresa_id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-2 text-gray-800 uppercase tracking-tight">{emp.empresa_nome}</td>
+                    <td className={cn(
+                      'px-4 py-2 text-right tabular-nums font-semibold',
+                      emp.valor < 0 ? 'text-rose-700' : 'text-emerald-700',
+                    )}>
+                      {fmtBRL(emp.valor)}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums text-gray-700">
+                      {fmtPct(emp.participacao_pct)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      </>}
     </div>
   )
 }
@@ -360,23 +496,30 @@ export function RelatoriosGerenciaisTab() {
 // ─── Linha da DRE ─────────────────────────────────────────────
 
 interface DreRowProps {
-  linha:        DreLinhaResultado
-  meses:        string[]
-  expanded:     Set<string>
-  drillCache:   DrillCache
-  loadingDrill: Set<string>
-  drillError:   Map<string, string>
-  onToggle:     (key: string) => void
+  linha:          DreLinhaResultado
+  meses:          string[]
+  receitaBruta:   DreLinhaResultado | null
+  ocultarZerados: boolean
+  expanded:       Set<string>
+  drillCache:     DrillCache
+  loadingDrill:   Set<string>
+  drillError:     Map<string, string>
+  onToggle:       (key: string) => void
 }
 
-function DreRow({ linha, meses, expanded, drillCache, loadingDrill, drillError, onToggle }: DreRowProps) {
+function DreRow({ linha, meses, receitaBruta, ocultarZerados, expanded, drillCache, loadingDrill, drillError, onToggle }: DreRowProps) {
   const isSubtotal = linha.tipo_linha === 'subtotal'
   const nomeBloqueado = LINHAS_SEM_EXPANSAO.has(normalizarNome(linha.nome))
   const podeExpandir = linha.tem_mapeamento && !isSubtotal && !nomeBloqueado
   const key = `linha:${linha.id}`
   const isOpen = expanded.has(key)
   const isLoading = loadingDrill.has(key)
-  const drillItens = (drillCache.get(key) ?? []) as DrillItem[]
+  const drillItensRaw = (drillCache.get(key) ?? []) as DrillItem[]
+  // Quando "ocultarZerados" está ativo, esconde itens drill (contas/grupos) sem movimento.
+  const drillItens = ocultarZerados
+    ? drillItensRaw.filter(it => it.total !== 0 || it.valoresPorMes.some(v => v !== 0))
+    : drillItensRaw
+  const ocultos = drillItensRaw.length - drillItens.length
 
   return (
     <>
@@ -405,15 +548,25 @@ function DreRow({ linha, meses, expanded, drillCache, loadingDrill, drillError, 
             </span>
           </div>
         </td>
-        {meses.map((mes, i) => (
-          <td key={mes} className={cn(
-            'px-3 py-2 text-right tabular-nums',
-            isSubtotal ? 'font-semibold' : '',
-            linha.valoresPorMes[i] < 0 ? 'text-rose-600' : 'text-gray-900',
-          )}>
-            {fmtBRL(linha.valoresPorMes[i] ?? 0)}
-          </td>
-        ))}
+        {meses.flatMap((mes, i) => {
+          const v = linha.valoresPorMes[i] ?? 0
+          const rb = receitaBruta?.valoresPorMes[i] ?? 0
+          return [
+            <td key={`${mes}-v`} className={cn(
+              'px-3 py-2 text-right tabular-nums',
+              isSubtotal ? 'font-semibold' : '',
+              v < 0 ? 'text-rose-600' : 'text-gray-900',
+            )}>
+              {fmtBRL(v)}
+            </td>,
+            <td key={`${mes}-av`} className={cn(
+              'px-2 py-2 text-right tabular-nums text-[11.5px]',
+              isSubtotal ? 'font-semibold text-gray-700' : 'text-gray-500',
+            )}>
+              {rb !== 0 ? fmtPct((v / rb) * 100) : '—'}
+            </td>,
+          ]
+        })}
         <td className={cn(
           'px-4 py-2 text-right tabular-nums bg-gray-50',
           isSubtotal ? 'font-bold' : 'font-semibold',
@@ -421,12 +574,20 @@ function DreRow({ linha, meses, expanded, drillCache, loadingDrill, drillError, 
         )}>
           {fmtBRL(linha.total)}
         </td>
+        <td className={cn(
+          'px-2 py-2 text-right tabular-nums bg-gray-50 text-[11.5px]',
+          isSubtotal ? 'font-bold text-gray-700' : 'text-gray-500',
+        )}>
+          {receitaBruta && receitaBruta.total !== 0
+            ? fmtPct((linha.total / receitaBruta.total) * 100)
+            : '—'}
+        </td>
       </tr>
 
       {/* Erro do drill nível 1 */}
       {isOpen && drillError.has(key) && (
         <tr className="border-b border-gray-100 bg-red-50">
-          <td colSpan={meses.length + 2} className="px-4 py-3 text-[12px] text-red-700"
+          <td colSpan={meses.length * 2 + 3} className="px-4 py-3 text-[12px] text-red-700"
               style={{ paddingLeft: 16 + (linha.depth + 1) * 20 }}>
             <span className="font-medium">Erro: </span>{drillError.get(key)}
           </td>
@@ -440,6 +601,7 @@ function DreRow({ linha, meses, expanded, drillCache, loadingDrill, drillError, 
           item={item}
           meses={meses}
           baseDepth={linha.depth}
+          receitaBruta={receitaBruta}
           expanded={expanded}
           drillCache={drillCache}
           loadingDrill={loadingDrill}
@@ -447,6 +609,16 @@ function DreRow({ linha, meses, expanded, drillCache, loadingDrill, drillError, 
           onToggle={onToggle}
         />
       ))}
+
+      {/* Indicador de contas ocultadas */}
+      {isOpen && !drillError.has(key) && ocultos > 0 && (
+        <tr className="border-b border-gray-100 bg-blue-50/20">
+          <td colSpan={meses.length * 2 + 3} className="px-4 py-1.5 text-[11px] text-gray-400 italic"
+              style={{ paddingLeft: 16 + (linha.depth + 1) * 20 }}>
+            {ocultos} {ocultos === 1 ? 'conta sem movimento ocultada' : 'contas sem movimento ocultadas'}
+          </td>
+        </tr>
+      )}
     </>
   )
 }
@@ -457,6 +629,7 @@ interface DrillItemRowProps {
   item:         DrillItem
   meses:        string[]
   baseDepth:    number
+  receitaBruta: DreLinhaResultado | null
   expanded:     Set<string>
   drillCache:   DrillCache
   loadingDrill: Set<string>
@@ -464,7 +637,7 @@ interface DrillItemRowProps {
   onToggle:     (key: string) => void
 }
 
-function DrillItemRow({ item, meses, baseDepth, expanded, drillCache, loadingDrill, drillError, onToggle }: DrillItemRowProps) {
+function DrillItemRow({ item, meses, baseDepth, receitaBruta, expanded, drillCache, loadingDrill, drillError, onToggle }: DrillItemRowProps) {
   const key = item.tipo === 'conta'
     ? `conta:${item.codigo}`
     : `grupo:${item.grupo_grid}:${item.tipo_valor}`
@@ -507,26 +680,38 @@ function DrillItemRow({ item, meses, baseDepth, expanded, drillCache, loadingDri
             )}
           </div>
         </td>
-        {meses.map((mes, i) => (
-          <td key={mes} className={cn(
-            'px-3 py-1.5 text-right tabular-nums text-[12px]',
-            item.valoresPorMes[i] < 0 ? 'text-rose-600' : 'text-gray-700',
-          )}>
-            {fmtBRL(item.valoresPorMes[i] ?? 0)}
-          </td>
-        ))}
+        {meses.flatMap((mes, i) => {
+          const v = item.valoresPorMes[i] ?? 0
+          const rb = receitaBruta?.valoresPorMes[i] ?? 0
+          return [
+            <td key={`${mes}-v`} className={cn(
+              'px-3 py-1.5 text-right tabular-nums text-[12px]',
+              v < 0 ? 'text-rose-600' : 'text-gray-700',
+            )}>
+              {fmtBRL(v)}
+            </td>,
+            <td key={`${mes}-av`} className="px-2 py-1.5 text-right tabular-nums text-[11px] text-gray-500">
+              {rb !== 0 ? fmtPct((v / rb) * 100) : '—'}
+            </td>,
+          ]
+        })}
         <td className={cn(
           'px-4 py-1.5 text-right tabular-nums text-[12px] bg-gray-50 font-medium',
           item.total < 0 ? 'text-rose-700' : 'text-emerald-700',
         )}>
           {fmtBRL(item.total)}
         </td>
+        <td className="px-2 py-1.5 text-right tabular-nums text-[11px] bg-gray-50 text-gray-500">
+          {receitaBruta && receitaBruta.total !== 0
+            ? fmtPct((item.total / receitaBruta.total) * 100)
+            : '—'}
+        </td>
       </tr>
 
       {/* Drill nível 2: erro ou vazio */}
       {isOpen && drillError.has(key) && (
         <tr className="border-b border-gray-100 bg-red-50">
-          <td colSpan={meses.length + 2} className="px-4 py-3 text-[11.5px] text-red-700"
+          <td colSpan={meses.length * 2 + 3} className="px-4 py-3 text-[11.5px] text-red-700"
               style={{ paddingLeft: 16 + (baseDepth + 2) * 20 }}>
             <span className="font-medium">Erro: </span>{drillError.get(key)}
           </td>
@@ -534,7 +719,7 @@ function DrillItemRow({ item, meses, baseDepth, expanded, drillCache, loadingDri
       )}
       {isOpen && !drillError.has(key) && lancs.length === 0 && (
         <tr className="border-b border-gray-100 bg-gray-50/40">
-          <td colSpan={meses.length + 2} className="px-4 py-3 text-center text-[11.5px] text-gray-500"
+          <td colSpan={meses.length * 2 + 3} className="px-4 py-3 text-center text-[11.5px] text-gray-500"
               style={{ paddingLeft: 16 + (baseDepth + 2) * 20 }}>
             Nenhum lançamento no período
           </td>
@@ -574,22 +759,25 @@ function LancamentoRow({ lanc, meses, baseDepth }: {
           </span>
         </div>
       </td>
-      {meses.map((mes, i) => (
-        <td key={mes} className={cn(
+      {meses.flatMap((mes, i) => [
+        <td key={`${mes}-v`} className={cn(
           'px-3 py-1 text-right tabular-nums text-[11.5px]',
           i === idxMes
             ? lanc.valor < 0 ? 'text-rose-600' : 'text-gray-700'
             : 'text-gray-300',
         )}>
           {i === idxMes ? fmtBRL(lanc.valor) : '—'}
-        </td>
-      ))}
+        </td>,
+        // AV% por mês — não aplicável a lançamento individual; célula vazia mantém alinhamento
+        <td key={`${mes}-av`} className="px-2 py-1" />,
+      ])}
       <td className={cn(
         'px-4 py-1 text-right tabular-nums text-[11.5px] bg-gray-50',
         lanc.valor < 0 ? 'text-rose-700' : 'text-gray-600',
       )}>
         {fmtBRL(lanc.valor)}
       </td>
+      <td className="px-2 py-1 bg-gray-50" />
     </tr>
   )
 }
