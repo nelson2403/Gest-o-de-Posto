@@ -25,8 +25,8 @@ import type { Permission } from '@/lib/utils/permissions'
 
 // ─── Nav types ────────────────────────────────────────────────────────────────
 
-type NavChild = { href: string; label: string; icon: React.ElementType; permission: Permission | null }
-type NavItem  = { href?: string; label: string; icon: React.ElementType; permission: Permission | null; children?: NavChild[]; divider?: boolean }
+type NavChild = { href: string; label: string; icon: React.ElementType; permission: Permission | null; hideForRoles?: Role[] }
+type NavItem  = { href?: string; label: string; icon: React.ElementType; permission: Permission | null; children?: NavChild[]; divider?: boolean; hideForRoles?: Role[] }
 type NavGroup = { label: string; items: NavItem[] }
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Fiscal',
     items: [
-      { href: '/fiscal',         label: 'Painel Fiscal',      icon: Scale,         permission: 'fiscal.view' as Permission },
+      { href: '/fiscal',         label: 'Painel Fiscal',      icon: Scale,         permission: 'fiscal.view' as Permission, hideForRoles: ['gerente'] },
       { href: '/fiscal/tarefas', label: 'Tarefas Fiscal',     icon: ClipboardList, permission: 'fiscal.view' as Permission },
       { href: '/fiscal/geracao', label: 'Geração de Tarefas', icon: FileText,      permission: 'fiscal.geracao' as Permission },
     ],
@@ -100,15 +100,6 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/sugestao-pedido',     label: 'Sugestão de Pedido', icon: ShoppingCart,  permission: 'estoque.view' as Permission },
       { href: '/fornecedores',        label: 'Fornecedores',       icon: Truck,         permission: 'estoque.view' as Permission },
       { href: '/rotina-fornecedores', label: 'Rotina de Visitas',  icon: CalendarDays,  permission: 'estoque.view' as Permission },
-    ],
-  },
-  {
-    label: 'Marketing',
-    items: [
-      { href: '/marketing',             label: 'Dashboard',   icon: Megaphone,  permission: 'marketing.view' as Permission },
-      { href: '/marketing/patrocinio',  label: 'Patrocínios', icon: Gift,       permission: 'marketing.create_patrocinio' as Permission },
-      { href: '/marketing/acoes',       label: 'Ações',       icon: TrendingUp, permission: 'marketing.ver_acoes' as Permission },
-      { href: '/marketing/conciliacao', label: 'Conciliação', icon: Link2,      permission: 'marketing.conciliacao' as Permission },
     ],
   },
   {
@@ -152,11 +143,14 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Coligadas',
     items: [
+      { href: '/transpombal', label: 'Transpombal — Frota', icon: Truck, permission: 'transpombal.view' as Permission },
+      { href: '/tanques',     label: 'Medição de Tanques',  icon: Fuel,  permission: 'tanques.view' as Permission },
       {
-        label: 'Transpombal', icon: Truck, permission: 'transpombal.view' as Permission,
+        label: 'Marketing', icon: Megaphone, permission: 'marketing.view' as Permission,
         children: [
-          { href: '/transpombal', label: 'Transpombal — Frota', icon: Truck, permission: 'transpombal.view' as Permission },
-          { href: '/tanques',     label: 'Medição de Tanques',  icon: Fuel,  permission: 'tanques.view' as Permission },
+          { href: '/marketing/patrocinio',  label: 'Patrocínios', icon: Gift,       permission: 'marketing.create_patrocinio' as Permission },
+          { href: '/marketing/acoes',       label: 'Ações',       icon: TrendingUp, permission: 'marketing.ver_acoes' as Permission },
+          { href: '/marketing/conciliacao', label: 'Conciliação', icon: Link2,      permission: 'marketing.conciliacao' as Permission },
         ],
       },
     ],
@@ -435,7 +429,10 @@ export function Topbar() {
         {/* Nav groups — desktop */}
         <nav ref={navRef} className="hidden md:flex items-center gap-0 flex-1 min-w-0">
           {NAV_GROUPS.map(group => {
-            const visibleItems = group.items.filter(i => !i.permission || canUser(i.permission))
+            const visibleItems = group.items.filter(i =>
+              (!i.permission || canUser(i.permission)) &&
+              (!i.hideForRoles || !role || !i.hideForRoles.includes(role))
+            )
             if (!visibleItems.length) return null
             const isGroupActive = groupHasActive(group)
             const isOpen = openGroup === group.label
@@ -624,7 +621,10 @@ export function Topbar() {
             </Link>
           )}
           {NAV_GROUPS.map(group => {
-            const visibleItems = group.items.filter(i => !i.permission || canUser(i.permission))
+            const visibleItems = group.items.filter(i =>
+              (!i.permission || canUser(i.permission)) &&
+              (!i.hideForRoles || !role || !i.hideForRoles.includes(role))
+            )
             if (!visibleItems.length) return null
             return (
               <div key={group.label}>

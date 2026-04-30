@@ -224,27 +224,41 @@ function Etapa({
 
 export default function FiscalTarefasPage() {
   const { usuario } = useAuthContext()
+  const isMaster = usuario?.role === 'master'
   const isGerente = usuario?.role === 'gerente'
   const postoIdGerente = usuario?.posto_fechamento_id ?? null
 
+  // Todos os hooks devem ser declarados antes de qualquer return condicional
   const [tarefas, setTarefas]   = useState<any[]>([])
   const [loading, setLoading]   = useState(true)
   const [filtroStatus, setFiltroStatus] = useState('')
   const [filtroPosto, setFiltroPosto]   = useState('')
 
   const carregar = useCallback(async () => {
+    if (!isMaster) return
     setLoading(true)
     const params = new URLSearchParams()
     if (filtroStatus) params.set('status', filtroStatus)
-    // Gerente só vê as tarefas do próprio posto
     const postoFiltro = isGerente ? postoIdGerente : filtroPosto
     if (postoFiltro) params.set('posto_id', postoFiltro)
     const r = await fetch(`/api/fiscal/tarefas?${params}`)
     setTarefas(await r.json())
     setLoading(false)
-  }, [filtroStatus, filtroPosto, isGerente, postoIdGerente])
+  }, [filtroStatus, filtroPosto, isGerente, postoIdGerente, isMaster])
 
   useEffect(() => { carregar() }, [carregar])
+
+  if (!isMaster) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4 text-center px-6">
+        <Clock className="w-14 h-14 text-gray-600" />
+        <div>
+          <h2 className="text-2xl font-bold text-white">Em Breve</h2>
+          <p className="text-gray-400 text-sm mt-1">Esta funcionalidade estará disponível em breve.</p>
+        </div>
+      </div>
+    )
+  }
 
   const postos = [...new Map(tarefas.filter(t => t.postos).map(t => [t.posto_id, t.postos])).entries()]
     .map(([id, p]) => ({ id, nome: p.nome }))
