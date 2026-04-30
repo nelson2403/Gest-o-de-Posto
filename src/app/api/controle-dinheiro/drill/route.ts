@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import {
   listarMovtosCaixaPorPeriodo,
   aggregarSaldoPorEmpresaConta,
+  buscarSaldosIniciaisConta,
   type MovtoCaixaLancamento,
 } from '@/lib/autosystem'
 
@@ -54,15 +55,22 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Saldo inicial da conta antes do período (só faz sentido quando há dataIni)
+    // Saldo inicial = implantação (conta.saldo_inicial, vinda de migração de
+    // sistemas anteriores) + acumulado de movtos antes do período.
     let saldoInicialPeriodo = 0
+
+    const saldosImplantacao = await buscarSaldosIniciaisConta([empresaId], [contaCodigo])
+    saldoInicialPeriodo += saldosImplantacao.get(`${empresaId}:${contaCodigo}`)
+                       ?? saldosImplantacao.get(`:${contaCodigo}`)
+                       ?? 0
+
     if (dataIni) {
       const d = new Date(`${dataIni}T00:00:00`)
       d.setDate(d.getDate() - 1)
       const dataAntes = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
       const saldosAntes = await aggregarSaldoPorEmpresaConta([empresaId], [contaCodigo], null, dataAntes)
       const s = saldosAntes.find(x => Number(x.empresa) === empresaId && x.codigo === contaCodigo)
-      if (s) saldoInicialPeriodo = Number(s.total_debitar) - Number(s.total_creditar)
+      if (s) saldoInicialPeriodo += Number(s.total_debitar) - Number(s.total_creditar)
     }
 
     // Lançamentos individuais no período

@@ -225,3 +225,46 @@ body {
 .btn-primary {
   @apply flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer;
 }
+
+/* ── Impressão A4 retrato ─────────────────────────────────────────── */
+@media print {
+  @page { size: A4 portrait; margin: 1.5cm; }
+  html, body {
+    background: white !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  /* Evita que o layout do dashboard force scroll dentro de um único viewport */
+  .h-screen,
+  .min-h-full,
+  .min-h-screen,
+  .overflow-hidden,
+  .overflow-x-hidden,
+  .overflow-y-auto,
+  .overflow-x-auto {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  main {
+    width: 100% !important;
+    overflow: visible !important;
+  }
+  /* Quebras controladas */
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+  /* Bloco de empresa: pode quebrar entre páginas, mas não deixa o header
+     da empresa órfão (próximo bloco gráfico fica junto). */
+  .print-empresa-block { page-break-inside: auto; }
+  .print-empresa-block > div:first-child { page-break-after: avoid; }
+  /* Tabelas devem caber na largura do papel — 100% da área entre as margens do @page */
+  table {
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: fixed;
+    border-collapse: collapse;
+  }
+  td, th { word-wrap: break-word; overflow-wrap: anywhere; }
+}

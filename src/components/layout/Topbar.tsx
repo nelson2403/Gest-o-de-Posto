@@ -399,7 +399,7 @@ export function Topbar() {
 
   return (
     <>
-    <header className="sticky top-0 z-40 w-full bg-[#8b1a14] border-b border-black/10 flex-shrink-0">
+    <header className="sticky top-0 z-40 w-full bg-[#8b1a14] border-b border-black/10 flex-shrink-0 print:hidden">
       <div className="flex items-center h-[52px] px-3 md:px-4 gap-2">
 
         {/* Logo */}

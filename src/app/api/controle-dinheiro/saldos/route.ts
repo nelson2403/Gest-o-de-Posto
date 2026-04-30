@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { buscarEmpresas, aggregarSaldoPorEmpresaConta } from '@/lib/autosystem'
+import {
+  buscarEmpresas,
+  aggregarSaldoPorEmpresaConta,
+  buscarSaldosIniciaisConta,
+} from '@/lib/autosystem'
 
 export interface SaldoConta {
   conta_grid:    string
@@ -88,13 +92,18 @@ export async function GET(req: NextRequest) {
         })()
       : null
 
-    const [saldosPeriodo, saldosInicial] = await Promise.all([
+    const [saldosPeriodo, saldosInicial, saldosImplantacao] = await Promise.all([
       empresaIds.length && codigos.length
         ? aggregarSaldoPorEmpresaConta(empresaIds, codigos, dataIni, dataFim)
         : Promise.resolve([]),
       empresaIds.length && codigos.length && dataAntesIni
         ? aggregarSaldoPorEmpresaConta(empresaIds, codigos, null, dataAntesIni)
         : Promise.resolve([]),
+      // Saldo de implantação (conta.saldo_inicial) — independente de período,
+      // entra como base do saldo inicial.
+      empresaIds.length && codigos.length
+        ? buscarSaldosIniciaisConta(empresaIds, codigos)
+        : Promise.resolve(new Map<string, number>()),
     ])
 
     // Indexa saldos por (empresa, codigo)
@@ -111,6 +120,12 @@ export async function GET(req: NextRequest) {
       const key = `${s.empresa}:${s.codigo}`
       inicialMap.set(key, Number(s.total_debitar) - Number(s.total_creditar))
     }
+    // Helper: lookup do saldo de implantação por (empresa, codigo) — cai pro
+    // escopo global (`:${codigo}`) quando o plano de contas é compartilhado.
+    const saldoImplantacaoFor = (empresaId: number, codigo: string): number =>
+      saldosImplantacao.get(`${empresaId}:${codigo}`)
+        ?? saldosImplantacao.get(`:${codigo}`)
+        ?? 0
 
     // Monta tree empresa → contas. Inclui contas com saldo inicial OU movimentação.
     const empresas: SaldoEmpresa[] = []
@@ -119,7 +134,15 @@ export async function GET(req: NextRequest) {
       for (const c of contasConfig) {
         const key = `${empId}:${c.conta_codigo}`
         const s = saldoMap.get(key)
-        const saldoInicial = inicialMap.get(key) ?? 0
+        // Empresa só "tem" essa conta se houver pelo menos um movto (no período
+        // OU em qualquer momento anterior). Como o plano de contas é global,
+        // sem essa checagem o saldo de implantação apareceria em todas as
+        // empresas, mesmo as que nunca usaram a conta.
+        const empresaUsaConta = saldoMap.has(key) || inicialMap.has(key)
+        const saldoImplantacao = empresaUsaConta
+          ? saldoImplantacaoFor(empId, c.conta_codigo)
+          : 0
+        const saldoInicial = saldoImplantacao + (inicialMap.get(key) ?? 0)
         const totalDebitar  = s?.debitar  ?? 0
         const totalCreditar = s?.creditar ?? 0
         // Omite se NÃO houver nenhuma movimentação (nem saldo inicial nem período)

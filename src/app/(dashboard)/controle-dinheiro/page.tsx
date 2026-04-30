@@ -463,29 +463,48 @@ export default function ControleDinheiroPage() {
                                     </tr>
                                   )}
                                   {isContaOpen && !dErr && drill && drill.dias.map(dia => {
-                                    const diaKey  = `${drillKey}:${dia.data}`
-                                    const isDiaOpen = diasAbertos.has(diaKey)
+                                    const diaKey      = `${drillKey}:${dia.data}`
+                                    const isDiaOpen   = diasAbertos.has(diaKey)
+                                    const saldoZerado = Math.abs(dia.saldoFinal) < 0.005
                                     return (
                                     <Fragment key={diaKey}>
                                       <tr
-                                        className="border-b border-gray-100 bg-blue-50/30 hover:bg-blue-50/60 cursor-pointer"
+                                        className={cn(
+                                          'border-b cursor-pointer',
+                                          saldoZerado
+                                            ? 'border-amber-300 bg-amber-100/80 hover:bg-amber-200/80'
+                                            : 'border-gray-100 bg-blue-50/30 hover:bg-blue-50/60',
+                                        )}
                                         onClick={() => toggleDia(diaKey)}
                                       >
                                         <td className="px-4 py-1.5 pl-24">
-                                          <div className="flex items-center gap-2 text-[11.5px] font-medium text-gray-700">
-                                            <span className="w-3.5 h-3.5 flex items-center justify-center text-gray-400">
+                                          <div className={cn(
+                                            'flex items-center gap-2 text-[11.5px] font-medium',
+                                            saldoZerado ? 'text-amber-900' : 'text-gray-700',
+                                          )}>
+                                            <span className={cn('w-3.5 h-3.5 flex items-center justify-center', saldoZerado ? 'text-amber-600' : 'text-gray-400')}>
                                               {isDiaOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                                             </span>
-                                            <Calendar className="w-3 h-3 text-gray-400" />
+                                            <Calendar className={cn('w-3 h-3', saldoZerado ? 'text-amber-600' : 'text-gray-400')} />
                                             {fmtDataLonga(dia.data)}
-                                            <span className="text-[10px] text-gray-400 ml-1">({dia.lancamentos.length} lanç.)</span>
+                                            <span className={cn('text-[10px] ml-1', saldoZerado ? 'text-amber-700/80' : 'text-gray-400')}>({dia.lancamentos.length} lanç.)</span>
+                                            {saldoZerado && (
+                                              <span className="ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-bold uppercase tracking-wide bg-amber-500 text-white">
+                                                <AlertCircle className="w-2.5 h-2.5" /> Saldo zerado
+                                              </span>
+                                            )}
                                           </div>
                                         </td>
                                         <td className={cn('px-3 py-1.5 text-right tabular-nums text-[11.5px]', dia.saldoInicial < 0 ? 'text-rose-600' : 'text-gray-600')}>{fmtBRL(dia.saldoInicial)}</td>
                                         <td className="px-3 py-1.5 text-right tabular-nums text-[11.5px] text-emerald-700">{fmtBRL(dia.entradas)}</td>
                                         <td className="px-3 py-1.5 text-right tabular-nums text-[11.5px] text-rose-700">{fmtBRL(dia.saidas)}</td>
                                         <td />
-                                        <td className={cn('px-4 py-1.5 text-right tabular-nums text-[11.5px] font-semibold bg-blue-50/30', dia.saldoFinal < 0 ? 'text-rose-700' : 'text-emerald-700')}>{fmtBRL(dia.saldoFinal)}</td>
+                                        <td className={cn(
+                                          'px-4 py-1.5 text-right tabular-nums text-[11.5px] font-semibold',
+                                          saldoZerado
+                                            ? 'bg-amber-200 text-amber-900 ring-1 ring-amber-400'
+                                            : cn('bg-blue-50/30', dia.saldoFinal < 0 ? 'text-rose-700' : 'text-emerald-700'),
+                                        )}>{fmtBRL(dia.saldoFinal)}</td>
                                       </tr>
                                       {isDiaOpen && dia.lancamentos.map((l, idx) => {
                                         // Linha 1 visível: motivo + histórico (preferencial)

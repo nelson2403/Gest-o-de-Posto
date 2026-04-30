@@ -618,6 +618,53 @@ export interface SaldoEmpresaConta extends Record<string, unknown> {
   total_creditar: number
 }
 
+// Saldo de implantação (vindo de migração de sistemas anteriores) gravado na
+// própria tabela `conta`. Algumas instâncias do AUTOSYSTEM têm a coluna
+// `empresa` em conta (saldo por empresa); outras não (plano global).
+//
+// O retorno usa um Map com chave `${empresa}:${codigo}` quando a coluna
+// existe, ou `:${codigo}` (escopo global) quando não — basta a rota
+// consultar nesta ordem para obter o valor correto.
+export async function buscarSaldosIniciaisConta(
+  empresaIds: number[],
+  codigos:    string[],
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>()
+  if (!codigos.length) return result
+
+  const cols = await colunasExistentes('conta', ['empresa', 'saldo_inicial'])
+  if (!cols.has('saldo_inicial')) return result
+
+  if (cols.has('empresa') && empresaIds.length) {
+    const rows = await query<{ empresa: number; codigo: string; saldo_inicial: number }>(
+      `SELECT empresa::bigint                          AS empresa,
+              codigo::text                             AS codigo,
+              COALESCE(saldo_inicial, 0)::float        AS saldo_inicial
+       FROM conta
+       WHERE codigo  = ANY($1::text[])
+         AND empresa = ANY($2::bigint[])`,
+      [codigos, empresaIds],
+    )
+    for (const r of rows) {
+      const v = Number(r.saldo_inicial) || 0
+      if (v !== 0) result.set(`${r.empresa}:${r.codigo}`, v)
+    }
+  } else {
+    const rows = await query<{ codigo: string; saldo_inicial: number }>(
+      `SELECT codigo::text                             AS codigo,
+              COALESCE(saldo_inicial, 0)::float        AS saldo_inicial
+       FROM conta
+       WHERE codigo = ANY($1::text[])`,
+      [codigos],
+    )
+    for (const r of rows) {
+      const v = Number(r.saldo_inicial) || 0
+      if (v !== 0) result.set(`:${r.codigo}`, v)
+    }
+  }
+  return result
+}
+
 export async function aggregarSaldoPorEmpresaConta(
   empresaIds:   number[],
   contaCodigos: string[],
@@ -1192,6 +1239,35 @@ export async function buscarTitulosPagar(
   if (situacao === 'aberto')  sql += ` AND child = 0`
 
   sql += ` ORDER BY vencto ASC LIMIT 2000`
+  return query(sql, params)
+}
+
+// Versão multi-empresa do buscarTitulosPagar — usada pela conferência diária
+// (treeview com todas as empresas em uma única chamada). Retorna empresa e data
+// adicionalmente, para permitir agrupar por empresa e mostrar emissão.
+export async function buscarTitulosPagarMulti(
+  empresaGrids: number[],
+  ini: string,
+  fim: string,
+  situacao: string,
+): Promise<Record<string, unknown>[]> {
+  if (!empresaGrids.length) return []
+  const hoje = new Date().toISOString().slice(0, 10)
+  const params: unknown[] = [empresaGrids, ini, fim]
+  let sql = `
+    SELECT mlid::bigint, empresa::bigint, data::text, vencto::text, documento::text,
+           valor::float, obs::text, child::float, motivo::bigint, pessoa::bigint
+    FROM movto
+    WHERE empresa = ANY($1::bigint[])
+      AND conta_creditar = '2.1.1'
+      AND vencto >= $2::date AND vencto <= $3::date`
+
+  if (situacao === 'a_vencer')  { params.push(hoje); sql += ` AND child = 0 AND vencto >= $${params.length}::date` }
+  if (situacao === 'em_atraso') { params.push(hoje); sql += ` AND child = 0 AND vencto < $${params.length}::date` }
+  if (situacao === 'pago')    sql += ` AND child > 0`
+  if (situacao === 'aberto')  sql += ` AND child = 0`
+
+  sql += ` ORDER BY vencto ASC LIMIT 10000`
   return query(sql, params)
 }
 
