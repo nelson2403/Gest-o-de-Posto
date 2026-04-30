@@ -188,6 +188,7 @@ export default function CRConfiguracaoPage() {
             <span className="text-[12px] font-semibold text-gray-600">Motivos de Movimentação de Caixa</span>
             <span className="text-[11px] text-gray-400 ml-1">AUTOSYSTEM · grids fixos</span>
           </div>
+          <div className="overflow-x-auto">
           <table className="w-full text-[12.5px]">
             <thead>
               <tr className="border-b border-gray-200 text-[11px]">
@@ -230,6 +231,7 @@ export default function CRConfiguracaoPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
 
         {/* ── Contas contábeis ── */}
@@ -245,6 +247,7 @@ export default function CRConfiguracaoPage() {
                 <p className="text-[13px]">Nenhuma conta encontrada.</p>
               </div>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full text-[12.5px]">
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50 text-[11px]">
@@ -305,6 +308,7 @@ export default function CRConfiguracaoPage() {
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         )}

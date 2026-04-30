@@ -490,7 +490,7 @@ export default function ControleCaixasPage() {
                     return (
                       <div key={u.id} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
                         {/* Cabeçalho do usuário */}
-                        <div className="flex items-center gap-4 px-6 py-4 border-b border-gray-100 bg-gray-50/60">
+                        <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
                           <div className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
                             {initials}
                           </div>
@@ -498,17 +498,17 @@ export default function ControleCaixasPage() {
                             <p className="text-[15px] font-semibold text-gray-900">{u.nome}</p>
                             <p className="text-[12px] text-gray-400">{postosDoUsuario.length} posto(s) vinculado(s)</p>
                           </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className="flex items-center gap-1.5 text-[12px] font-semibold bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-full">
-                              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="flex items-center gap-1.5 text-[11px] font-semibold bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                               {contadores.em_dia} em dia
                             </span>
-                            <span className="flex items-center gap-1.5 text-[12px] font-semibold bg-amber-100 text-amber-700 px-3 py-1.5 rounded-full">
-                              <span className="w-2 h-2 rounded-full bg-amber-500" />
+                            <span className="flex items-center gap-1.5 text-[11px] font-semibold bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                               {contadores.atencao} atenção
                             </span>
-                            <span className="flex items-center gap-1.5 text-[12px] font-semibold bg-red-100 text-red-700 px-3 py-1.5 rounded-full">
-                              <span className="w-2 h-2 rounded-full bg-red-500" />
+                            <span className="flex items-center gap-1.5 text-[11px] font-semibold bg-red-100 text-red-700 px-2.5 py-1 rounded-full">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
                               {contadores.atrasado} atrasado
                             </span>
                           </div>

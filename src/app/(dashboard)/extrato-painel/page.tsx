@@ -299,19 +299,19 @@ export default function ExtratoPainelPage() {
         {/* ── Painel de alertas de divergência ────────────────────────── */}
         {alertas.length > 0 && (
           <div className="rounded-xl border border-red-300 bg-red-50 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 text-red-600" />
+            <div className="flex flex-wrap items-start gap-2">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <ShieldAlert className="w-4 h-4 text-red-600 flex-shrink-0" />
                 <span className="font-semibold text-[13px] text-red-700">
                   {alertas.length} extrato{alertas.length !== 1 ? 's' : ''} divergiu após a validação — AUTOSYSTEM alterado
                 </span>
                 {verificadoEm && (
-                  <span className="text-[11px] text-red-400">
+                  <span className="text-[11px] text-red-400 whitespace-nowrap">
                     Verificado às {verificadoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 <Button
                   size="sm"
                   onClick={aceitarTodas}
@@ -335,17 +335,17 @@ export default function ExtratoPainelPage() {
                     <p className="text-[13px] font-semibold text-gray-800">{a.postoNome}</p>
                     <p className="text-[11px] text-gray-500">{a.titulo} · Data: {new Date(a.data + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
                   </div>
-                  <div className="flex items-center gap-4 text-[12px]">
+                  <div className="flex flex-wrap items-center gap-3 text-[12px]">
                     <div className="text-center">
                       <p className="text-[10px] text-gray-400 uppercase tracking-wide">Extrato</p>
                       <p className="font-mono font-semibold text-gray-700">{a.movExtrato >= 0 ? '+' : ''}{formatCurrency(a.movExtrato)}</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">AUTOSYSTEM anterior</p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">AS anterior</p>
                       <p className="font-mono font-semibold text-green-700">{a.movAnterior >= 0 ? '+' : ''}{formatCurrency(a.movAnterior)}</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">AUTOSYSTEM atual</p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">AS atual</p>
                       <p className="font-mono font-semibold text-red-600">{a.movAtual >= 0 ? '+' : ''}{formatCurrency(a.movAtual)}</p>
                     </div>
                     <div className="text-center">

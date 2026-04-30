@@ -718,7 +718,7 @@ export default function UsuariosPage() {
                   <ClipboardList className="w-3.5 h-3.5" />
                   Histórico de Tarefas
                 </p>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
                     { label: 'Total', value: detalheStats.totalTarefas, color: 'bg-gray-100 text-gray-700' },
                     { label: 'Em aberto', value: detalheStats.abertas, color: 'bg-yellow-50 text-yellow-700' },

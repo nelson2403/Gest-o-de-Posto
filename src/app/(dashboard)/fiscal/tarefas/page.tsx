@@ -101,7 +101,7 @@ function TarefaRow({ t, onAtualizar }: { t: any; onAtualizar: () => void }) {
       {aberto && (
         <div className="border-t border-gray-800 p-4 space-y-4">
           {/* Info */}
-          <div className="grid grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
             <div><p className="text-gray-500 text-xs">Emissão</p><p className="text-white">{fmtDate(t.data_emissao)}</p></div>
             <div><p className="text-gray-500 text-xs">Valor Manifesto AS</p><p className="text-white font-bold">{fmt(t.valor_as)}</p></div>
             <div><p className="text-gray-500 text-xs">Venc. Boleto</p><p className={t.boleto_vencimento ? 'text-white' : 'text-gray-600'}>{fmtDate(t.boleto_vencimento)}</p></div>
@@ -251,19 +251,17 @@ export default function FiscalTarefasPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Tarefas Fiscal</h1>
-          <p className="text-sm text-gray-400 mt-1">{tarefas.length} tarefa(s) encontrada(s)</p>
-        </div>
+      <div>
+        <h1 className="text-xl sm:text-2xl font-bold text-white">Tarefas Fiscal</h1>
+        <p className="text-sm text-gray-400 mt-1">{tarefas.length} tarefa(s) encontrada(s)</p>
       </div>
 
       {/* Filtros */}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-2">
         <select
           value={filtroStatus}
           onChange={e => setFiltroStatus(e.target.value)}
-          className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm"
+          className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm flex-1 sm:flex-none"
         >
           <option value="">Todos os status</option>
           <option value="pendente_gerente">Pendente Gerente</option>
@@ -275,7 +273,7 @@ export default function FiscalTarefasPage() {
           <select
             value={filtroPosto}
             onChange={e => setFiltroPosto(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm"
+            className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm flex-1 sm:flex-none"
           >
             <option value="">Todos os postos</option>
             {postos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}

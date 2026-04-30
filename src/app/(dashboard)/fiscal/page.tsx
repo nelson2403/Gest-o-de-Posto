@@ -251,15 +251,15 @@ export default function FiscalPainelPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">Painel Fiscal</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Painel Fiscal</h1>
           <p className="text-sm text-gray-400 mt-1">Controle de notas fiscais, boletos e lançamentos</p>
         </div>
         <button
           onClick={syncAS}
           disabled={syncing}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 self-start sm:self-auto"
         >
           <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
           Sincronizar com AS
@@ -267,7 +267,7 @@ export default function FiscalPainelPage() {
       </div>
 
       {/* Cards de resumo */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <div className="bg-gray-900 border border-yellow-900/40 rounded-xl p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide">Pend. Gerente</p>
           <p className="text-3xl font-bold text-yellow-400 mt-1">{t?.pendentes_gerente ?? 0}</p>
@@ -296,32 +296,35 @@ export default function FiscalPainelPage() {
       </div>
 
       {/* Abas */}
-      <div className="flex gap-1 bg-gray-900 border border-gray-800 rounded-xl p-1 w-fit">
-        {[
-          { key: 'pendentes', label: 'Pendentes Gerente', count: t?.pendentes_gerente },
-          { key: 'aguardando', label: 'Aguardando Fiscal', count: t?.aguardando_fiscal },
-          { key: 'boletos', label: 'Boletos', count: (t?.boletos_vencendo ?? 0) + (t?.boletos_vencidos ?? 0) },
-        ].map(({ key, label, count }) => (
-          <button
-            key={key}
-            onClick={() => setAba(key as any)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              aba === key ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            {label}
-            {(count ?? 0) > 0 && (
-              <span className="bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
-                {count}
-              </span>
-            )}
-          </button>
-        ))}
+      <div className="overflow-x-auto pb-0.5">
+        <div className="flex gap-1 bg-gray-900 border border-gray-800 rounded-xl p-1 w-max">
+          {[
+            { key: 'pendentes', label: 'Pendentes Gerente', count: t?.pendentes_gerente },
+            { key: 'aguardando', label: 'Aguardando Fiscal', count: t?.aguardando_fiscal },
+            { key: 'boletos', label: 'Boletos', count: (t?.boletos_vencendo ?? 0) + (t?.boletos_vencidos ?? 0) },
+          ].map(({ key, label, count }) => (
+            <button
+              key={key}
+              onClick={() => setAba(key as any)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                aba === key ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              {label}
+              {(count ?? 0) > 0 && (
+                <span className="bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+                  {count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Aba: Pendentes Gerente */}
       {aba === 'pendentes' && (
         <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-800">
@@ -360,12 +363,14 @@ export default function FiscalPainelPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
       {/* Aba: Aguardando Fiscal */}
       {aba === 'aguardando' && (
         <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-800">
@@ -408,6 +413,7 @@ export default function FiscalPainelPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -453,6 +459,7 @@ export default function FiscalPainelPage() {
 
 function BoletoTable({ rows }: { rows: any[] }) {
   return (
+    <div className="overflow-x-auto">
     <table className="w-full">
       <thead>
         <tr className="border-b border-gray-800">
@@ -487,5 +494,6 @@ function BoletoTable({ rows }: { rows: any[] }) {
         })}
       </tbody>
     </table>
+    </div>
   )
 }

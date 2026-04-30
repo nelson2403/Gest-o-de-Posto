@@ -75,18 +75,18 @@ export default function FiscalGeracaoPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">Geração de Tarefas Fiscal</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Geração de Tarefas Fiscal</h1>
           <p className="text-sm text-gray-400 mt-1">
             Manifestos do AUTOSYSTEM ainda sem tarefa criada ({manifestos.length})
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={filtroPosto}
             onChange={e => setFiltroPosto(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm"
+            className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm flex-1 sm:flex-none"
           >
             <option value="">Todos os postos</option>
             {listaPosots.map(p => <option key={p} value={p}>{p}</option>)}
@@ -144,6 +144,7 @@ export default function FiscalGeracaoPage() {
                 <span className="text-sm font-medium text-white">{postoNome}</span>
                 <span className="text-xs text-gray-500">({items.length} manifesto{items.length > 1 ? 's' : ''})</span>
               </div>
+              <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-800">
@@ -178,6 +179,7 @@ export default function FiscalGeracaoPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           ))}
         </div>
