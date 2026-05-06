@@ -348,6 +348,40 @@ export async function buscarEmpresas(): Promise<{ grid: number; codigo: string; 
   return query(`SELECT grid::bigint AS grid, codigo::text, nome::text FROM empresa ORDER BY nome`)
 }
 
+// Igual a buscarEmpresas, mas tenta trazer o nome reduzido/fantasia quando o
+// AUTOSYSTEM tem essa coluna (varia entre versões — alguns chamam de
+// `nome_reduzido`, outros de `apelido` ou `nome_fantasia`). Cai no nome cheio
+// quando nenhuma das colunas existir.
+export async function buscarEmpresasComNomeReduzido(): Promise<{
+  grid: number
+  codigo: string
+  nome: string
+  nome_reduzido: string
+}[]> {
+  const cols = await colunasExistentes('empresa', [
+    'nome_reduzido', 'apelido', 'nome_fantasia', 'fantasia',
+  ])
+  const reduzidoCol =
+    cols.has('nome_reduzido')   ? 'nome_reduzido'
+  : cols.has('apelido')         ? 'apelido'
+  : cols.has('nome_fantasia')   ? 'nome_fantasia'
+  : cols.has('fantasia')        ? 'fantasia'
+  : null
+
+  const reduzidoExpr = reduzidoCol
+    ? `COALESCE(NULLIF(trim(${reduzidoCol}::text), ''), nome::text)`
+    : `nome::text`
+
+  return query(
+    `SELECT grid::bigint    AS grid,
+            codigo::text    AS codigo,
+            nome::text      AS nome,
+            ${reduzidoExpr} AS nome_reduzido
+     FROM empresa
+     ORDER BY nome`,
+  )
+}
+
 // ── conta ────────────────────────────────────────────────────────────────────
 
 export async function buscarContas(like: string): Promise<{ codigo: string; nome: string }[]> {
@@ -417,6 +451,37 @@ export interface ContaDetalhe extends Record<string, unknown> {
   codigo:   string
   nome:     string
   natureza: 'Débito' | 'Crédito'
+}
+
+// Para uma lista de códigos pais (sintéticos OU analíticos), retorna todos os
+// códigos da tabela `conta` que sejam o próprio pai OU descendentes (`pai.x.y`).
+// Cada linha vem com o `parent` mais específico (mais longo) que casou — usado
+// pela DRE para agregar os movtos analíticos de volta na conta-pai mapeada.
+export async function buscarCodigosComDescendentes(
+  parentCodigos: string[],
+): Promise<{ codigo: string; parent: string }[]> {
+  if (!parentCodigos.length) return []
+  const params: unknown[] = []
+  const conds: string[] = []
+  for (const p of parentCodigos) {
+    params.push(p)
+    const idxEq = params.length
+    params.push(p + '.%')
+    const idxLike = params.length
+    conds.push(`(codigo = $${idxEq}::text OR codigo LIKE $${idxLike}::text)`)
+  }
+  const rows = await query<{ codigo: string }>(
+    `SELECT DISTINCT codigo::text FROM conta WHERE ${conds.join(' OR ')}`,
+    params,
+  )
+  return rows.map(r => {
+    const codigo = r.codigo
+    // Pai mais específico = match mais longo (codigo === pai OR codigo começa com pai + '.')
+    const parent = parentCodigos
+      .filter(p => codigo === p || codigo.startsWith(p + '.'))
+      .sort((a, b) => b.length - a.length)[0]
+    return { codigo, parent: parent ?? codigo }
+  })
 }
 
 export async function buscarContasPorGrid(grids: string[]): Promise<ContaDetalhe[]> {
@@ -707,6 +772,7 @@ export async function aggregarSaldoPorEmpresaConta(
 // empresa, no período. Inclui motivo, histórico, documento e pessoa.
 export interface MovtoCaixaLancamento {
   data:       string  // YYYY-MM-DD
+  hora:       string | null  // HH:MM (quando o AUTOSYSTEM tem coluna de hora)
   valor:      number
   direcao:    'D' | 'C'  // D = entrada (caixa debitado); C = saída (caixa creditado)
   motivo:     string
@@ -717,6 +783,7 @@ export interface MovtoCaixaLancamento {
 
 interface MovtoCaixaRaw extends Record<string, unknown> {
   data:        string
+  hora:        string | null
   valor:       number
   direcao:     'D' | 'C'
   motivo_b:    Buffer | null
@@ -733,7 +800,11 @@ export async function listarMovtosCaixaPorPeriodo(
   limit = 5000,
 ): Promise<MovtoCaixaLancamento[]> {
   // Detecta a coluna de FK de pessoa em movto (varia entre instâncias do AUTOSYSTEM).
-  const cols = await colunasExistentes('movto', ['pessoa', 'cliente', 'observacao', 'obs', 'historico'])
+  const cols = await colunasExistentes('movto', [
+    'pessoa', 'cliente',
+    'observacao', 'obs', 'historico',
+    'hora', 'horario', 'data_hora', 'data_lancamento',
+  ])
   const pessoaFkCol = cols.has('pessoa')    ? 'pessoa'
                     : cols.has('cliente')   ? 'cliente'
                     : null
@@ -741,10 +812,17 @@ export async function listarMovtosCaixaPorPeriodo(
               : cols.has('obs')         ? 'obs'
               : cols.has('historico')   ? 'historico'
               : null
+  // `hora` pode ser TIME, TIMESTAMP ou texto — to_char lida com qualquer caso.
+  const horaCol = cols.has('hora')             ? 'hora'
+                : cols.has('horario')          ? 'horario'
+                : cols.has('data_hora')        ? 'data_hora'
+                : cols.has('data_lancamento')  ? 'data_lancamento'
+                : null
 
-  const histExpr = histCol ? `m.${histCol}::bytea` : 'NULL::bytea'
-  const pessoaExpr = pessoaFkCol ? 'p.nome::bytea' : 'NULL::bytea'
+  const histExpr   = histCol   ? `m.${histCol}::bytea` : 'NULL::bytea'
+  const pessoaExpr = pessoaFkCol ? 'p.nome::bytea'      : 'NULL::bytea'
   const joinPessoa = pessoaFkCol ? `LEFT JOIN pessoa p ON p.grid = m.${pessoaFkCol}` : ''
+  const horaExpr   = horaCol   ? `to_char(m.${horaCol}, 'HH24:MI')` : 'NULL::text'
 
   const params: unknown[] = [empresaId, codigo]
   let dataFiltroD = ''
@@ -756,6 +834,7 @@ export async function listarMovtosCaixaPorPeriodo(
 
   const rows = await query<MovtoCaixaRaw>(
     `SELECT to_char(m.data, 'YYYY-MM-DD') AS data,
+            ${horaExpr}                   AS hora,
             m.valor::float                AS valor,
             'D'::text                     AS direcao,
             mv.nome::bytea                AS motivo_b,
@@ -770,6 +849,7 @@ export async function listarMovtosCaixaPorPeriodo(
        ${dataFiltroD}
      UNION ALL
      SELECT to_char(m.data, 'YYYY-MM-DD') AS data,
+            ${horaExpr}                   AS hora,
             m.valor::float                AS valor,
             'C'::text                     AS direcao,
             mv.nome::bytea                AS motivo_b,
@@ -782,13 +862,14 @@ export async function listarMovtosCaixaPorPeriodo(
      WHERE m.empresa = $1::bigint
        AND m.conta_creditar = $2::text
        ${dataFiltroC}
-     ORDER BY data ASC
+     ORDER BY data ASC, hora ASC NULLS LAST
      LIMIT ${limitParam}`,
     params,
   )
 
   return rows.map(r => ({
     data:      r.data,
+    hora:      r.hora,
     valor:     Number(r.valor),
     direcao:   r.direcao,
     motivo:    decodeBytea(r.motivo_b).trim(),
@@ -879,6 +960,7 @@ export interface MovtoLancamento extends Record<string, unknown> {
   data:       string
   observacao: string | null
   valor:      number
+  empresa:    number   // grid da empresa no AUTOSYSTEM
 }
 
 // Helper: descobre quais colunas existem em uma tabela do AUTOSYSTEM.
@@ -926,18 +1008,24 @@ export async function listarMovtoConta(
   const rows = await query<{
     data:     string
     valor:    number
+    empresa:  number
     doc_b?:    Buffer | null
     pessoa_b?: Buffer | null
     obs_b?:    Buffer | null
   }>(
     `SELECT to_char(m.data, 'YYYY-MM-DD') AS data,
-            CASE WHEN m.conta_creditar = $4 THEN m.valor::float ELSE -m.valor::float END AS valor
+            m.empresa::bigint             AS empresa,
+            CASE WHEN m.conta_creditar::text = $4 OR m.conta_creditar::text LIKE $4 || '.%'
+                 THEN m.valor::float
+                 ELSE -m.valor::float
+            END AS valor
             ${selectExtra}
      FROM movto m
      ${joinPessoa}
      WHERE m.empresa = ANY($1::bigint[])
        AND m.data BETWEEN $2::date AND $3::date
-       AND (m.conta_debitar::text = $4 OR m.conta_creditar::text = $4)
+       AND ( m.conta_debitar::text  = $4 OR m.conta_debitar::text  LIKE $4 || '.%'
+          OR m.conta_creditar::text = $4 OR m.conta_creditar::text LIKE $4 || '.%' )
      ORDER BY m.data DESC, m.grid DESC
      LIMIT $5`,
     [empresaIds, dataIni, dataFim, codigo, limit],
@@ -956,6 +1044,7 @@ export async function listarMovtoConta(
       data:       r.data,
       observacao: partes.join(' · '),
       valor:      Number(r.valor),
+      empresa:    Number(r.empresa),
     }
   })
 }
@@ -965,6 +1054,7 @@ export interface LanctoGrupoLancamento extends Record<string, unknown> {
   data:       string
   observacao: string | null
   valor:      number
+  empresa:    number   // grid da empresa no AUTOSYSTEM
 }
 
 export async function listarLanctoGrupo(
@@ -1006,11 +1096,13 @@ export async function listarLanctoGrupo(
   const rows = await query<{
     data:     string
     valor:    number
+    empresa:  number
     doc_b?:    Buffer | null
     pessoa_b?: Buffer | null
     obs_b?:    Buffer | null
   }>(
     `SELECT to_char(l.data, 'YYYY-MM-DD')  AS data,
+            l.empresa::bigint              AS empresa,
             ${valorExpr}                   AS valor
             ${selectExtra}
      FROM lancto l
@@ -1044,6 +1136,7 @@ export async function listarLanctoGrupo(
       data:       r.data,
       observacao: partes.join(' · '),
       valor:      Number(r.valor),
+      empresa:    Number(r.empresa),
     }
   })
 }

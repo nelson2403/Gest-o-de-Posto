@@ -518,6 +518,11 @@ export default function ControleDinheiroPage() {
                                             <td className="px-4 py-1 pl-32">
                                               <div className="flex items-center gap-2 text-[11px] text-gray-600">
                                                 <FileText className="w-2.5 h-2.5 text-gray-300 flex-shrink-0" />
+                                                {l.hora && (
+                                                  <span className="font-mono text-[10.5px] text-gray-500 tabular-nums flex-shrink-0">
+                                                    {l.hora}
+                                                  </span>
+                                                )}
                                                 <span className="truncate">
                                                   {principal || <span className="italic text-gray-400">(sem motivo)</span>}
                                                   {secundario && <span className="text-gray-400 ml-2">· {secundario}</span>}

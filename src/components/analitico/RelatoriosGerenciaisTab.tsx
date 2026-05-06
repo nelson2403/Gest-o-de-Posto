@@ -752,6 +752,14 @@ function LancamentoRow({ lanc, meses, baseDepth }: {
       <td className="px-4 py-1 sticky left-0 bg-inherit z-10" style={{ paddingLeft: 16 + (baseDepth + 2) * 20 }}>
         <div className="flex items-center gap-2 text-[11.5px] text-gray-600">
           <FileText className="w-3 h-3 flex-shrink-0 text-gray-300" />
+          {lanc.empresa_nome && (
+            <span
+              className="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wide max-w-[140px] truncate"
+              title={lanc.empresa_nome}
+            >
+              {lanc.empresa_nome}
+            </span>
+          )}
           <span className="truncate text-gray-700">
             {lanc.observacao && lanc.observacao.trim()
               ? lanc.observacao

@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   buscarContasPorGrid,
+  buscarCodigosComDescendentes,
   aggregarMovtoPorContaPorMes,
   aggregarVendasCustosPorGrupoPorMes,
   aggregarMovtoPorContaPorEmpresa,
@@ -144,12 +145,13 @@ export async function GET(req: NextRequest) {
     } as DreResponse)
   }
 
-  // 2. Empresas do tenant
+  // 2. Empresas do tenant — inclui inclusive postos inativos, porque a DRE é
+  // histórica: lançamentos em fev/26 de um posto que foi inativado depois
+  // precisam continuar aparecendo no resultado do mês.
   const { data: postos } = await admin
     .from('postos')
     .select('codigo_empresa_externo')
     .not('codigo_empresa_externo', 'is', null)
-    .eq('ativo', true)
   const empresaIds = Array.from(new Set(
     (postos ?? []).map(p => Number(p.codigo_empresa_externo)).filter(n => !Number.isNaN(n))
   ))
@@ -162,15 +164,26 @@ export async function GET(req: NextRequest) {
   let movtosAgregados:  { codigo: string; mes: string; total_debitar: number; total_creditar: number }[] = []
   let vendasCustos:     { grupo_grid: string; mes: string; total_venda: number; total_custo: number }[] = []
 
+  // Mapa: codigo analítico real (em movto.conta_debitar/creditar) → conta-pai
+  // mapeada na máscara. Permite somar lançamentos das sub-contas no nó-pai.
+  let codigoToParent: Map<string, string> = new Map()
+  let todosCodigos: string[] = []
+
   try {
     if (contaGrids.length > 0) {
       const detalhes = await buscarContasPorGrid(contaGrids)
       contasDetalhes = detalhes.map(d => ({ grid: String(d.grid), codigo: d.codigo, natureza: d.natureza }))
-      const codigos = contasDetalhes.map(c => c.codigo)
-      if (codigos.length > 0 && empresaIds.length > 0) {
-        const movtos = await aggregarMovtoPorContaPorMes(empresaIds, dataIni, dataFim, codigos)
+      const codigosBase = contasDetalhes.map(c => c.codigo)
+      if (codigosBase.length > 0) {
+        const expandidos = await buscarCodigosComDescendentes(codigosBase)
+        codigoToParent = new Map(expandidos.map(e => [e.codigo, e.parent]))
+        todosCodigos = expandidos.map(e => e.codigo)
+      }
+      if (todosCodigos.length > 0 && empresaIds.length > 0) {
+        const movtos = await aggregarMovtoPorContaPorMes(empresaIds, dataIni, dataFim, todosCodigos)
         movtosAgregados = movtos.map(m => ({
-          codigo: m.codigo,
+          // Atribui ao código-pai mapeado (cai em si mesmo se já for o pai)
+          codigo: codigoToParent.get(m.codigo) ?? m.codigo,
           mes: m.mes,
           total_debitar:  Number(m.total_debitar) || 0,
           total_creditar: Number(m.total_creditar) || 0,
@@ -305,11 +318,10 @@ export async function GET(req: NextRequest) {
   // 7. Resultado por empresa — replica a mesma compute para cada empresa
   let resultadoPorEmpresa: ResultadoEmpresa[] = []
   try {
-    const codigos = contasDetalhes.map(c => c.codigo)
     const [movtosPorEmp, vcPorEmp, postos2] = await Promise.all([
-      codigos.length > 0 ? aggregarMovtoPorContaPorEmpresa(empresaIds, dataIni, dataFim, codigos) : Promise.resolve([]),
+      todosCodigos.length > 0 ? aggregarMovtoPorContaPorEmpresa(empresaIds, dataIni, dataFim, todosCodigos) : Promise.resolve([]),
       grupoGrids.length > 0 ? aggregarVendasCustosPorGrupoPorEmpresa(empresaIds, dataIni, dataFim, grupoGrids) : Promise.resolve([]),
-      admin.from('postos').select('codigo_empresa_externo, nome').not('codigo_empresa_externo', 'is', null).eq('ativo', true),
+      admin.from('postos').select('codigo_empresa_externo, nome').not('codigo_empresa_externo', 'is', null),
     ])
 
     const empresaNomeById = new Map<number, string>()
@@ -323,7 +335,9 @@ export async function GET(req: NextRequest) {
       for (const m of movtosPorEmp) {
         if (Number(m.empresa) !== empId) continue
         const bal = Number(m.total_creditar) - Number(m.total_debitar)
-        balByCod.set(m.codigo, (balByCod.get(m.codigo) ?? 0) + bal)
+        // Atribui ao código-pai (sub-contas analíticas somam no pai mapeado)
+        const cod = codigoToParent.get(m.codigo) ?? m.codigo
+        balByCod.set(cod, (balByCod.get(cod) ?? 0) + bal)
       }
       const vcByGrid = new Map<string, { v: number; c: number }>()
       for (const v of vcPorEmp) {
