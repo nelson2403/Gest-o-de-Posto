@@ -1,10 +1,26 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { buscarBalancoFinanceiro, buscarEmpresas, type BalancoTitulo } from '@/lib/autosystem'
+import {
+  buscarTitulosReceberBalanco,
+  buscarTitulosPagarBalanco,
+  buscarEmpresasComNomeReduzido,
+  type BalancoTitulo,
+  type BalancoPagarTitulo,
+} from '@/lib/autosystem'
+
+export interface PagarTituloResp extends BalancoPagarTitulo {
+  empresa_nome:          string  // nome cheio
+  empresa_nome_reduzido: string  // nome reduzido (cai no nome cheio se vazio)
+}
+
+export interface ReceberTituloResp extends BalancoTitulo {
+  empresa_nome:          string  // nome cheio
+  empresa_nome_reduzido: string  // nome reduzido (cai no nome cheio se vazio)
+}
 
 export interface BalancoResponse {
-  receber:        BalancoTitulo[]
-  pagar:          BalancoTitulo[]
+  receber:        ReceberTituloResp[] // Conta → Empresa → títulos
+  pagar:          PagarTituloResp[]   // Empresa → Conta → títulos
   totalReceber:   number
   totalPagar:     number
   saldoProjetado: number
@@ -21,8 +37,16 @@ export async function GET() {
     // Pega TODAS as empresas do AUTOSYSTEM (não apenas as marcadas como `posto` no Supabase),
     // garantindo que entidades como MATRIZ e TRANSPOMBAL — que não são postos mas têm
     // movimentação financeira — entrem no balanço.
-    const empresas = await buscarEmpresas()
+    const empresas = await buscarEmpresasComNomeReduzido()
     const empresaIds = empresas.map(e => Number(e.grid)).filter(n => !Number.isNaN(n))
+
+    const empresaInfoById = new Map<number, { nome: string; nome_reduzido: string }>()
+    for (const e of empresas) {
+      empresaInfoById.set(Number(e.grid), {
+        nome:          e.nome,
+        nome_reduzido: e.nome_reduzido || e.nome,
+      })
+    }
 
     if (!empresaIds.length) {
       return NextResponse.json({
@@ -33,7 +57,23 @@ export async function GET() {
       } as BalancoResponse)
     }
 
-    const { receber, pagar } = await buscarBalancoFinanceiro(empresaIds)
+    const [receberRaw, pagarRaw] = await Promise.all([
+      buscarTitulosReceberBalanco(empresaIds),
+      buscarTitulosPagarBalanco(empresaIds),
+    ])
+
+    const enriquecer = <T extends { empresa: number }>(t: T) => {
+      const info = empresaInfoById.get(t.empresa)
+      return {
+        ...t,
+        empresa_nome:          info?.nome          ?? `Empresa ${t.empresa}`,
+        empresa_nome_reduzido: info?.nome_reduzido ?? `Empresa ${t.empresa}`,
+      }
+    }
+
+    const receber: ReceberTituloResp[] = receberRaw.map(enriquecer)
+    const pagar:   PagarTituloResp[]   = pagarRaw.map(enriquecer)
+
     const totalReceber = receber.reduce((s, t) => s + t.valor, 0)
     const totalPagar   = pagar.reduce((s, t) => s + t.valor, 0)
     const resp: BalancoResponse = {

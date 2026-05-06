@@ -216,7 +216,7 @@ export function RelatoriosGerenciaisTab() {
   return (
     <div className="space-y-4">
       {/* Sub-tabs internas (DRE / Fluxo / Despesas / Balanço) */}
-      <div className="flex flex-wrap gap-1 border-b border-gray-200">
+      <div className="flex flex-wrap gap-1 border-b border-gray-200 print:hidden">
         {SUB_ABAS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}

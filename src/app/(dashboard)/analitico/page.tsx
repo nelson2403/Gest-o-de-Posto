@@ -1389,11 +1389,13 @@ export default function AnaliticoPage() {
 
   return (
     <div className="animate-fade-in">
-      <Header title="Analítico" description="Painéis analíticos por setor" />
+      <div className="print:hidden">
+        <Header title="Analítico" description="Painéis analíticos por setor" />
+      </div>
 
-      <div className="p-3 md:p-6 space-y-6">
+      <div className="p-3 md:p-6 space-y-6 print:p-0 print:space-y-0">
         {/* Abas principais */}
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto max-w-full">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto max-w-full print:hidden">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTabAtiva(id)}
               className={cn('flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 whitespace-nowrap',
