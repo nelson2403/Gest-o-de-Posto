@@ -14,6 +14,9 @@ export async function GET(req: NextRequest) {
       .eq('id', user.id)
       .single()
 
+    // Se não conseguiu determinar o papel do usuário, bloqueia acesso
+    if (!usuario) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status')
 
@@ -25,7 +28,7 @@ export async function GET(req: NextRequest) {
     if (status) query = query.eq('status', status)
 
     // Gerente vê apenas tarefas do próprio posto — filtro obrigatório no servidor
-    if (usuario?.role === 'gerente') {
+    if (usuario.role === 'gerente') {
       if (!usuario.posto_fechamento_id) return NextResponse.json([])
       query = query.eq('posto_id', usuario.posto_fechamento_id)
     } else {

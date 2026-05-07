@@ -81,6 +81,8 @@ export default function TarefasAvulsasPage() {
   const canEdit     = can(role ?? null, 'tarefas.edit')
   const canCreate   = can(role ?? null, 'tarefas.create')
   const isMasterAdmin = role === 'master'
+  const isGerente     = role === 'gerente'
+  const postoGerente  = usuario?.posto_fechamento_id ?? null
 
   const [tarefas,   setTarefas]   = useState<Tarefa[]>([])
   const [usuarios,  setUsuarios]  = useState<Pick<Usuario, 'id' | 'nome'>[]>([])
@@ -102,17 +104,23 @@ export default function TarefasAvulsasPage() {
 
   async function load() {
     setLoading(true)
-    const { data, error } = await supabase
+    let query = supabase
       .from('tarefas')
       .select('*, usuario:usuarios(id, nome), empresa:empresas(id, nome), posto:postos(id, nome)')
       .or('categoria.neq.conciliacao_bancaria,categoria.is.null')
       .order('data_conclusao_prevista', { ascending: true, nullsFirst: false })
+    // Gerente vê apenas as próprias tarefas (gestor pessoal)
+    if (isGerente && usuario?.id) {
+      query = query.eq('usuario_id', usuario.id)
+    }
+    const { data, error } = await query
     if (error) toast({ variant: 'destructive', title: 'Erro ao carregar', description: error.message })
     else setTarefas((data ?? []) as Tarefa[])
     setLoading(false)
   }
 
   useEffect(() => {
+    if (!usuario) return  // aguarda auth carregar antes de buscar
     load()
     supabase.from('postos').select('id, nome').order('nome')
       .then(({ data }) => { if (data) setPostos(data) })
@@ -120,12 +128,12 @@ export default function TarefasAvulsasPage() {
       supabase.from('usuarios').select('id, nome').eq('ativo', true).order('nome')
         .then(({ data }) => { if (data) setUsuarios(data) })
     }
-    if (!usuario?.empresa_id) {
+    if (!usuario.empresa_id) {
       supabase.from('empresas').select('id').limit(1).single()
         .then(({ data }) => { if (data) setEmpresaId(data.id) })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [usuario?.id])
 
   const filtered = useMemo(() => tarefas.filter(t => {
     if (filterStatus     !== 'todos' && t.status    !== filterStatus)     return false
@@ -279,6 +287,7 @@ export default function TarefasAvulsasPage() {
                 {Object.entries(PRIORIDADE_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
             </div>
+            {!isGerente && (
             <div>
               <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1 block">Posto</label>
               <select value={filterPosto} onChange={e => setFilterPosto(e.target.value)}
@@ -287,6 +296,7 @@ export default function TarefasAvulsasPage() {
                 {postos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </select>
             </div>
+            )}
             {isMasterAdmin && (
               <div>
                 <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1 block">Responsável</label>

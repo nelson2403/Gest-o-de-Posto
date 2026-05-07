@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from '@/hooks/use-toast'
@@ -219,8 +220,13 @@ function KpiCard({ label, value, sub, icon: Icon, color }: {
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function MarketingDashboard() {
   const { usuario } = useAuthContext()
+  const router      = useRouter()
   const isGerente   = usuario?.role === 'gerente'
   const postoFixoId = usuario?.posto_fechamento_id ?? null
+
+  useEffect(() => {
+    if (isGerente) router.replace('/marketing/patrocinio')
+  }, [isGerente, router])
 
   const [saldos, setSaldos]           = useState<Saldo[]>([])
   const [patrocinios, setPatrocinios] = useState<Patrocinio[]>([])

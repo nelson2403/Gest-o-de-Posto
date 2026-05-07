@@ -204,7 +204,8 @@ function diasAteVencer(d: string | null) {
 
 export default function FiscalPainelPage() {
   const { usuario } = useAuthContext()
-  const isGerente = usuario?.role === 'gerente'
+  const isMaster   = usuario?.role === 'master'
+  const isGerente  = usuario?.role === 'gerente'
   const postoIdGerente = usuario?.posto_fechamento_id ?? null
 
   const [data, setData]       = useState<PainelData | null>(null)
@@ -213,6 +214,7 @@ export default function FiscalPainelPage() {
   const [aba, setAba]         = useState<'pendentes' | 'aguardando' | 'boletos'>('pendentes')
 
   const carregar = useCallback(async () => {
+    if (!isMaster) return
     setLoading(true)
     try {
       const params = new URLSearchParams()
@@ -222,9 +224,21 @@ export default function FiscalPainelPage() {
     } finally {
       setLoading(false)
     }
-  }, [isGerente, postoIdGerente])
+  }, [isGerente, postoIdGerente, isMaster])
 
   useEffect(() => { carregar() }, [carregar])
+
+  if (!isMaster) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4 text-center px-6">
+        <Clock className="w-14 h-14 text-gray-600" />
+        <div>
+          <h2 className="text-2xl font-bold text-white">Em Breve</h2>
+          <p className="text-gray-400 text-sm mt-1">Esta funcionalidade estará disponível em breve.</p>
+        </div>
+      </div>
+    )
+  }
 
   async function syncAS() {
     setSyncing(true)

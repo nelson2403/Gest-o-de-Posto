@@ -43,10 +43,11 @@ export default function PostosPage() {
 
   async function load() {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('postos')
-      .select('*, empresa:empresas(id, nome)')
-      .order('nome')
+    let query = supabase.from('postos').select('*, empresa:empresas(id, nome)').order('nome')
+    if (role === 'gerente' && usuario?.posto_fechamento_id) {
+      query = query.eq('id', usuario.posto_fechamento_id)
+    }
+    const { data, error } = await query
     if (!error) setPostos(data as Posto[])
     setLoading(false)
   }
