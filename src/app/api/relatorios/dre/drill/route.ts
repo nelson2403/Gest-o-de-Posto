@@ -80,16 +80,21 @@ function lerRef(sp: URLSearchParams): { refAno: number; refMes: number } {
   return { refAno: hoje.getFullYear(), refMes: hoje.getMonth() + 1 }
 }
 
-async function getEmpresaIds(admin: ReturnType<typeof createAdminClient>) {
+async function getEmpresaIds(
+  admin: ReturnType<typeof createAdminClient>,
+  empresaFiltro: number | null = null,
+) {
   // Inclui postos inativos — análise histórica precisa cobrir todos os tenants
   // que tiveram movimento no período, mesmo que tenham sido encerrados depois.
   const { data: postos } = await admin
     .from('postos')
     .select('codigo_empresa_externo')
     .not('codigo_empresa_externo', 'is', null)
-  return Array.from(new Set(
+  const all = Array.from(new Set(
     (postos ?? []).map(p => Number(p.codigo_empresa_externo)).filter(n => !Number.isNaN(n))
   ))
+  if (empresaFiltro !== null && all.includes(empresaFiltro)) return [empresaFiltro]
+  return all
 }
 
 // ─── GET ──────────────────────────────────────────────────────
@@ -115,7 +120,11 @@ export async function GET(req: NextRequest) {
   const { refAno, refMes } = lerRef(sp)
   const { dataIni, dataFim, mesesISO } = calcularJanela(periodoMeses, refAno, refMes)
   const admin = createAdminClient()
-  const empresaIds = await getEmpresaIds(admin)
+
+  // Filtro opcional de empresa — propaga do front pra restringir o drill.
+  const empresaParam   = sp.get('empresa')
+  const empresaFiltro  = empresaParam && /^\d+$/.test(empresaParam) ? Number(empresaParam) : null
+  const empresaIds = await getEmpresaIds(admin, empresaFiltro)
 
   // ── MODE: LINHA ───────────────────────────────────────────
   if (mode === 'linha') {

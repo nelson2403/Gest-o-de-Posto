@@ -107,6 +107,11 @@ export async function GET(req: NextRequest) {
   const { dataIni, dataFim, mesesISO } = calcularJanela(periodoMeses, refAno, refMes)
   const admin = createAdminClient()
 
+  // Filtro opcional de empresa — quando informado (codigo_empresa_externo),
+  // restringe a DRE a essa única empresa.
+  const empresaParam   = searchParams.get('empresa')
+  const empresaFiltro  = empresaParam && /^\d+$/.test(empresaParam) ? Number(empresaParam) : null
+
   // 1. Linhas + mapeamentos da máscara
   const [linhasResp, mapContasResp, mapGruposResp] = await Promise.all([
     admin.from('mascaras_linhas').select('id, parent_id, ordem, nome, tipo_linha').eq('mascara_id', mascaraId),
@@ -152,9 +157,13 @@ export async function GET(req: NextRequest) {
     .from('postos')
     .select('codigo_empresa_externo')
     .not('codigo_empresa_externo', 'is', null)
-  const empresaIds = Array.from(new Set(
+  const empresaIdsAll = Array.from(new Set(
     (postos ?? []).map(p => Number(p.codigo_empresa_externo)).filter(n => !Number.isNaN(n))
   ))
+  // Se um filtro de empresa foi passado E ele existe no tenant, restringe a ele.
+  const empresaIds = empresaFiltro !== null && empresaIdsAll.includes(empresaFiltro)
+    ? [empresaFiltro]
+    : empresaIdsAll
 
   // 3. Detalhes das contas mapeadas + agregações no AUTOSYSTEM
   const contaGrids = Array.from(new Set(mapContas.map(m => m.conta_grid)))

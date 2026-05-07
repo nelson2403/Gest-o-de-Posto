@@ -965,7 +965,6 @@ export async function buscarBalancoFinanceiro(empresaIds: number[]): Promise<{
 // Empresa → Conta → Lançamentos.
 export interface BalancoPagarTitulo extends Record<string, unknown> {
   empresa:          number
-  data:             string         // YYYY-MM-DD (m.data — emissão)
   vencimento:       string         // YYYY-MM-DD (m.vencto)
   conta_codigo:     string         // m.conta_debitar
   conta_nome:       string         // c.nome (decoded)
@@ -979,7 +978,6 @@ export interface BalancoPagarTitulo extends Record<string, unknown> {
 
 interface BalancoPagarRaw extends Record<string, unknown> {
   empresa:            number
-  data:               string
   vencimento:         string
   conta_codigo:       string
   conta_nome_b:       Buffer | null
@@ -1038,7 +1036,6 @@ export async function buscarTitulosPagarBalanco(
   if (!empresaIds.length) return []
   const rows = await query<BalancoPagarRaw>(
     `SELECT m.empresa::bigint                AS empresa,
-            to_char(m.data,   'YYYY-MM-DD')  AS data,
             to_char(m.vencto, 'YYYY-MM-DD')  AS vencimento,
             m.conta_debitar::text            AS conta_codigo,
             c.nome::bytea                    AS conta_nome_b,
@@ -1063,7 +1060,6 @@ export async function buscarTitulosPagarBalanco(
   )
   return rows.map(r => ({
     empresa:          Number(r.empresa),
-    data:             r.data,
     vencimento:       r.vencimento,
     conta_codigo:     r.conta_codigo,
     conta_nome:       decodeBytea(r.conta_nome_b).trim(),

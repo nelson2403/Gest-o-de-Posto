@@ -954,8 +954,7 @@ function BalancoPrint({ modo, resp, receberPorEmpresa, pagarPorEmpresa }: {
               <table className="w-full text-[7.5pt] border-collapse">
                 <thead>
                   <tr className="text-[7pt] text-gray-500 uppercase tracking-wide">
-                    <th className="text-left  px-2 py-0.5 w-[12%]">Emissão</th>
-                    <th className="text-left  px-2 py-0.5 w-[12%]">Vencto</th>
+                    <th className="text-left  px-2 py-0.5 w-[14%]">Vencto</th>
                     <th className="text-left  px-2 py-0.5 w-[12%]">Doc.</th>
                     <th className="text-left  px-2 py-0.5">Fornecedor</th>
                     <th className="text-right px-2 py-0.5 w-[16%]">Valor</th>
@@ -964,7 +963,6 @@ function BalancoPrint({ modo, resp, receberPorEmpresa, pagarPorEmpresa }: {
                 <tbody>
                   {conta.titulos.map((t, i) => (
                     <tr key={i} className="border-b border-gray-100">
-                      <td className="px-2 py-0.5 font-mono whitespace-nowrap">{fmtData(t.data)}</td>
                       <td className="px-2 py-0.5 font-mono whitespace-nowrap">{fmtData(t.vencimento)}</td>
                       <td className="px-2 py-0.5 font-mono">{t.documento || '—'}</td>
                       <td className="px-2 py-0.5">{t.pessoa || '—'}</td>
@@ -1042,11 +1040,8 @@ function TituloPagarRow({ titulo }: { titulo: PagarTituloResp }) {
   const aberto = titulo.situacao_baixa === 0
   return (
     <div className="flex items-center gap-3 pl-[120px] pr-5 py-1.5 border-t border-gray-100/80 hover:bg-gray-50 transition-colors">
-      <span className="text-[11.5px] font-mono text-gray-500 w-20 flex-shrink-0" title="Data de emissão">
-        {fmtData(titulo.data)}
-      </span>
-      <span className="text-[10.5px] text-gray-400 w-24 flex-shrink-0" title="Vencimento">
-        venc. {fmtData(titulo.vencimento)}
+      <span className="text-[11.5px] font-mono text-gray-500 w-20 flex-shrink-0" title="Vencimento">
+        {fmtData(titulo.vencimento)}
       </span>
       {titulo.documento && (
         <span className="flex items-center gap-1 text-[11px] text-gray-500 flex-shrink-0">
