@@ -14,6 +14,7 @@ export interface LancamentoDia {
   historico: string
   documento: string | null
   pessoa:    string
+  hora:      string | null  // HH:MM (null se o AUTOSYSTEM não tiver coluna de hora)
 }
 
 export interface DiaSaldo {
@@ -106,6 +107,7 @@ export async function GET(req: NextRequest) {
           historico: l.historico,
           documento: l.documento,
           pessoa:    l.pessoa,
+          hora:      l.hora,
         })),
       })
     }

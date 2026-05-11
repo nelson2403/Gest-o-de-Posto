@@ -437,6 +437,40 @@ export async function buscarEmpresasCompleto(): Promise<EmpresaCompleta[]> {
   }))
 }
 
+// Igual a buscarEmpresas, mas tenta trazer o nome reduzido/fantasia quando o
+// AUTOSYSTEM tem essa coluna (varia entre versões — alguns chamam de
+// `nome_reduzido`, outros de `apelido` ou `nome_fantasia`). Cai no nome cheio
+// quando nenhuma das colunas existir.
+export async function buscarEmpresasComNomeReduzido(): Promise<{
+  grid: number
+  codigo: string
+  nome: string
+  nome_reduzido: string
+}[]> {
+  const cols = await colunasExistentes('empresa', [
+    'nome_reduzido', 'apelido', 'nome_fantasia', 'fantasia',
+  ])
+  const reduzidoCol =
+    cols.has('nome_reduzido')   ? 'nome_reduzido'
+  : cols.has('apelido')         ? 'apelido'
+  : cols.has('nome_fantasia')   ? 'nome_fantasia'
+  : cols.has('fantasia')        ? 'fantasia'
+  : null
+
+  const reduzidoExpr = reduzidoCol
+    ? `COALESCE(NULLIF(trim(${reduzidoCol}::text), ''), nome::text)`
+    : `nome::text`
+
+  return query(
+    `SELECT grid::bigint    AS grid,
+            codigo::text    AS codigo,
+            nome::text      AS nome,
+            ${reduzidoExpr} AS nome_reduzido
+     FROM empresa
+     ORDER BY nome`,
+  )
+}
+
 // ── conta ────────────────────────────────────────────────────────────────────
 
 export async function buscarContas(like: string): Promise<{ codigo: string; nome: string }[]> {
@@ -506,6 +540,37 @@ export interface ContaDetalhe extends Record<string, unknown> {
   codigo:   string
   nome:     string
   natureza: 'Débito' | 'Crédito'
+}
+
+// Para uma lista de códigos pais (sintéticos OU analíticos), retorna todos os
+// códigos da tabela `conta` que sejam o próprio pai OU descendentes (`pai.x.y`).
+// Cada linha vem com o `parent` mais específico (mais longo) que casou — usado
+// pela DRE para agregar os movtos analíticos de volta na conta-pai mapeada.
+export async function buscarCodigosComDescendentes(
+  parentCodigos: string[],
+): Promise<{ codigo: string; parent: string }[]> {
+  if (!parentCodigos.length) return []
+  const params: unknown[] = []
+  const conds: string[] = []
+  for (const p of parentCodigos) {
+    params.push(p)
+    const idxEq = params.length
+    params.push(p + '.%')
+    const idxLike = params.length
+    conds.push(`(codigo = $${idxEq}::text OR codigo LIKE $${idxLike}::text)`)
+  }
+  const rows = await query<{ codigo: string }>(
+    `SELECT DISTINCT codigo::text FROM conta WHERE ${conds.join(' OR ')}`,
+    params,
+  )
+  return rows.map(r => {
+    const codigo = r.codigo
+    // Pai mais específico = match mais longo (codigo === pai OR codigo começa com pai + '.')
+    const parent = parentCodigos
+      .filter(p => codigo === p || codigo.startsWith(p + '.'))
+      .sort((a, b) => b.length - a.length)[0]
+    return { codigo, parent: parent ?? codigo }
+  })
 }
 
 export async function buscarContasPorGrid(grids: string[]): Promise<ContaDetalhe[]> {
@@ -796,6 +861,7 @@ export async function aggregarSaldoPorEmpresaConta(
 // empresa, no período. Inclui motivo, histórico, documento e pessoa.
 export interface MovtoCaixaLancamento {
   data:       string  // YYYY-MM-DD
+  hora:       string | null  // HH:MM (quando o AUTOSYSTEM tem coluna de hora)
   valor:      number
   direcao:    'D' | 'C'  // D = entrada (caixa debitado); C = saída (caixa creditado)
   motivo:     string
@@ -806,6 +872,7 @@ export interface MovtoCaixaLancamento {
 
 interface MovtoCaixaRaw extends Record<string, unknown> {
   data:        string
+  hora:        string | null
   valor:       number
   direcao:     'D' | 'C'
   motivo_b:    Buffer | null
@@ -822,7 +889,11 @@ export async function listarMovtosCaixaPorPeriodo(
   limit = 5000,
 ): Promise<MovtoCaixaLancamento[]> {
   // Detecta a coluna de FK de pessoa em movto (varia entre instâncias do AUTOSYSTEM).
-  const cols = await colunasExistentes('movto', ['pessoa', 'cliente', 'observacao', 'obs', 'historico'])
+  const cols = await colunasExistentes('movto', [
+    'pessoa', 'cliente',
+    'observacao', 'obs', 'historico',
+    'hora', 'horario', 'data_hora', 'data_lancamento',
+  ])
   const pessoaFkCol = cols.has('pessoa')    ? 'pessoa'
                     : cols.has('cliente')   ? 'cliente'
                     : null
@@ -830,10 +901,17 @@ export async function listarMovtosCaixaPorPeriodo(
               : cols.has('obs')         ? 'obs'
               : cols.has('historico')   ? 'historico'
               : null
+  // `hora` pode ser TIME, TIMESTAMP ou texto — to_char lida com qualquer caso.
+  const horaCol = cols.has('hora')             ? 'hora'
+                : cols.has('horario')          ? 'horario'
+                : cols.has('data_hora')        ? 'data_hora'
+                : cols.has('data_lancamento')  ? 'data_lancamento'
+                : null
 
-  const histExpr = histCol ? `m.${histCol}::bytea` : 'NULL::bytea'
-  const pessoaExpr = pessoaFkCol ? 'p.nome::bytea' : 'NULL::bytea'
+  const histExpr   = histCol   ? `m.${histCol}::bytea` : 'NULL::bytea'
+  const pessoaExpr = pessoaFkCol ? 'p.nome::bytea'      : 'NULL::bytea'
   const joinPessoa = pessoaFkCol ? `LEFT JOIN pessoa p ON p.grid = m.${pessoaFkCol}` : ''
+  const horaExpr   = horaCol   ? `to_char(m.${horaCol}, 'HH24:MI')` : 'NULL::text'
 
   const params: unknown[] = [empresaId, codigo]
   let dataFiltroD = ''
@@ -845,6 +923,7 @@ export async function listarMovtosCaixaPorPeriodo(
 
   const rows = await query<MovtoCaixaRaw>(
     `SELECT to_char(m.data, 'YYYY-MM-DD') AS data,
+            ${horaExpr}                   AS hora,
             m.valor::float                AS valor,
             'D'::text                     AS direcao,
             mv.nome::bytea                AS motivo_b,
@@ -859,6 +938,7 @@ export async function listarMovtosCaixaPorPeriodo(
        ${dataFiltroD}
      UNION ALL
      SELECT to_char(m.data, 'YYYY-MM-DD') AS data,
+            ${horaExpr}                   AS hora,
             m.valor::float                AS valor,
             'C'::text                     AS direcao,
             mv.nome::bytea                AS motivo_b,
@@ -871,13 +951,14 @@ export async function listarMovtosCaixaPorPeriodo(
      WHERE m.empresa = $1::bigint
        AND m.conta_creditar = $2::text
        ${dataFiltroC}
-     ORDER BY data ASC
+     ORDER BY data ASC, hora ASC NULLS LAST
      LIMIT ${limitParam}`,
     params,
   )
 
   return rows.map(r => ({
     data:      r.data,
+    hora:      r.hora,
     valor:     Number(r.valor),
     direcao:   r.direcao,
     motivo:    decodeBytea(r.motivo_b).trim(),
@@ -892,23 +973,25 @@ export async function listarMovtosCaixaPorPeriodo(
 // — com vencimento a partir de hoje.
 
 export interface BalancoTitulo extends Record<string, unknown> {
-  vencto:    string  // YYYY-MM-DD
-  valor:     number
-  documento: string | null
-  motivo:    string  // decoded de bytea
-  pessoa:    string  // decoded de bytea
-  conta:     string  // codigo da conta (1.3.x ou 2.1.1.x)
-  empresa:   number
+  vencto:     string         // YYYY-MM-DD
+  valor:      number
+  documento:  string | null
+  motivo:     string         // decoded de bytea
+  pessoa:     string         // decoded de bytea
+  conta:      string         // codigo da conta (1.3.x ou 2.1.1.x)
+  conta_nome: string         // nome da conta (decoded de bytea); '' quando sem JOIN
+  empresa:    number
 }
 
 interface BalancoTituloRaw extends Record<string, unknown> {
-  vencto:       string
-  valor:        number
-  documento:    string | null
-  motivo_b:     Buffer | null
-  pessoa_b:     Buffer | null
-  conta:        string
-  empresa:      number
+  vencto:        string
+  valor:         number
+  documento:     string | null
+  motivo_b:      Buffer | null
+  pessoa_b:      Buffer | null
+  conta:         string
+  conta_nome_b:  Buffer | null
+  empresa:       number
 }
 
 async function listarTitulosAbertos(
@@ -925,6 +1008,7 @@ async function listarTitulosAbertos(
             mv.nome::bytea                  AS motivo_b,
             p.nome::bytea                   AS pessoa_b,
             m.${contaCol}::text             AS conta,
+            NULL::bytea                     AS conta_nome_b,
             m.empresa::bigint               AS empresa
      FROM movto m
        LEFT JOIN motivo_movto mv ON mv.grid = m.motivo
@@ -938,13 +1022,14 @@ async function listarTitulosAbertos(
     [empresaIds, `${contaPrefix}%`, limit],
   )
   return rows.map(r => ({
-    vencto:    r.vencto,
-    valor:     Number(r.valor),
-    documento: r.documento,
-    motivo:    decodeBytea(r.motivo_b).trim(),
-    pessoa:    decodeBytea(r.pessoa_b).trim(),
-    conta:     r.conta,
-    empresa:   Number(r.empresa),
+    vencto:     r.vencto,
+    valor:      Number(r.valor),
+    documento:  r.documento,
+    motivo:     decodeBytea(r.motivo_b).trim(),
+    pessoa:     decodeBytea(r.pessoa_b).trim(),
+    conta:      r.conta,
+    conta_nome: decodeBytea(r.conta_nome_b).trim(),
+    empresa:    Number(r.empresa),
   }))
 }
 
@@ -961,6 +1046,121 @@ export async function buscarBalancoFinanceiro(empresaIds: number[]): Promise<{
   return { receber, pagar }
 }
 
+// ── Balanço Financeiro · A Pagar (via query custom do usuário) ─────────
+// Busca títulos a pagar olhando para o conta_debitar (despesa/passivo) com
+// conta_creditar em '2.1.1%' OR '2.1.2%', excluindo movtos cuja contrapartida
+// vai para caixa/banco (1.1.1%/1.1.2%) — ou seja, baixas. Retorna data de
+// emissão + vencimento + conta + valor + child para a UI montar a árvore
+// Empresa → Conta → Lançamentos.
+export interface BalancoPagarTitulo extends Record<string, unknown> {
+  empresa:          number
+  vencimento:       string         // YYYY-MM-DD (m.vencto)
+  conta_codigo:     string         // m.conta_debitar
+  conta_nome:       string         // c.nome (decoded)
+  motivo:           number
+  motivo_descricao: string         // mm.nome (decoded)
+  pessoa:           string         // p.nome (decoded)
+  documento:        string | null
+  valor:            number
+  situacao_baixa:   number         // m.child (0 = aberto, ≠0 = baixado)
+}
+
+interface BalancoPagarRaw extends Record<string, unknown> {
+  empresa:            number
+  vencimento:         string
+  conta_codigo:       string
+  conta_nome_b:       Buffer | null
+  motivo:             number
+  motivo_descricao_b: Buffer | null
+  pessoa_b:           Buffer | null
+  documento:          string | null
+  valor:              number
+  situacao_baixa:     number
+}
+
+// ── Balanço Financeiro · A Receber (via query custom do usuário) ────────
+// Busca títulos a receber (`conta_debitar LIKE '1.3.03%' OR = '1.3.04'`) com
+// `vencto >= CURRENT_DATE` e `child = 0` (apenas em aberto). Mantém shape
+// compatível com `BalancoTitulo` para o tree atual da UI continuar
+// funcionando sem alterações.
+export async function buscarTitulosReceberBalanco(
+  empresaIds: number[],
+): Promise<BalancoTitulo[]> {
+  if (!empresaIds.length) return []
+  const rows = await query<BalancoTituloRaw>(
+    `SELECT to_char(m.vencto, 'YYYY-MM-DD') AS vencto,
+            m.valor::float                  AS valor,
+            m.documento::text               AS documento,
+            mm.nome::bytea                  AS motivo_b,
+            p.nome::bytea                   AS pessoa_b,
+            m.conta_debitar::text           AS conta,
+            c.nome::bytea                   AS conta_nome_b,
+            m.empresa::bigint               AS empresa
+     FROM movto m
+       JOIN motivo_movto mm ON mm.grid  = m.motivo
+       LEFT JOIN conta c    ON c.codigo = m.conta_debitar
+       LEFT JOIN pessoa p   ON p.grid   = m.pessoa
+     WHERE m.empresa = ANY($1::bigint[])
+       AND (m.conta_debitar LIKE '1.3.03%' OR m.conta_debitar = '1.3.04')
+       AND m.child = 0
+       AND m.vencto >= CURRENT_DATE
+     ORDER BY m.vencto ASC, m.grid ASC`,
+    [empresaIds],
+  )
+  return rows.map(r => ({
+    vencto:     r.vencto,
+    valor:      Number(r.valor),
+    documento:  r.documento,
+    motivo:     decodeBytea(r.motivo_b).trim(),
+    pessoa:     decodeBytea(r.pessoa_b).trim(),
+    conta:      r.conta,
+    conta_nome: decodeBytea(r.conta_nome_b).trim(),
+    empresa:    Number(r.empresa),
+  }))
+}
+
+export async function buscarTitulosPagarBalanco(
+  empresaIds: number[],
+): Promise<BalancoPagarTitulo[]> {
+  if (!empresaIds.length) return []
+  const rows = await query<BalancoPagarRaw>(
+    `SELECT m.empresa::bigint                AS empresa,
+            to_char(m.vencto, 'YYYY-MM-DD')  AS vencimento,
+            m.conta_debitar::text            AS conta_codigo,
+            c.nome::bytea                    AS conta_nome_b,
+            m.motivo::bigint                 AS motivo,
+            mm.nome::bytea                   AS motivo_descricao_b,
+            p.nome::bytea                    AS pessoa_b,
+            m.documento::text                AS documento,
+            m.valor::float                   AS valor,
+            COALESCE(m.child, 0)::float      AS situacao_baixa
+     FROM movto m
+       JOIN motivo_movto mm ON mm.grid   = m.motivo
+       JOIN conta c         ON c.codigo  = m.conta_debitar
+       LEFT JOIN pessoa p   ON p.grid    = m.pessoa
+     WHERE m.empresa = ANY($1::bigint[])
+       AND (m.conta_creditar LIKE '2.1.1%' OR m.conta_creditar LIKE '2.1.2%')
+       AND m.conta_debitar NOT LIKE '1.1.2%'
+       AND m.conta_debitar NOT LIKE '1.1.1%'
+       AND m.vencto >= CURRENT_DATE
+       AND m.child = 0
+     ORDER BY m.vencto ASC, m.grid ASC`,
+    [empresaIds],
+  )
+  return rows.map(r => ({
+    empresa:          Number(r.empresa),
+    vencimento:       r.vencimento,
+    conta_codigo:     r.conta_codigo,
+    conta_nome:       decodeBytea(r.conta_nome_b).trim(),
+    motivo:           Number(r.motivo),
+    motivo_descricao: decodeBytea(r.motivo_descricao_b).trim(),
+    pessoa:           decodeBytea(r.pessoa_b).trim(),
+    documento:        r.documento,
+    valor:            Number(r.valor),
+    situacao_baixa:   Number(r.situacao_baixa),
+  }))
+}
+
 // Lista lançamentos individuais de uma conta no período (drill-down).
 // Retorna `data` (YYYY-MM-DD) para bucketing por mês + `observacao` já
 // formatada como "DD/MM/YYYY · DOCUMENTO · OBSERVAÇÃO" + valor.
@@ -968,6 +1168,7 @@ export interface MovtoLancamento extends Record<string, unknown> {
   data:       string
   observacao: string | null
   valor:      number
+  empresa:    number   // grid da empresa no AUTOSYSTEM
 }
 
 // Helper: descobre quais colunas existem em uma tabela do AUTOSYSTEM.
@@ -1015,18 +1216,24 @@ export async function listarMovtoConta(
   const rows = await query<{
     data:     string
     valor:    number
+    empresa:  number
     doc_b?:    Buffer | null
     pessoa_b?: Buffer | null
     obs_b?:    Buffer | null
   }>(
     `SELECT to_char(m.data, 'YYYY-MM-DD') AS data,
-            CASE WHEN m.conta_creditar = $4 THEN m.valor::float ELSE -m.valor::float END AS valor
+            m.empresa::bigint             AS empresa,
+            CASE WHEN m.conta_creditar::text = $4 OR m.conta_creditar::text LIKE $4 || '.%'
+                 THEN m.valor::float
+                 ELSE -m.valor::float
+            END AS valor
             ${selectExtra}
      FROM movto m
      ${joinPessoa}
      WHERE m.empresa = ANY($1::bigint[])
        AND m.data BETWEEN $2::date AND $3::date
-       AND (m.conta_debitar::text = $4 OR m.conta_creditar::text = $4)
+       AND ( m.conta_debitar::text  = $4 OR m.conta_debitar::text  LIKE $4 || '.%'
+          OR m.conta_creditar::text = $4 OR m.conta_creditar::text LIKE $4 || '.%' )
      ORDER BY m.data DESC, m.grid DESC
      LIMIT $5`,
     [empresaIds, dataIni, dataFim, codigo, limit],
@@ -1045,6 +1252,7 @@ export async function listarMovtoConta(
       data:       r.data,
       observacao: partes.join(' · '),
       valor:      Number(r.valor),
+      empresa:    Number(r.empresa),
     }
   })
 }
@@ -1054,6 +1262,7 @@ export interface LanctoGrupoLancamento extends Record<string, unknown> {
   data:       string
   observacao: string | null
   valor:      number
+  empresa:    number   // grid da empresa no AUTOSYSTEM
 }
 
 export async function listarLanctoGrupo(
@@ -1095,11 +1304,13 @@ export async function listarLanctoGrupo(
   const rows = await query<{
     data:     string
     valor:    number
+    empresa:  number
     doc_b?:    Buffer | null
     pessoa_b?: Buffer | null
     obs_b?:    Buffer | null
   }>(
     `SELECT to_char(l.data, 'YYYY-MM-DD')  AS data,
+            l.empresa::bigint              AS empresa,
             ${valorExpr}                   AS valor
             ${selectExtra}
      FROM lancto l
@@ -1133,6 +1344,7 @@ export async function listarLanctoGrupo(
       data:       r.data,
       observacao: partes.join(' · '),
       valor:      Number(r.valor),
+      empresa:    Number(r.empresa),
     }
   })
 }

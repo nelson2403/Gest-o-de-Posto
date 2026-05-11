@@ -3,7 +3,9 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   buscarContasPorGrid,
+  buscarCodigosComDescendentes,
   buscarGruposProduto,
+  buscarEmpresasComNomeReduzido,
   aggregarMovtoPorContaPorMes,
   aggregarVendasCustosPorGrupoPorMes,
   listarMovtoConta,
@@ -41,9 +43,11 @@ export interface DrillLinhaResponse {
 }
 
 export interface DrillLancamento {
-  data:       string  // mantido apenas para colocar o valor na coluna do mês correto
-  observacao: string | null
-  valor:      number
+  data:           string  // mantido apenas para colocar o valor na coluna do mês correto
+  observacao:     string | null
+  valor:          number
+  empresa_id:     number   // grid no AUTOSYSTEM
+  empresa_nome:   string   // nome reduzido (cai no nome completo se não houver)
 }
 
 export interface DrillLancamentosResponse {
@@ -76,15 +80,21 @@ function lerRef(sp: URLSearchParams): { refAno: number; refMes: number } {
   return { refAno: hoje.getFullYear(), refMes: hoje.getMonth() + 1 }
 }
 
-async function getEmpresaIds(admin: ReturnType<typeof createAdminClient>) {
+async function getEmpresaIds(
+  admin: ReturnType<typeof createAdminClient>,
+  empresaFiltro: number | null = null,
+) {
+  // Inclui postos inativos — análise histórica precisa cobrir todos os tenants
+  // que tiveram movimento no período, mesmo que tenham sido encerrados depois.
   const { data: postos } = await admin
     .from('postos')
     .select('codigo_empresa_externo')
     .not('codigo_empresa_externo', 'is', null)
-    .eq('ativo', true)
-  return Array.from(new Set(
+  const all = Array.from(new Set(
     (postos ?? []).map(p => Number(p.codigo_empresa_externo)).filter(n => !Number.isNaN(n))
   ))
+  if (empresaFiltro !== null && all.includes(empresaFiltro)) return [empresaFiltro]
+  return all
 }
 
 // ─── GET ──────────────────────────────────────────────────────
@@ -110,7 +120,11 @@ export async function GET(req: NextRequest) {
   const { refAno, refMes } = lerRef(sp)
   const { dataIni, dataFim, mesesISO } = calcularJanela(periodoMeses, refAno, refMes)
   const admin = createAdminClient()
-  const empresaIds = await getEmpresaIds(admin)
+
+  // Filtro opcional de empresa — propaga do front pra restringir o drill.
+  const empresaParam   = sp.get('empresa')
+  const empresaFiltro  = empresaParam && /^\d+$/.test(empresaParam) ? Number(empresaParam) : null
+  const empresaIds = await getEmpresaIds(admin, empresaFiltro)
 
   // ── MODE: LINHA ───────────────────────────────────────────
   if (mode === 'linha') {
@@ -137,18 +151,25 @@ export async function GET(req: NextRequest) {
 
     const itens: DrillItem[] = []
     try {
-      // Contas
+      // Contas (com expansão hierárquica — sub-contas analíticas somam no pai mapeado)
       if (contaGrids.length > 0) {
         const detalhes = await buscarContasPorGrid(contaGrids)
-        const codigos = detalhes.map(d => d.codigo)
-        const movtos = empresaIds.length && codigos.length
-          ? await aggregarMovtoPorContaPorMes(empresaIds, dataIni, dataFim, codigos)
+        const codigosBase = detalhes.map(d => d.codigo)
+        const expandidos = codigosBase.length
+          ? await buscarCodigosComDescendentes(codigosBase)
           : []
-        const balPorCodMes = new Map<string, Map<string, number>>()  // codigo → mes → balance
+        const codigoToParent = new Map(expandidos.map(e => [e.codigo, e.parent]))
+        const todosCodigos = expandidos.map(e => e.codigo)
+        const movtos = empresaIds.length && todosCodigos.length
+          ? await aggregarMovtoPorContaPorMes(empresaIds, dataIni, dataFim, todosCodigos)
+          : []
+        const balPorCodMes = new Map<string, Map<string, number>>()  // codigo (pai) → mes → balance
         for (const m of movtos) {
-          if (!balPorCodMes.has(m.codigo)) balPorCodMes.set(m.codigo, new Map())
+          const parent = codigoToParent.get(m.codigo) ?? m.codigo
+          if (!balPorCodMes.has(parent)) balPorCodMes.set(parent, new Map())
           const bal = Number(m.total_creditar) - Number(m.total_debitar)
-          balPorCodMes.get(m.codigo)!.set(m.mes, bal)
+          const cur = balPorCodMes.get(parent)!.get(m.mes) ?? 0
+          balPorCodMes.get(parent)!.set(m.mes, cur + bal)
         }
         for (const d of detalhes) {
           const valoresPorMes = mesesISO.map(mes => balPorCodMes.get(d.codigo)?.get(mes) ?? 0)
@@ -210,6 +231,11 @@ export async function GET(req: NextRequest) {
   // ── MODE: LANCAMENTOS ─────────────────────────────────────
   if (mode === 'lancamentos') {
     const target = sp.get('target')  // 'conta' | 'grupo'
+    // Lookup empresa → nome_reduzido (compartilhado entre conta e grupo)
+    const empresas = await buscarEmpresasComNomeReduzido()
+    const empresaNome = new Map<number, string>()
+    for (const e of empresas) empresaNome.set(Number(e.grid), e.nome_reduzido || e.nome)
+
     if (target === 'conta') {
       const codigo = sp.get('codigo')
       if (!codigo) return NextResponse.json({ error: 'codigo é obrigatório' }, { status: 400 })
@@ -217,9 +243,11 @@ export async function GET(req: NextRequest) {
         const limit = 500
         const rows = await listarMovtoConta(empresaIds, dataIni, dataFim, codigo, limit)
         const lancamentos: DrillLancamento[] = rows.map(r => ({
-          data:       r.data,
-          observacao: r.observacao,
-          valor:      Number(r.valor),
+          data:         r.data,
+          observacao:   r.observacao,
+          valor:        Number(r.valor),
+          empresa_id:   Number(r.empresa),
+          empresa_nome: empresaNome.get(Number(r.empresa)) ?? `Empresa ${r.empresa}`,
         }))
         const resp: DrillLancamentosResponse = {
           modo: 'lancamentos',
@@ -243,9 +271,11 @@ export async function GET(req: NextRequest) {
         const limit = 500
         const rows = await listarLanctoGrupo(empresaIds, dataIni, dataFim, grupoGrid, tipoValor, limit)
         const lancamentos: DrillLancamento[] = rows.map(r => ({
-          data:       r.data,
-          observacao: r.observacao,
-          valor:      Number(r.valor),
+          data:         r.data,
+          observacao:   r.observacao,
+          valor:        Number(r.valor),
+          empresa_id:   Number(r.empresa),
+          empresa_nome: empresaNome.get(Number(r.empresa)) ?? `Empresa ${r.empresa}`,
         }))
         const resp: DrillLancamentosResponse = {
           modo: 'lancamentos',

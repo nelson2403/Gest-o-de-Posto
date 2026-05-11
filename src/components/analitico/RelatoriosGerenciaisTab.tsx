@@ -78,6 +78,11 @@ export function RelatoriosGerenciaisTab() {
   const [loadingMascaras, setLoadingMascaras] = useState(true)
   const [mascaraId, setMascaraId]             = useState<string | null>(null)
   const [periodo, setPeriodo]                 = useState<PeriodoMeses>(3)
+  // Filtro opcional de empresa — usa codigo_empresa_externo do posto como id.
+  // 'todas' = sem filtro (default).
+  type PostoOpt = { id: string; nome: string; codigo_empresa_externo: string | null }
+  const [postos, setPostos]                   = useState<PostoOpt[]>([])
+  const [empresaFiltro, setEmpresaFiltro]     = useState<string>('todas')
   // Mês de referência (YYYY-MM). Define o último mês incluído no relatório.
   // Exemplo: ref=2026-03 + periodo=3 → janeiro, fevereiro, março de 2026.
   const [refMesAno, setRefMesAno] = useState<string>(() => {
@@ -119,6 +124,20 @@ export function RelatoriosGerenciaisTab() {
     return () => { cancel = true }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Carrega postos para popular o select de empresa
+  useEffect(() => {
+    let cancel = false
+    fetch('/api/postos')
+      .then(r => r.json())
+      .then(json => {
+        if (cancel) return
+        const lista = (json.postos ?? []) as PostoOpt[]
+        setPostos(lista.filter(p => p.codigo_empresa_externo))
+      })
+      .catch(() => { /* silencioso — filtro só não funciona */ })
+    return () => { cancel = true }
+  }, [])
+
   async function gerarRelatorio() {
     if (!mascaraId) return
     setLoadingDre(true)
@@ -127,7 +146,13 @@ export function RelatoriosGerenciaisTab() {
     setExpanded(new Set())
     setDrillCache(new Map())
     try {
-      const r = await fetch(`/api/relatorios/dre?mascara_id=${mascaraId}&periodo=${periodo}&ref=${refMesAno}`)
+      const params = new URLSearchParams({
+        mascara_id: mascaraId,
+        periodo:    String(periodo),
+        ref:        refMesAno,
+      })
+      if (empresaFiltro && empresaFiltro !== 'todas') params.set('empresa', empresaFiltro)
+      const r = await fetch(`/api/relatorios/dre?${params}`)
       const json = await r.json()
       if (!r.ok || json.error) setErro(json.error ?? `Erro HTTP ${r.status}`)
       else setResp(json as DreResponse)
@@ -181,17 +206,18 @@ export function RelatoriosGerenciaisTab() {
 
   function buildDrillUrl(key: string, mascId: string, per: PeriodoMeses): string {
     const ref = `&ref=${refMesAno}`
+    const emp = empresaFiltro && empresaFiltro !== 'todas' ? `&empresa=${empresaFiltro}` : ''
     if (key.startsWith('linha:')) {
       const id = key.slice(6)
-      return `/api/relatorios/dre/drill?mode=linha&linha_id=${id}&mascara_id=${mascId}&periodo=${per}${ref}`
+      return `/api/relatorios/dre/drill?mode=linha&linha_id=${id}&mascara_id=${mascId}&periodo=${per}${ref}${emp}`
     }
     if (key.startsWith('conta:')) {
       const codigo = key.slice(6)
-      return `/api/relatorios/dre/drill?mode=lancamentos&target=conta&codigo=${encodeURIComponent(codigo)}&periodo=${per}${ref}`
+      return `/api/relatorios/dre/drill?mode=lancamentos&target=conta&codigo=${encodeURIComponent(codigo)}&periodo=${per}${ref}${emp}`
     }
     if (key.startsWith('grupo:')) {
       const [, grupoGrid, tipoValor] = key.split(':')
-      return `/api/relatorios/dre/drill?mode=lancamentos&target=grupo&grupo_grid=${grupoGrid}&tipo_valor=${tipoValor}&periodo=${per}${ref}`
+      return `/api/relatorios/dre/drill?mode=lancamentos&target=grupo&grupo_grid=${grupoGrid}&tipo_valor=${tipoValor}&periodo=${per}${ref}${emp}`
     }
     return ''
   }
@@ -216,7 +242,7 @@ export function RelatoriosGerenciaisTab() {
   return (
     <div className="space-y-4">
       {/* Sub-tabs internas (DRE / Fluxo / Despesas / Balanço) */}
-      <div className="flex flex-wrap gap-1 border-b border-gray-200">
+      <div className="flex flex-wrap gap-1 border-b border-gray-200 print:hidden">
         {SUB_ABAS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -267,6 +293,22 @@ export function RelatoriosGerenciaisTab() {
               : !mascaras.length
                 ? <option>Nenhuma máscara DRE cadastrada</option>
                 : mascaras.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+          </select>
+        </div>
+
+        <div className="min-w-[200px]">
+          <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
+            Empresa
+          </label>
+          <select
+            value={empresaFiltro}
+            onChange={(e) => setEmpresaFiltro(e.target.value)}
+            className="w-full h-10 px-3 border border-gray-300 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="todas">Todas as empresas</option>
+            {postos.map(p => (
+              <option key={p.id} value={p.codigo_empresa_externo!}>{p.nome}</option>
+            ))}
           </select>
         </div>
 
@@ -752,6 +794,14 @@ function LancamentoRow({ lanc, meses, baseDepth }: {
       <td className="px-4 py-1 sticky left-0 bg-inherit z-10" style={{ paddingLeft: 16 + (baseDepth + 2) * 20 }}>
         <div className="flex items-center gap-2 text-[11.5px] text-gray-600">
           <FileText className="w-3 h-3 flex-shrink-0 text-gray-300" />
+          {lanc.empresa_nome && (
+            <span
+              className="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wide max-w-[140px] truncate"
+              title={lanc.empresa_nome}
+            >
+              {lanc.empresa_nome}
+            </span>
+          )}
           <span className="truncate text-gray-700">
             {lanc.observacao && lanc.observacao.trim()
               ? lanc.observacao
