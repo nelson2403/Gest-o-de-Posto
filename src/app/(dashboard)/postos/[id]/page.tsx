@@ -9,9 +9,10 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { AtivoInativoBadge, StatusMaquininhaBadge } from '@/components/shared/StatusBadge'
 import { PasswordReveal } from '@/components/shared/PasswordReveal'
-import { ArrowLeft, MapPin, Mail, Building2, Phone, Monitor, Server, KeyRound, Link2, Smartphone, Percent } from 'lucide-react'
+import { ArrowLeft, MapPin, Mail, Building2, Phone, Monitor, Server, KeyRound, Link2, Smartphone, Percent, Copy, Check, RefreshCw } from 'lucide-react'
 import { formatCNPJ, formatDate, formatPercent } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils/cn'
+import { toast } from '@/hooks/use-toast'
 import { useAuthContext } from '@/contexts/AuthContext'
 import { can } from '@/lib/utils/permissions'
 import type { Posto, Maquininha, Taxa, AcessoAnydesk, AcessoUnificado, AcessoPosto, ServidorPosto, PostoContato, Role } from '@/types/database.types'
@@ -38,6 +39,8 @@ export default function PostoDetalhesPage() {
   const [posto, setPosto] = useState<Posto | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('info')
   const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const [maquininhas, setMaquininhas] = useState<Maquininha[]>([])
   const [taxas, setTaxas] = useState<Taxa[]>([])
@@ -92,6 +95,54 @@ export default function PostoDetalhesPage() {
     }
   }, [activeTab, posto])
 
+  async function handleSync() {
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/postos/sync-autosystem', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) {
+        toast({ variant: 'destructive', title: 'Erro na sincronização', description: json.error })
+      } else {
+        toast({ title: `Sincronizado! ${json.synced} posto(s) atualizado(s).` })
+        const { data } = await supabase.from('postos').select('*, empresa:empresas(id, nome)').eq('id', id).single()
+        if (data) setPosto(data as Posto)
+      }
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro ao conectar com Autosystem' })
+    }
+    setSyncing(false)
+  }
+
+  function handleCopy() {
+    if (!posto) return
+    const lines: string[] = []
+    lines.push(`Nome: ${posto.nome}`)
+    if (posto.razao_social) lines.push(`Razão Social: ${posto.razao_social}`)
+    if (posto.cnpj)         lines.push(`CNPJ: ${formatCNPJ(posto.cnpj)}`)
+    if (posto.ie)           lines.push(`IE: ${posto.ie}`)
+    if (posto.endereco)     lines.push(`Endereço: ${posto.endereco}`)
+    if (posto.bairro)       lines.push(`Bairro: ${posto.bairro}`)
+    const cidadeUf = [posto.cidade, posto.uf].filter(Boolean).join(' - ')
+    if (cidadeUf)           lines.push(`Cidade: ${cidadeUf}`)
+    if (posto.cep)          lines.push(`CEP: ${posto.cep}`)
+    if (posto.telefone)     lines.push(`Telefone: ${posto.telefone}`)
+    if (posto.email)        lines.push(`Email: ${posto.email}`)
+    const text = lines.join('\n')
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).catch(() => {})
+    } else {
+      const el = document.createElement('textarea')
+      el.value = text
+      el.style.cssText = 'position:fixed;top:0;left:0;opacity:0'
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   if (loading) return (
     <div>
       <Header title="Carregando..." />
@@ -116,9 +167,19 @@ export default function PostoDetalhesPage() {
         title={posto.nome}
         description={(posto as Posto & { empresa?: { nome: string } }).empresa?.nome}
         actions={
-          <Button variant="outline" size="sm" onClick={() => router.push('/postos')}>
-            <ArrowLeft className="w-4 h-4" /> Voltar
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleCopy} title="Copiar informações do posto">
+              {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+              {copied ? 'Copiado!' : 'Copiar'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleSync} disabled={syncing} title="Sincronizar com Autosystem">
+              <RefreshCw className={cn('w-4 h-4', syncing && 'animate-spin')} />
+              {syncing ? 'Sincronizando...' : 'Sincronizar'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => router.push('/postos')}>
+              <ArrowLeft className="w-4 h-4" /> Voltar
+            </Button>
+          </div>
         }
       />
 
@@ -149,22 +210,59 @@ export default function PostoDetalhesPage() {
         {activeTab === 'info' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
-              <CardHeader><CardTitle className="text-base flex items-center gap-2"><Building2 className="w-4 h-4" /> Dados do Posto</CardTitle></CardHeader>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2"><Building2 className="w-4 h-4" /> Dados do Posto</CardTitle>
+                  {(posto as Posto).sincronizado_em && (
+                    <span className="text-[11px] text-gray-400 flex items-center gap-1">
+                      <RefreshCw className="w-3 h-3" />
+                      Sync: {formatDate((posto as Posto).sincronizado_em!)}
+                    </span>
+                  )}
+                </div>
+              </CardHeader>
               <CardContent className="space-y-3">
-                <Row label="Nome" value={posto.nome} />
+                <Row label="Nome Fantasia" value={posto.nome} />
+                {(posto as Posto).razao_social && (
+                  <Row label="Razão Social" value={(posto as Posto).razao_social!} />
+                )}
                 <Row label="CNPJ" value={posto.cnpj ? formatCNPJ(posto.cnpj) : '—'} />
-                <Row label="Endereço" value={posto.endereco ?? '—'} />
+                {(posto as Posto).ie && (
+                  <Row label="Inscrição Estadual" value={(posto as Posto).ie!} />
+                )}
                 <Row label="Status" value={<AtivoInativoBadge ativo={posto.ativo} />} />
                 <Row label="Cadastrado em" value={formatDate(posto.criado_em)} />
               </CardContent>
             </Card>
-            <Card>
-              <CardHeader><CardTitle className="text-base flex items-center gap-2"><Mail className="w-4 h-4" /> Acesso ao Email</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                <Row label="Email" value={posto.email ?? '—'} />
-                <Row label="Senha" value={<PasswordReveal value={posto.senha_email} canReveal={canReveal} />} />
-              </CardContent>
-            </Card>
+
+            <div className="space-y-4">
+              <Card>
+                <CardHeader><CardTitle className="text-base flex items-center gap-2"><MapPin className="w-4 h-4" /> Localização</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  <Row label="Endereço" value={posto.endereco ?? '—'} />
+                  {(posto as Posto).bairro && <Row label="Bairro" value={(posto as Posto).bairro!} />}
+                  {((posto as Posto).cidade || (posto as Posto).uf) && (
+                    <Row label="Cidade / UF" value={[(posto as Posto).cidade, (posto as Posto).uf].filter(Boolean).join(' - ')} />
+                  )}
+                  {(posto as Posto).cep && <Row label="CEP" value={(posto as Posto).cep!} />}
+                  {(posto as Posto).telefone && (
+                    <Row label="Telefone" value={
+                      <a href={`tel:${(posto as Posto).telefone}`} className="text-blue-600 hover:underline">
+                        {(posto as Posto).telefone}
+                      </a>
+                    } />
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle className="text-base flex items-center gap-2"><Mail className="w-4 h-4" /> Acesso ao Email</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  <Row label="Email" value={posto.email ?? '—'} />
+                  <Row label="Senha" value={<PasswordReveal value={posto.senha_email} canReveal={canReveal} />} />
+                </CardContent>
+              </Card>
+            </div>
           </div>
         )}
 

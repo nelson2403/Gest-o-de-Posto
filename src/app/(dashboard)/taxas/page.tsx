@@ -16,7 +16,7 @@ import { toast } from '@/hooks/use-toast'
 import { useAuthContext } from '@/contexts/AuthContext'
 import { can } from '@/lib/utils/permissions'
 import { formatPercent } from '@/lib/utils/formatters'
-import { Plus, Pencil, Trash2, Loader2, Percent } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, Percent, Search, X } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Taxa, Posto, Adquirente, AdquirenteFormaPagamento, AbrangenciaTaxa, Role } from '@/types/database.types'
 
@@ -42,13 +42,18 @@ type TaxaRow = Taxa & {
 const EMPTY_FORM = {
   adquirente_id: '',
   forma_pagamento_id: '',
-  abrangencia: 'posto_especifico' as AbrangenciaTaxa,
-  posto_id: '',
+  todos_postos: false,
   postos_ids: [] as string[],
   taxa_debito: '',
   taxa_credito: '',
   taxa_credito_parcelado: '',
   observacoes: '',
+}
+
+function calcAbrangencia(todos: boolean, ids: string[]): AbrangenciaTaxa {
+  if (todos) return 'todos_postos'
+  if (ids.length === 1) return 'posto_especifico'
+  return 'multiplos_postos'
 }
 
 export default function TaxasPage() {
@@ -68,20 +73,22 @@ export default function TaxasPage() {
   const [openDelete, setOpenDelete] = useState(false)
   const [selected,   setSelected]   = useState<TaxaRow | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
+  const [buscaPosto, setBuscaPosto] = useState('')
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('taxas')
       .select(`
         *,
-        posto:postos(id, nome),
-        adquirente:adquirentes(id, nome),
-        forma_pagamento:adquirente_formas_pagamento(id, nome),
-        taxa_postos(posto_id, posto:postos(id, nome))
+        posto:posto_id(id, nome),
+        adquirente:adquirente_id(id, nome),
+        forma_pagamento:forma_pagamento_id(id, nome),
+        taxa_postos(posto_id, posto:posto_id(id, nome))
       `)
       .order('criado_em', { ascending: false })
-    if (data) setTaxas(data as TaxaRow[])
+    if (error) toast({ variant: 'destructive', title: 'Erro ao carregar taxas', description: error.message })
+    setTaxas((data ?? []) as TaxaRow[])
     setLoading(false)
   }
 
@@ -108,10 +115,6 @@ export default function TaxasPage() {
     setForm(prev => ({ ...prev, adquirente_id: id, forma_pagamento_id: '' }))
   }
 
-  function handleAbrangenciaChange(value: AbrangenciaTaxa) {
-    setForm(prev => ({ ...prev, abrangencia: value, posto_id: '', postos_ids: [] }))
-  }
-
   function togglePostoId(postoId: string) {
     setForm(prev => {
       const already = prev.postos_ids.includes(postoId)
@@ -127,22 +130,29 @@ export default function TaxasPage() {
   function openCreate() {
     setSelected(null)
     setForm(EMPTY_FORM)
+    setBuscaPosto('')
     setOpenForm(true)
   }
 
   function openEdit(t: TaxaRow) {
     setSelected(t)
+    const isTodos = t.abrangencia === 'todos_postos'
+    const postos_ids = isTodos
+      ? []
+      : t.abrangencia === 'posto_especifico'
+        ? (t.posto_id ? [t.posto_id] : [])
+        : (t.taxa_postos?.map(tp => tp.posto_id) ?? [])
     setForm({
       adquirente_id: t.adquirente_id,
       forma_pagamento_id: t.forma_pagamento_id ?? '',
-      abrangencia: t.abrangencia ?? 'posto_especifico',
-      posto_id: t.posto_id ?? '',
-      postos_ids: t.taxa_postos?.map(tp => tp.posto_id) ?? [],
+      todos_postos: isTodos,
+      postos_ids,
       taxa_debito: t.taxa_debito != null ? String(t.taxa_debito) : '',
       taxa_credito: t.taxa_credito != null ? String(t.taxa_credito) : '',
       taxa_credito_parcelado: t.taxa_credito_parcelado != null ? String(t.taxa_credito_parcelado) : '',
       observacoes: t.observacoes ?? '',
     })
+    setBuscaPosto('')
     setOpenForm(true)
   }
 
@@ -153,20 +163,18 @@ export default function TaxasPage() {
     if (!form.forma_pagamento_id) {
       toast({ variant: 'destructive', title: 'Forma de pagamento é obrigatória' }); return
     }
-    if (form.abrangencia === 'posto_especifico' && !form.posto_id) {
-      toast({ variant: 'destructive', title: 'Selecione o posto' }); return
-    }
-    if (form.abrangencia === 'multiplos_postos' && form.postos_ids.length === 0) {
+    if (!form.todos_postos && form.postos_ids.length === 0) {
       toast({ variant: 'destructive', title: 'Selecione ao menos um posto' }); return
     }
 
     setSaving(true)
 
+    const abrangencia = calcAbrangencia(form.todos_postos, form.postos_ids)
     const payload = {
       adquirente_id: form.adquirente_id,
       forma_pagamento_id: form.forma_pagamento_id || null,
-      abrangencia: form.abrangencia,
-      posto_id: form.abrangencia === 'posto_especifico' ? form.posto_id : null,
+      abrangencia,
+      posto_id: abrangencia === 'posto_especifico' ? form.postos_ids[0] : null,
       taxa_debito: form.taxa_debito ? parseFloat(form.taxa_debito) : null,
       taxa_credito: form.taxa_credito ? parseFloat(form.taxa_credito) : null,
       taxa_credito_parcelado: form.taxa_credito_parcelado ? parseFloat(form.taxa_credito_parcelado) : null,
@@ -193,7 +201,7 @@ export default function TaxasPage() {
     // Gerencia taxa_postos para abrangência múltipla
     if (taxaId) {
       await supabase.from('taxa_postos').delete().eq('taxa_id', taxaId)
-      if (form.abrangencia === 'multiplos_postos' && form.postos_ids.length > 0) {
+      if (abrangencia === 'multiplos_postos' && form.postos_ids.length > 0) {
         await supabase.from('taxa_postos').insert(
           form.postos_ids.map(postoId => ({ taxa_id: taxaId!, posto_id: postoId }))
         )
@@ -368,56 +376,70 @@ export default function TaxasPage() {
               </Select>
             </div>
 
-            {/* Abrangência */}
-            <div className="space-y-1.5">
-              <Label className="text-[12px] font-medium text-gray-600">Abrangência *</Label>
-              <Select
-                value={form.abrangencia}
-                onValueChange={v => handleAbrangenciaChange(v as AbrangenciaTaxa)}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="posto_especifico">Posto Específico</SelectItem>
-                  <SelectItem value="todos_postos">Todos os Postos</SelectItem>
-                  <SelectItem value="multiplos_postos">Múltiplos Postos</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Posto único */}
-            {form.abrangencia === 'posto_especifico' && (
-              <div className="space-y-1.5">
-                <Label className="text-[12px] font-medium text-gray-600">Posto *</Label>
-                <Select value={form.posto_id} onValueChange={v => setField('posto_id', v)}>
-                  <SelectTrigger><SelectValue placeholder="Selecione o posto" /></SelectTrigger>
-                  <SelectContent>
-                    {postos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Múltiplos postos */}
-            {form.abrangencia === 'multiplos_postos' && (
-              <div className="space-y-1.5">
+            {/* Postos */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
                 <Label className="text-[12px] font-medium text-gray-600">
-                  Postos * <span className="font-normal text-gray-400">({form.postos_ids.length} selecionados)</span>
+                  Postos *
+                  {!form.todos_postos && form.postos_ids.length > 0 && (
+                    <span className="ml-1.5 font-normal text-orange-500">
+                      {form.postos_ids.length} selecionado{form.postos_ids.length > 1 ? 's' : ''}
+                    </span>
+                  )}
                 </Label>
-                <div className="border border-gray-200 rounded-lg max-h-44 overflow-y-auto divide-y divide-gray-100">
-                  {postos.map(p => (
-                    <label key={p.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50/60">
-                      <input
-                        type="checkbox"
-                        checked={form.postos_ids.includes(p.id)}
-                        onChange={() => togglePostoId(p.id)}
-                        className="rounded border-gray-300 text-orange-500 focus:ring-orange-400"
-                      />
-                      <span className="text-[13px] text-gray-700">{p.nome}</span>
-                    </label>
-                  ))}
-                </div>
+                {/* Todos os postos toggle */}
+                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={form.todos_postos}
+                    onChange={e => setForm(prev => ({ ...prev, todos_postos: e.target.checked, postos_ids: [] }))}
+                    className="rounded border-gray-300 text-orange-500 focus:ring-orange-400"
+                  />
+                  <span className="text-[12px] text-gray-500">Todos os postos</span>
+                </label>
               </div>
-            )}
+
+              {!form.todos_postos && (
+                <>
+                  {/* Busca */}
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <input
+                      value={buscaPosto}
+                      onChange={e => setBuscaPosto(e.target.value)}
+                      placeholder="Buscar posto..."
+                      className="w-full h-8 pl-8 pr-8 text-[12px] border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400"
+                    />
+                    {buscaPosto && (
+                      <button onClick={() => setBuscaPosto('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Lista com checkboxes */}
+                  <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto divide-y divide-gray-100">
+                    {postos
+                      .filter(p => p.nome.toLowerCase().includes(buscaPosto.toLowerCase()))
+                      .map(p => (
+                        <label key={p.id} className={`flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-orange-50/40 transition-colors ${form.postos_ids.includes(p.id) ? 'bg-orange-50/60' : ''}`}>
+                          <input
+                            type="checkbox"
+                            checked={form.postos_ids.includes(p.id)}
+                            onChange={() => togglePostoId(p.id)}
+                            className="rounded border-gray-300 text-orange-500 focus:ring-orange-400"
+                          />
+                          <span className="text-[13px] text-gray-700">{p.nome}</span>
+                        </label>
+                      ))
+                    }
+                    {postos.filter(p => p.nome.toLowerCase().includes(buscaPosto.toLowerCase())).length === 0 && (
+                      <p className="px-3 py-3 text-[12px] text-gray-400 text-center">Nenhum posto encontrado</p>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
 
             {/* Taxas */}
             <div>

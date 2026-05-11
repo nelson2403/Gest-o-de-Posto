@@ -128,6 +128,7 @@ function DreTab() {
   const [loading,    setLoading]    = useState(false)
   const [erro,       setErro]       = useState<string | null>(null)
   const [dados,      setDados]      = useState<DreRow[]>([])
+  const [dadosContas, setDadosContas] = useState<any[]>([])
   const [mostrarSel, setMostrarSel] = useState(false)
 
   useEffect(() => {
@@ -143,10 +144,15 @@ function DreTab() {
         : postos.filter(p => p.codigo_empresa_externo).map(p => p.codigo_empresa_externo).join(',')
       const params = new URLSearchParams({ dataInicio, dataFim })
       if (grids) params.set('empresaGrids', grids)
-      const res  = await fetch(`/api/analise-externo?${params}`)
-      const json = await res.json()
-      if (json.error) throw new Error(json.error)
-      setDados(json.data ?? [])
+      const [res1, res2] = await Promise.all([
+        fetch(`/api/analise-externo?${params}`),
+        fetch(`/api/analise-contas?${params}`),
+      ])
+      const [json1, json2] = await Promise.all([res1.json(), res2.json()])
+      if (json1.error) throw new Error(json1.error)
+      setDados(json1.data ?? [])
+      if (json2.debug) console.log('[analise-contas debug]', json2.debug)
+      setDadosContas(json2.data ?? [])
     } catch (e) { setErro(String(e)) }
     finally { setLoading(false) }
   }, [dataInicio, dataFim, postosSel, postos])
@@ -177,6 +183,20 @@ function DreTab() {
   const postosFiltrados = useMemo(() =>
     porPosto.filter(p => !busca || p.posto_nome.toLowerCase().includes(busca.toLowerCase()))
   , [porPosto, busca])
+
+  const porPostoContas = useMemo(() => {
+    const map: Record<string, { posto_nome: string; rows: any[]; bruto: number; taxas: number; liq: number }> = {}
+    dadosContas.forEach((r: any) => {
+      if (!map[r.empresa_grid]) map[r.empresa_grid] = { posto_nome: r.posto_nome, rows: [], bruto: 0, taxas: 0, liq: 0 }
+      map[r.empresa_grid].rows.push(r)
+      map[r.empresa_grid].bruto += r.valor_bruto
+      map[r.empresa_grid].taxas += r.valor_taxa
+      map[r.empresa_grid].liq   += r.valor_liquido
+    })
+    return Object.values(map)
+      .filter(p => !busca || p.posto_nome.toLowerCase().includes(busca.toLowerCase()))
+      .sort((a, b) => a.posto_nome.localeCompare(b.posto_nome))
+  }, [dadosContas, busca])
 
   const divergencias = useMemo(() =>
     dados
@@ -251,6 +271,16 @@ function DreTab() {
 
       {dados.length > 0 && (
         <>
+          {porPostoContas.length > 0 && (
+            <div className="flex justify-end">
+              <button
+                onClick={() => document.getElementById('baixas-financeiras')?.scrollIntoView({ behavior: 'smooth' })}
+                className="text-[12px] text-blue-600 hover:text-blue-700 underline underline-offset-2"
+              >
+                ↓ Ver Baixas Financeiras ({porPostoContas.length} posto{porPostoContas.length > 1 ? 's' : ''})
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <KpiCard title="Receita Bruta"   value={fmtBRL(totais.bruto)}   icon={TrendingUp}   iconColor="text-emerald-600" iconBg="bg-emerald-100"
               sub={`${totais.cvs.toLocaleString('pt-BR')} transações`} />
@@ -366,6 +396,63 @@ function DreTab() {
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {/* ── Baixas Financeiras (FITCARD, VALE CARD, ALELO, TRUCKPAG etc.) ── */}
+          {porPostoContas.length > 0 && (
+            <div id="baixas-financeiras">
+              <SectionTitle>Baixas Financeiras por Conta de Cartão</SectionTitle>
+              <div className="space-y-3">
+                {porPostoContas.map(p => (
+                  <Card key={p.posto_nome} className="border-blue-100 shadow-sm overflow-hidden">
+                    <div className="bg-blue-50 px-4 py-2.5 border-b border-blue-100 flex items-center justify-between">
+                      <span className="font-semibold text-[13px] text-gray-800">{p.posto_nome}</span>
+                      <div className="flex items-center gap-4 text-[12px]">
+                        <span className="text-gray-500">Bruto: <span className="font-semibold text-gray-800">{fmtBRL(p.bruto)}</span></span>
+                        <span className="text-gray-500">Taxas: <span className="font-semibold text-red-600">{fmtBRL(p.taxas)}</span></span>
+                        <span className="text-gray-500">Líquido: <span className="font-semibold text-emerald-700">{fmtBRL(p.liq)}</span></span>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[12px]">
+                        <thead>
+                          <tr className="border-b border-gray-100 bg-white">
+                            <th className="text-left py-2 px-3 font-semibold text-gray-500">Mês</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-500">Conta / Forma de Pgto</th>
+                            <th className="text-right py-2 px-3 font-semibold text-gray-500">Trans.</th>
+                            <th className="text-right py-2 px-3 font-semibold text-gray-500">Receita Bruta</th>
+                            <th className="text-right py-2 px-3 font-semibold text-gray-500">Taxa Real</th>
+                            <th className="text-right py-2 px-3 font-semibold text-gray-500">Valor Taxas</th>
+                            <th className="text-right py-2 px-3 font-semibold text-gray-500">Receita Líquida</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {p.rows.map((r: any, i: number) => (
+                            <tr key={i} className={cn('border-b border-gray-50 hover:bg-gray-50/60', i % 2 === 0 && 'bg-white')}>
+                              <td className="py-2 px-3 text-gray-500 font-mono">{r.mes}</td>
+                              <td className="py-2 px-3 font-medium text-gray-700 max-w-[180px] truncate" title={r.conta_nome}>{r.conta_nome}</td>
+                              <td className="py-2 px-3 text-right text-gray-600 font-mono">{r.total_cvs.toLocaleString('pt-BR')}</td>
+                              <td className="py-2 px-3 text-right font-mono font-semibold text-gray-800">{fmtBRL(r.valor_bruto)}</td>
+                              <td className="py-2 px-3 text-right font-mono text-purple-700">{fmtPct(r.taxa_efetiva)}</td>
+                              <td className="py-2 px-3 text-right font-mono text-red-600">{fmtBRL(r.valor_taxa)}</td>
+                              <td className="py-2 px-3 text-right font-mono font-semibold text-emerald-700">{fmtBRL(r.valor_liquido)}</td>
+                            </tr>
+                          ))}
+                          <tr className="bg-blue-50/80 font-semibold border-t border-blue-100">
+                            <td className="py-2 px-3 text-gray-600" colSpan={2}>Total {p.posto_nome}</td>
+                            <td />
+                            <td className="py-2 px-3 text-right font-mono text-gray-900">{fmtBRL(p.bruto)}</td>
+                            <td className="py-2 px-3 text-right font-mono text-purple-800">{p.bruto > 0 ? fmtPct(p.taxas / p.bruto * 100) : '—'}</td>
+                            <td className="py-2 px-3 text-right font-mono text-red-700">{fmtBRL(p.taxas)}</td>
+                            <td className="py-2 px-3 text-right font-mono text-emerald-800">{fmtBRL(p.liq)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
           )}
         </>
       )}

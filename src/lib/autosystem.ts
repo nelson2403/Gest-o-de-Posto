@@ -348,6 +348,95 @@ export async function buscarEmpresas(): Promise<{ grid: number; codigo: string; 
   return query(`SELECT grid::bigint AS grid, codigo::text, nome::text FROM empresa ORDER BY nome`)
 }
 
+export interface EmpresaCompleta extends Record<string, unknown> {
+  grid:         number
+  codigo:       string
+  nome:         string
+  razao_social: string | null
+  cnpj:         string | null  // Autosystem: coluna 'cpf' (armazena CNPJ para PJ)
+  ie:           string | null  // Autosystem: coluna 'inscr_est'
+  im:           string | null  // Autosystem: coluna 'inscr_municipal'
+  cep:          string | null
+  logradouro:   string | null
+  numero:       string | null
+  bairro:       string | null
+  cidade:       string | null
+  uf:           string | null
+  telefone:     string | null  // Autosystem: coluna 'fone'
+  celular:      string | null
+  fax:          string | null
+  email:        string | null
+  contato:      string | null
+  ult_alteracao: string | null
+}
+
+// Mapeamento: nome interno → nome real no Autosystem
+const AS_COL_MAP: Record<string, string> = {
+  razao_social:  'razao_social',
+  cnpj:          'cpf',           // CNPJ/CPF no mesmo campo
+  ie:            'inscr_est',     // Inscrição Estadual
+  im:            'inscr_municipal',
+  cep:           'cep',
+  logradouro:    'logradouro',
+  numero:        'numero',
+  bairro:        'bairro',
+  cidade:        'cidade',
+  uf:            'uf',
+  telefone:      'fone',
+  celular:       'celular',
+  fax:           'fax',
+  email:         'email',
+  contato:       'contato',
+  ult_alteracao: 'ult_alteracao',
+}
+
+export async function buscarEmpresasCompleto(): Promise<EmpresaCompleta[]> {
+  const asCols = Object.values(AS_COL_MAP)
+  const colRows = await query<{ column_name: string }>(
+    `SELECT column_name FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'empresa'
+       AND column_name = ANY($1::text[])`,
+    [asCols],
+  )
+  const existentes = new Set(colRows.map(r => r.column_name))
+
+  // Monta SELECT com aliases: inscr_est AS ie, fone AS telefone, etc.
+  const extraSql = Object.entries(AS_COL_MAP)
+    .filter(([, asCol]) => existentes.has(asCol))
+    .map(([alias, asCol]) => `${asCol}::text AS ${alias}`)
+    .join(', ')
+
+  const rows = await query<Record<string, unknown>>(
+    `SELECT grid::bigint AS grid, codigo::text AS codigo, nome::text AS nome
+     ${extraSql ? ', ' + extraSql : ''}
+     FROM empresa ORDER BY nome`,
+  )
+
+  const str = (v: unknown) => (v as string | null | undefined) ?? null
+
+  return rows.map(r => ({
+    grid:          r.grid as number,
+    codigo:        r.codigo as string,
+    nome:          r.nome as string,
+    razao_social:  str(r.razao_social),
+    cnpj:          str(r.cnpj),
+    ie:            str(r.ie),
+    im:            str(r.im),
+    cep:           str(r.cep),
+    logradouro:    str(r.logradouro),
+    numero:        str(r.numero),
+    bairro:        str(r.bairro),
+    cidade:        str(r.cidade),
+    uf:            str(r.uf),
+    telefone:      str(r.telefone),
+    celular:       str(r.celular),
+    fax:           str(r.fax),
+    email:         str(r.email),
+    contato:       str(r.contato),
+    ult_alteracao: str(r.ult_alteracao),
+  }))
+}
+
 // ── conta ────────────────────────────────────────────────────────────────────
 
 export async function buscarContas(like: string): Promise<{ codigo: string; nome: string }[]> {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Header } from '@/components/layout/Header'
@@ -18,11 +18,62 @@ import { toast } from '@/hooks/use-toast'
 import { useAuthContext } from '@/contexts/AuthContext'
 import { can } from '@/lib/utils/permissions'
 import { formatDate, formatCNPJ } from '@/lib/utils/formatters'
-import { Plus, Pencil, Trash2, ChevronRight, Loader2, MapPin } from 'lucide-react'
+import { Plus, Pencil, Trash2, ChevronRight, Loader2, MapPin, RefreshCw, Copy, Check } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Posto, Empresa, Role } from '@/types/database.types'
 
 const EMPTY = { nome: '', cnpj: '', endereco: '', email: '', senha_email: '', empresa_id: '', ativo: true, codigo_empresa_externo: '' }
+
+function formatPostoBlock(p: Posto): string {
+  const lines: string[] = []
+  lines.push(`Nome: ${p.nome}`)
+  if (p.razao_social) lines.push(`Razão Social: ${p.razao_social}`)
+  if (p.cnpj)         lines.push(`CNPJ: ${formatCNPJ(p.cnpj)}`)
+  if (p.ie)           lines.push(`IE: ${p.ie}`)
+  if (p.endereco)     lines.push(`Endereço: ${p.endereco}`)
+  if (p.bairro)       lines.push(`Bairro: ${p.bairro}`)
+  const cidadeUf = [p.cidade, p.uf].filter(Boolean).join(' - ')
+  if (cidadeUf)       lines.push(`Cidade: ${cidadeUf}`)
+  if (p.cep)          lines.push(`CEP: ${p.cep}`)
+  if (p.telefone)     lines.push(`Telefone: ${p.telefone}`)
+  if (p.email)        lines.push(`Email: ${p.email}`)
+  return lines.join('\n')
+}
+
+function copyToClipboard(text: string): boolean {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).catch(() => {})
+    return true
+  }
+  const el = document.createElement('textarea')
+  el.value = text
+  el.style.cssText = 'position:fixed;top:0;left:0;opacity:0'
+  document.body.appendChild(el)
+  el.select()
+  const ok = document.execCommand('copy')
+  document.body.removeChild(el)
+  return ok
+}
+
+function CopyButton({ posto }: { posto: Posto }) {
+  const [copied, setCopied] = useState(false)
+  function handleCopy(e: React.MouseEvent) {
+    e.stopPropagation()
+    copyToClipboard(formatPostoBlock(posto))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  return (
+    <Button
+      variant="ghost" size="icon"
+      className="h-8 w-8 text-gray-400 hover:text-green-600 hover:bg-green-50"
+      onClick={handleCopy}
+      title="Copiar informações do posto"
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+    </Button>
+  )
+}
 
 export default function PostosPage() {
   const { usuario } = useAuthContext()
@@ -35,13 +86,15 @@ export default function PostosPage() {
   const [loading,  setLoading]  = useState(true)
   const [saving,   setSaving]   = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [syncing,  setSyncing]  = useState(false)
+  const [lastSync, setLastSync] = useState<string | null>(null)
 
   const [openForm,   setOpenForm]   = useState(false)
   const [openDelete, setOpenDelete] = useState(false)
   const [selected,   setSelected]   = useState<Posto | null>(null)
   const [form, setForm] = useState(EMPTY)
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true)
     let query = supabase.from('postos').select('*, empresa:empresas(id, nome)').order('nome')
     if (role === 'gerente' && usuario?.posto_fechamento_id) {
@@ -50,10 +103,37 @@ export default function PostosPage() {
     const { data, error } = await query
     if (!error) setPostos(data as Posto[])
     setLoading(false)
+  }, [role, usuario?.posto_fechamento_id])
+
+  async function checkLastSync() {
+    const res = await fetch('/api/postos/sync-autosystem')
+    if (res.ok) {
+      const json = await res.json()
+      setLastSync(json.sincronizado_em ?? null)
+    }
+  }
+
+  async function handleSync() {
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/postos/sync-autosystem', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) {
+        toast({ variant: 'destructive', title: 'Erro na sincronização', description: json.error })
+      } else {
+        toast({ title: `Sincronizado! ${json.synced} posto(s) atualizado(s) do Autosystem.` })
+        setLastSync(json.sincronizado_em)
+        await load()
+      }
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro ao conectar com Autosystem' })
+    }
+    setSyncing(false)
   }
 
   useEffect(() => {
     load()
+    checkLastSync()
     if (role === 'master') {
       supabase.from('empresas').select('id, nome').order('nome').then(({ data }) => {
         if (data) setEmpresas(data as Empresa[])
@@ -73,7 +153,7 @@ export default function PostosPage() {
       nome: p.nome, cnpj: p.cnpj ?? '', endereco: p.endereco ?? '',
       email: p.email ?? '', senha_email: p.senha_email ?? '',
       empresa_id: p.empresa_id, ativo: p.ativo,
-      codigo_empresa_externo: (p as any).codigo_empresa_externo ?? '',
+      codigo_empresa_externo: p.codigo_empresa_externo ?? '',
     })
     setOpenForm(true)
   }
@@ -119,6 +199,16 @@ export default function PostosPage() {
     setDeleting(false)
   }
 
+  function formatLastSync() {
+    if (!lastSync) return 'Nunca sincronizado'
+    const d = new Date(lastSync)
+    const diff = Math.round((Date.now() - d.getTime()) / 60000)
+    if (diff < 1)  return 'Agora mesmo'
+    if (diff < 60) return `${diff} min atrás`
+    if (diff < 1440) return `${Math.round(diff / 60)}h atrás`
+    return d.toLocaleDateString('pt-BR')
+  }
+
   const columns: ColumnDef<Posto>[] = [
     {
       accessorKey: 'nome',
@@ -131,9 +221,14 @@ export default function PostosPage() {
           <div className="w-7 h-7 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
             <MapPin className="w-3.5 h-3.5 text-orange-600" />
           </div>
-          <span className="font-medium text-gray-900 group-hover:text-orange-600 transition-colors">
-            {row.original.nome}
-          </span>
+          <div>
+            <span className="font-medium text-gray-900 group-hover:text-orange-600 transition-colors block">
+              {row.original.nome}
+            </span>
+            {row.original.razao_social && (
+              <span className="text-[11px] text-gray-400 block leading-tight">{row.original.razao_social}</span>
+            )}
+          </div>
         </button>
       ),
     },
@@ -145,11 +240,20 @@ export default function PostosPage() {
         : <span className="text-gray-400">—</span>,
     },
     {
-      accessorKey: 'endereco',
-      header: 'Endereço',
-      cell: ({ row }) => (
-        <span className="text-[13px] max-w-[200px] truncate block">{row.original.endereco ?? '—'}</span>
-      ),
+      id: 'localizacao',
+      header: 'Cidade / UF',
+      cell: ({ row }) => {
+        const p = row.original
+        const cidadeUf = [p.cidade, p.uf].filter(Boolean).join(' - ')
+        return cidadeUf
+          ? <span className="text-[13px]">{cidadeUf}</span>
+          : <span className="text-gray-400">—</span>
+      },
+    },
+    {
+      accessorKey: 'telefone',
+      header: 'Telefone',
+      cell: ({ row }) => row.original.telefone ?? <span className="text-gray-400">—</span>,
     },
     {
       accessorKey: 'email',
@@ -167,15 +271,11 @@ export default function PostosPage() {
       cell: ({ row }) => <AtivoInativoBadge ativo={row.original.ativo} />,
     },
     {
-      accessorKey: 'criado_em',
-      header: 'Criado em',
-      cell: ({ row }) => <span className="text-[12px] text-gray-500">{formatDate(row.original.criado_em)}</span>,
-    },
-    {
       id: 'acoes',
       header: '',
       cell: ({ row }) => (
         <div className="flex items-center gap-1 justify-end">
+          <CopyButton posto={row.original} />
           <Button
             variant="ghost" size="icon"
             className="h-8 w-8 text-gray-400 hover:text-orange-600 hover:bg-orange-50"
@@ -215,12 +315,25 @@ export default function PostosPage() {
         title="Postos de Combustível"
         description="Gerencie os postos da sua rede"
         actions={
-          <PermissionGuard permission="postos.create">
-            <Button onClick={openCreate} className="h-9 bg-orange-500 hover:bg-orange-600 text-[13px] gap-1.5">
-              <Plus className="w-3.5 h-3.5" />
-              <span className="btn-text">Novo Posto</span>
-            </Button>
-          </PermissionGuard>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 text-[12px] text-gray-500 border border-gray-200 rounded-lg px-3 py-1.5 bg-white">
+              <RefreshCw className="w-3.5 h-3.5 text-gray-400" />
+              <span>{formatLastSync()}</span>
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className="ml-1 text-orange-600 hover:text-orange-700 font-medium disabled:opacity-50"
+              >
+                {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin inline" /> : 'Sincronizar'}
+              </button>
+            </div>
+            <PermissionGuard permission="postos.create">
+              <Button onClick={openCreate} className="h-9 bg-orange-500 hover:bg-orange-600 text-[13px] gap-1.5">
+                <Plus className="w-3.5 h-3.5" />
+                <span className="btn-text">Novo Posto</span>
+              </Button>
+            </PermissionGuard>
+          </div>
         }
       />
 
@@ -229,7 +342,7 @@ export default function PostosPage() {
           columns={columns}
           data={postos}
           loading={loading}
-          searchPlaceholder="Buscar por nome, CNPJ, endereço..."
+          searchPlaceholder="Buscar por nome, CNPJ, cidade..."
         />
       </div>
 

@@ -19,7 +19,7 @@ import {
   Search, MapPin, User2, Calendar, Tag, ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
-import type { Tarefa, StatusTarefa, PrioridadeTarefa, CategoriaTarefa, Role, Usuario } from '@/types/database.types'
+import type { Tarefa, StatusTarefa, PrioridadeTarefa, CategoriaTarefa, Role } from '@/types/database.types'
 
 // ─── Config ────────────────────────────────────────────────────────────────────
 
@@ -80,12 +80,7 @@ export default function TarefasAvulsasPage() {
   const canDelete   = can(role ?? null, 'tarefas.delete')
   const canEdit     = can(role ?? null, 'tarefas.edit')
   const canCreate   = can(role ?? null, 'tarefas.create')
-  const isMasterAdmin = role === 'master'
-  const isGerente     = role === 'gerente'
-  const postoGerente  = usuario?.posto_fechamento_id ?? null
-
   const [tarefas,   setTarefas]   = useState<Tarefa[]>([])
-  const [usuarios,  setUsuarios]  = useState<Pick<Usuario, 'id' | 'nome'>[]>([])
   const [postos,    setPostos]    = useState<PostoOpt[]>([])
   const [empresaId, setEmpresaId] = useState<string | null>(usuario?.empresa_id ?? null)
   const [loading,   setLoading]   = useState(true)
@@ -103,17 +98,14 @@ export default function TarefasAvulsasPage() {
   const [search,          setSearch]          = useState('')
 
   async function load() {
+    if (!usuario?.id) return
     setLoading(true)
-    let query = supabase
+    const { data, error } = await supabase
       .from('tarefas')
       .select('*, usuario:usuarios(id, nome), empresa:empresas(id, nome), posto:postos(id, nome)')
       .or('categoria.neq.conciliacao_bancaria,categoria.is.null')
+      .eq('usuario_id', usuario.id)
       .order('data_conclusao_prevista', { ascending: true, nullsFirst: false })
-    // Gerente vê apenas as próprias tarefas (gestor pessoal)
-    if (isGerente && usuario?.id) {
-      query = query.eq('usuario_id', usuario.id)
-    }
-    const { data, error } = await query
     if (error) toast({ variant: 'destructive', title: 'Erro ao carregar', description: error.message })
     else setTarefas((data ?? []) as Tarefa[])
     setLoading(false)
@@ -124,10 +116,6 @@ export default function TarefasAvulsasPage() {
     load()
     supabase.from('postos').select('id, nome').order('nome')
       .then(({ data }) => { if (data) setPostos(data) })
-    if (isMasterAdmin) {
-      supabase.from('usuarios').select('id, nome').eq('ativo', true).order('nome')
-        .then(({ data }) => { if (data) setUsuarios(data) })
-    }
     if (!usuario.empresa_id) {
       supabase.from('empresas').select('id').limit(1).single()
         .then(({ data }) => { if (data) setEmpresaId(data.id) })
@@ -287,7 +275,6 @@ export default function TarefasAvulsasPage() {
                 {Object.entries(PRIORIDADE_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
             </div>
-            {!isGerente && (
             <div>
               <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1 block">Posto</label>
               <select value={filterPosto} onChange={e => setFilterPosto(e.target.value)}
@@ -296,17 +283,6 @@ export default function TarefasAvulsasPage() {
                 {postos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </select>
             </div>
-            )}
-            {isMasterAdmin && (
-              <div>
-                <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1 block">Responsável</label>
-                <select value={''} onChange={() => {}}
-                  className="w-full h-9 px-2 text-[12px] border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-[#8B1A14]">
-                  <option value="">Todos</option>
-                  {usuarios.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
-                </select>
-              </div>
-            )}
           </div>
         </div>
 
@@ -510,18 +486,7 @@ export default function TarefasAvulsasPage() {
               </div>
             </div>
 
-            {isMasterAdmin && (
-              <div className="space-y-1.5">
-                <Label className="text-[12px]">Responsável</Label>
-                <Select value={form.usuario_id || '_none'} onValueChange={v => setForm(f => ({ ...f, usuario_id: v === '_none' ? '' : v }))}>
-                  <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">Sem responsável</SelectItem>
-                    {usuarios.map(u => <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+
 
             <div className="space-y-1.5">
               <Label className="text-[12px]">Observações internas</Label>

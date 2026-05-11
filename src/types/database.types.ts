@@ -57,6 +57,16 @@ export interface Posto {
   ativo: boolean
   criado_em: string
   atualizado_em: string
+  // Autosystem sync fields
+  razao_social: string | null
+  telefone: string | null
+  ie: string | null
+  cep: string | null
+  bairro: string | null
+  cidade: string | null
+  uf: string | null
+  sincronizado_em: string | null
+  codigo_empresa_externo: string | null
   empresa?: Empresa
 }
 

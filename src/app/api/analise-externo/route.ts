@@ -41,7 +41,10 @@ export async function GET(req: NextRequest) {
   if (!grids.length) return NextResponse.json({ data: [] })
 
   const extratos = await buscarCartaoConciliaExtrato(grids, dataInicio, dataFim)
-  const extratosComVenda = (extratos as any[]).filter(r => (r.extrato ?? '').includes('Venda/pgto'))
+  const extratosComVenda = (extratos as any[]).filter(r => {
+    const ext = r.extrato ?? ''
+    return ext.includes("'valor_bruto'") && extractFloat(ext, 'valor_bruto') > 0
+  })
 
   function extractFloat(text: string, key: string): number {
     const m = text.match(new RegExp(`'${key}':\\s*([0-9]+\\.?[0-9]*)`))

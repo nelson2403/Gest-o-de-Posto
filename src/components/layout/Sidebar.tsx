@@ -36,6 +36,7 @@ type NavItem = {
   icon: React.ElementType
   permission: Permission | null
   children?: NavChild[]
+  hideForRoles?: Role[]
 }
 
 type NavGroup = {
@@ -97,9 +98,9 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/acessos-unificados', label: 'Acessos Unificados', icon: Link2,    permission: 'acessos.view' as Permission },
       { href: '/acessos-postos',     label: 'Acessos dos Postos', icon: KeyRound, permission: 'acessos.view' as Permission },
       { href: '/acessos-anydesk',    label: 'AnyDesk',            icon: Monitor,  permission: 'anydesk.view' as Permission },
-      { href: '/servidores',         label: 'Servidores',         icon: Server,   permission: 'servidores.view' as Permission },
-      { href: '/acessos-cameras',    label: 'Câmeras',            icon: Camera,   permission: 'cameras.view' as Permission },
-      { href: '/senhas-tef',         label: 'Senhas TEF',         icon: Lock,     permission: 'senhas_tef.view' as Permission },
+      { href: '/servidores',         label: 'Servidores',         icon: Server,   permission: 'servidores.view' as Permission, hideForRoles: ['adm_contas_pagar'] },
+      { href: '/acessos-cameras',    label: 'Câmeras',            icon: Camera,   permission: 'cameras.view' as Permission,   hideForRoles: ['adm_contas_pagar'] },
+      { href: '/senhas-tef',         label: 'Senhas TEF',         icon: Lock,     permission: 'senhas_tef.view' as Permission, hideForRoles: ['adm_contas_pagar'] },
     ],
   },
   {
@@ -395,7 +396,8 @@ export function Sidebar() {
       <nav className="flex-1 overflow-y-auto py-1.5 scrollbar-thin space-y-px">
         {NAV_GROUPS.map(group => {
           const visibleItems = group.items.filter(item =>
-            !item.permission || canUser(item.permission)
+            (!item.permission || canUser(item.permission)) &&
+            (!item.hideForRoles || !role || !item.hideForRoles.includes(role))
           )
           if (!visibleItems.length) return null
 

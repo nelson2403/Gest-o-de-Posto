@@ -106,8 +106,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!usuario) return
-    if (role === 'adm_transpombal') { router.replace('/transpombal'); return }
-    if (role === 'gerente')     { router.replace('/tanques');     return }
+    if (role === 'adm_transpombal')  { router.replace('/transpombal');              return }
+    if (role === 'gerente')          { router.replace('/tanques');                 return }
+    if (role === 'adm_contas_pagar') { router.replace('/contas-pagar/conferencia'); return }
   }, [usuario, role])
 
   const [data,         setData]         = useState<DashboardEmpresa | null>(null)

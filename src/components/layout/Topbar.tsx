@@ -126,9 +126,9 @@ const NAV_GROUPS: NavGroup[] = [
           { href: '/acessos-unificados', label: 'Acessos Unificados', icon: Link2,    permission: 'acessos.view' as Permission },
           { href: '/acessos-postos',     label: 'Acessos dos Postos', icon: KeyRound, permission: 'acessos.view' as Permission },
           { href: '/acessos-anydesk',    label: 'AnyDesk',            icon: Monitor,  permission: 'anydesk.view' as Permission },
-          { href: '/servidores',         label: 'Servidores',         icon: Server,   permission: 'servidores.view' as Permission },
-          { href: '/acessos-cameras',    label: 'Câmeras',            icon: Camera,   permission: 'cameras.view' as Permission },
-          { href: '/senhas-tef',         label: 'Senhas TEF',         icon: Lock,     permission: 'senhas_tef.view' as Permission },
+          { href: '/servidores',         label: 'Servidores',         icon: Server,   permission: 'servidores.view' as Permission, hideForRoles: ['adm_contas_pagar'] },
+          { href: '/acessos-cameras',    label: 'Câmeras',            icon: Camera,   permission: 'cameras.view' as Permission,   hideForRoles: ['adm_contas_pagar'] },
+          { href: '/senhas-tef',         label: 'Senhas TEF',         icon: Lock,     permission: 'senhas_tef.view' as Permission, hideForRoles: ['adm_contas_pagar'] },
         ],
       },
       { href: '/relatorios', label: 'Relatórios', icon: FileText, permission: 'relatorios.view' as Permission },
@@ -485,7 +485,7 @@ export function Topbar() {
 
                       // Item com flyout (sub-filhos)
                       if (item.children) {
-                        const visibleChildren = item.children.filter(c => !c.permission || canUser(c.permission))
+                        const visibleChildren = item.children.filter(c => (!c.permission || canUser(c.permission)) && (!c.hideForRoles || !role || !c.hideForRoles.includes(role)))
                         if (!visibleChildren.length) return null
                         const anyChildActive = visibleChildren.some(c => isActive(c.href))
                         const flyoutOpen = openFlyout === item.label

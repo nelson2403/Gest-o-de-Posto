@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils/cn'
 import {
   Loader2, RefreshCw, AlertTriangle, Database, ChevronRight, ChevronDown,
@@ -38,14 +37,33 @@ export default function ConferenciaPage() {
 
   const [aberto, setAberto] = useState<Set<string>>(new Set())
 
+  const [postosOcultos,   setPostosOcultos]   = useState<Set<string>>(new Set())
+  const [showPostoFiltro, setShowPostoFiltro] = useState(false)
+  const postoFiltroRef = useRef<HTMLDivElement | null>(null)
+
   // ── Impressão ─────────────────────────────────────────────────────────
-  // Quando o usuário pede um modo, expandimos/recolhemos a árvore conforme
-  // escolhido, esperamos o React pintar e disparamos window.print(). Após o
-  // diálogo fechar (afterprint), restauramos o estado anterior.
   const [printMode, setPrintMode] = useState<'recolhido' | 'expandido' | null>(null)
   const [showPrintMenu, setShowPrintMenu] = useState(false)
   const printMenuRef = useRef<HTMLDivElement | null>(null)
   const abertoBackupRef = useRef<Set<string> | null>(null)
+
+  // Fecha dropdown de postos ao clicar fora
+  useEffect(() => {
+    if (!showPostoFiltro) return
+    const fn = (e: MouseEvent) => {
+      if (postoFiltroRef.current && !postoFiltroRef.current.contains(e.target as Node)) {
+        setShowPostoFiltro(false)
+      }
+    }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [showPostoFiltro])
+
+  // Lista de postos ordenada alfabeticamente (para o dropdown de filtro)
+  const postosSorted = useMemo(() =>
+    [...empresas].sort((a, b) => a.posto_nome.localeCompare(b.posto_nome, 'pt-BR')),
+    [empresas],
+  )
 
   // Empresas em ordem crescente por nome, com filtro de busca aplicado.
   const empresasFiltradas = useMemo(() => {
@@ -56,6 +74,11 @@ export default function ConferenciaPage() {
     if (!termo) return sorted
     return sorted.filter(e => e.posto_nome.toLowerCase().includes(termo))
   }, [empresas, busca])
+
+  const empresasVisiveis = useMemo(() => {
+    if (!postosOcultos.size) return empresasFiltradas
+    return empresasFiltradas.filter(e => !postosOcultos.has(e.posto_id))
+  }, [empresasFiltradas, postosOcultos])
 
   const load = useCallback(async () => {
     if (!selectedData) return
@@ -99,14 +122,14 @@ export default function ConferenciaPage() {
     })
   }
 
-  function expandirTodas() { setAberto(new Set(empresasFiltradas.map(e => e.posto_id))) }
+  function expandirTodas() { setAberto(new Set(empresasVisiveis.map(e => e.posto_id))) }
   function recolherTodas() { setAberto(new Set()) }
 
   function imprimir(modo: 'recolhido' | 'expandido') {
     setShowPrintMenu(false)
     abertoBackupRef.current = new Set(aberto)
     if (modo === 'recolhido') setAberto(new Set())
-    else                      setAberto(new Set(empresasFiltradas.map(e => e.posto_id)))
+    else                      setAberto(new Set(empresasVisiveis.map(e => e.posto_id)))
     setPrintMode(modo)
   }
 
@@ -126,7 +149,7 @@ export default function ConferenciaPage() {
     }
   }, [printMode])
 
-  // Fecha o dropdown ao clicar fora
+  // Fecha o dropdown de impressão ao clicar fora
   useEffect(() => {
     if (!showPrintMenu) return
     const fn = (e: MouseEvent) => {
@@ -138,13 +161,15 @@ export default function ConferenciaPage() {
     return () => document.removeEventListener('mousedown', fn)
   }, [showPrintMenu])
 
-  // KPIs e total geral consideram a lista filtrada (assim os números seguem o que o usuário está vendo)
-  const totalGeral     = empresasFiltradas.reduce((s, e) => s + e.total, 0)
-  const totalAVencer   = empresasFiltradas.reduce((s, e) => s + e.a_vencer, 0)
-  const totalEmAtraso  = empresasFiltradas.reduce((s, e) => s + e.em_atraso, 0)
-  const qtTotal        = empresasFiltradas.reduce((s, e) => s + e.qt_total, 0)
-  const qtEmAtraso     = empresasFiltradas.reduce((s, e) => s + e.qt_em_atraso, 0)
-  const qtAVencer      = empresasFiltradas.reduce((s, e) => s + e.qt_a_vencer, 0)
+  // KPIs e total geral consideram a lista filtrada
+  const totalGeral    = empresasVisiveis.reduce((s, e) => s + e.total, 0)
+  const totalAVencer  = empresasVisiveis.reduce((s, e) => s + e.a_vencer, 0)
+  const totalEmAtraso = empresasVisiveis.reduce((s, e) => s + e.em_atraso, 0)
+  const qtTotal       = empresasVisiveis.reduce((s, e) => s + e.qt_total, 0)
+  const qtEmAtraso    = empresasVisiveis.reduce((s, e) => s + e.qt_em_atraso, 0)
+  const qtAVencer     = empresasVisiveis.reduce((s, e) => s + e.qt_a_vencer, 0)
+
+  const postosVisiveis = empresas.length - postosOcultos.size
 
   return (
     <div className="flex flex-col min-h-full">
@@ -157,7 +182,7 @@ export default function ConferenciaPage() {
         <p className="text-[10pt] font-bold text-gray-900">Conferência Diária — Títulos a Pagar</p>
         <p className="text-[8.5pt] text-gray-700">
           Posição em {fmtDate(selectedData)}
-          {' · '}{empresasFiltradas.length} empresa{empresasFiltradas.length !== 1 ? 's' : ''}
+          {' · '}{empresasVisiveis.length} empresa{empresasVisiveis.length !== 1 ? 's' : ''}
           {' · '}{qtTotal} título{qtTotal !== 1 ? 's' : ''}
           {' · '}Total {fmtBRL(totalGeral)}
           {qtEmAtraso > 0 && <> {' · '}<span className="text-red-700">Em atraso: {qtEmAtraso} ({fmtBRL(totalEmAtraso)})</span></>}
@@ -194,6 +219,70 @@ export default function ConferenciaPage() {
                 className="h-9 text-[13px] pl-8"
               />
             </div>
+
+            {/* Filtro de postos visíveis */}
+            <div ref={postoFiltroRef} className="relative">
+              <Label className="text-[12px] text-gray-500 mb-1 block">Postos visíveis</Label>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowPostoFiltro(v => !v)}
+                disabled={!empresas.length}
+                className="h-9 gap-1.5 text-[12px]"
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                {postosOcultos.size === 0
+                  ? 'Todos os postos'
+                  : `${postosVisiveis} de ${empresas.length} posto${empresas.length !== 1 ? 's' : ''}`}
+                <ChevronDown className={cn('w-3 h-3 opacity-60 transition-transform', showPostoFiltro && 'rotate-180')} />
+              </Button>
+              {showPostoFiltro && (
+                <div className="absolute left-0 top-full mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-xl z-30 overflow-hidden">
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-gray-50">
+                    <button
+                      onClick={() => setPostosOcultos(new Set())}
+                      className="text-[11.5px] text-blue-600 hover:underline font-medium"
+                    >
+                      Todos
+                    </button>
+                    <span className="text-gray-300">|</span>
+                    <button
+                      onClick={() => setPostosOcultos(new Set(empresas.map(e => e.posto_id)))}
+                      className="text-[11.5px] text-gray-500 hover:underline"
+                    >
+                      Nenhum
+                    </button>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto divide-y divide-gray-50">
+                    {postosSorted.map(e => {
+                      const visivel = !postosOcultos.has(e.posto_id)
+                      return (
+                        <label
+                          key={e.posto_id}
+                          className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-50"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={visivel}
+                            onChange={() => {
+                              setPostosOcultos(prev => {
+                                const next = new Set(prev)
+                                visivel ? next.add(e.posto_id) : next.delete(e.posto_id)
+                                return next
+                              })
+                            }}
+                            className="w-3.5 h-3.5 rounded"
+                          />
+                          <span className="text-[12.5px] text-gray-700 flex-1 truncate">{e.posto_nome}</span>
+                          <span className="text-[11px] text-gray-400 tabular-nums shrink-0">{fmtBRL(e.total)}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="ml-auto flex gap-2">
               <Button size="sm" variant="ghost" onClick={expandirTodas}
                 disabled={!empresasFiltradas.length} className="h-9 text-[12px]">
@@ -259,10 +348,10 @@ export default function ConferenciaPage() {
             {/* KPIs gerais */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 print:hidden">
               {[
-                { label: 'Total geral',  value: fmtBRL(totalGeral),    sub: `${qtTotal} título(s) · ${empresas.length} empresa(s)`, color: 'bg-gray-500' },
-                { label: 'A Vencer',     value: fmtBRL(totalAVencer),  sub: `${qtAVencer} título(s)`,                                color: 'bg-blue-500' },
-                { label: 'Em Atraso',    value: fmtBRL(totalEmAtraso), sub: `${qtEmAtraso} título(s)`,                               color: qtEmAtraso > 0 ? 'bg-red-500' : 'bg-gray-400' },
-                { label: 'Empresas',     value: String(empresas.length), sub: 'com títulos em aberto',                                color: 'bg-emerald-500' },
+                { label: 'Total geral',  value: fmtBRL(totalGeral),    sub: `${qtTotal} título(s) · ${empresasVisiveis.length} empresa(s)`, color: 'bg-gray-500' },
+                { label: 'A Vencer',     value: fmtBRL(totalAVencer),  sub: `${qtAVencer} título(s)`,                                        color: 'bg-blue-500' },
+                { label: 'Em Atraso',    value: fmtBRL(totalEmAtraso), sub: `${qtEmAtraso} título(s)`,                                        color: qtEmAtraso > 0 ? 'bg-red-500' : 'bg-gray-400' },
+                { label: 'Empresas',     value: String(empresasVisiveis.length), sub: 'com títulos em aberto',                                color: 'bg-emerald-500' },
               ].map(k => (
                 <div key={k.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-start gap-3">
                   <div className={cn('p-2 rounded-lg', k.color)}>
@@ -289,13 +378,13 @@ export default function ConferenciaPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {empresasFiltradas.length === 0 ? (
+                    {empresasVisiveis.length === 0 ? (
                       <tr>
                         <td colSpan={3} className="px-4 py-10 text-center text-[12.5px] text-gray-400 italic">
-                          Nenhuma empresa corresponde ao filtro &ldquo;{busca}&rdquo;.
+                          Nenhuma empresa corresponde aos filtros aplicados.
                         </td>
                       </tr>
-                    ) : empresasFiltradas.map(e => {
+                    ) : empresasVisiveis.map(e => {
                       const isOpen = aberto.has(e.posto_id)
                       return (
                         <Fragment key={e.posto_id}>
@@ -393,8 +482,13 @@ export default function ConferenciaPage() {
                   <tfoot>
                     <tr className="bg-gray-50 border-t-2 border-gray-200">
                       <td className="px-4 py-2.5 text-[12px] font-semibold text-gray-600">
-                        Total ({empresasFiltradas.length} empresa{empresasFiltradas.length !== 1 ? 's' : ''}
-                        {busca && empresas.length !== empresasFiltradas.length && ` de ${empresas.length}`})
+                        Total ({empresasVisiveis.length} empresa{empresasVisiveis.length !== 1 ? 's' : ''}
+                        {empresas.length !== empresasVisiveis.length && ` de ${empresas.length}`})
+                        {postosOcultos.size > 0 && (
+                          <span className="ml-1.5 text-amber-600 font-normal">
+                            · {postosOcultos.size} posto{postosOcultos.size !== 1 ? 's' : ''} oculto{postosOcultos.size !== 1 ? 's' : ''}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 text-right font-bold text-gray-800 tabular-nums">{fmtBRL(totalGeral)}</td>
                       <td className="px-4 py-2.5 text-right text-[12px] text-gray-500 tabular-nums">{qtTotal}</td>
@@ -405,10 +499,8 @@ export default function ConferenciaPage() {
             </div>
 
             {/* ── View exclusiva de impressão ──────────────────────────── */}
-            {/* Sem tabelas aninhadas: cada empresa vira um bloco com header     */}
-            {/* compacto + (no modo expandido) tabela plana de títulos.         */}
             <div className="hidden print:block">
-              {empresasFiltradas.map(e => (
+              {empresasVisiveis.map(e => (
                 <div key={e.posto_id} className="mb-3 print-empresa-block">
                   <div className="flex items-baseline gap-2 border-b border-gray-400 pb-0.5 mb-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-gray-800 inline-block flex-shrink-0" aria-hidden />
@@ -455,7 +547,7 @@ export default function ConferenciaPage() {
               {/* Rodapé de totais geral da impressão */}
               <div className="flex items-baseline gap-2 border-t-2 border-gray-700 pt-1 mt-3">
                 <span className="text-[9pt] font-bold text-gray-900 flex-1">
-                  Total ({empresasFiltradas.length} empresa{empresasFiltradas.length !== 1 ? 's' : ''})
+                  Total ({empresasVisiveis.length} empresa{empresasVisiveis.length !== 1 ? 's' : ''})
                 </span>
                 <span className="text-[8.5pt] text-gray-700 tabular-nums">{qtTotal} tít.</span>
                 <span className="text-[9.5pt] font-bold text-gray-900 tabular-nums">{fmtBRL(totalGeral)}</span>
