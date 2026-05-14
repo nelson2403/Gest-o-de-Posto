@@ -387,9 +387,9 @@ export default function EstoquePage() {
   }
 
   const tabs: { key: Tab; label: string; icon: React.ElementType; color: string }[] = [
-    { key: 'combustiveis', label: 'Combustíveis', icon: Fuel,        color: 'text-orange-600 border-orange-500 bg-orange-50' },
-    { key: 'pista',        label: 'Pista',         icon: Wrench,      color: 'text-blue-600 border-blue-500 bg-blue-50'       },
-    { key: 'conveniencia', label: 'Conveniência',   icon: ShoppingBag, color: 'text-green-600 border-green-500 bg-green-50'    },
+    { key: 'combustiveis', label: 'Combustíveis', icon: Fuel,       color: 'text-orange-600 border-orange-500 bg-orange-50' },
+    { key: 'pista',        label: 'Pista',         icon: Wrench,     color: 'text-blue-600 border-blue-500 bg-blue-50'       },
+    { key: 'conveniencia', label: 'Conveniência',   icon: ShoppingBag, color: 'text-green-600 border-green-500 bg-green-50'   },
   ]
 
   return (
@@ -444,7 +444,7 @@ export default function EstoquePage() {
           ))}
         </div>
 
-        {/* ── KPI Cards por aba ── */}
+        {/* ── KPI Cards ── */}
         {tab === 'combustiveis' && !loadingComb && dadosComb.length > 0 && (
           <div className="grid grid-cols-3 gap-4">
             <KpiCard label="Postos com estoque"  value={String(kpiComb.postos)} icon={Fuel}       color="orange" />

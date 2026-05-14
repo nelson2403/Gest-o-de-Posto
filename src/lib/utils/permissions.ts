@@ -30,7 +30,7 @@ export const PERMISSIONS = {
   'usuarios.delete':  ['master'],
 
   // Postos
-  'postos.view':      [...ACESSO_ALL, 'gerente'],
+  'postos.view':      [...ACESSO_ALL, 'gerente', 'rh'],
   'postos.create':    [...ADM_ALL],
   'postos.edit':      [...ADM_ALL],
   'postos.delete':    [...ADM_ALL],
@@ -72,8 +72,14 @@ export const PERMISSIONS = {
   'acessos.edit_senha': [...ADM_ALL, 'operador_conciliador'],
   'acessos.delete':     [...ADM_ALL],
 
+  // Códigos de Implantação (adquirente + posto)
+  'implantacao.view':   ['master', 'adm_financeiro'],
+  'implantacao.create': ['master', 'adm_financeiro'],
+  'implantacao.edit':   ['master', 'adm_financeiro'],
+  'implantacao.delete': ['master', 'adm_financeiro'],
+
   // AnyDesk
-  'anydesk.view':   [...ACESSO_ALL],
+  'anydesk.view':   [...ACESSO_ALL, 'rh'],
   'anydesk.create': [...ADM_ALL],
   'anydesk.edit':   [...ADM_ALL],
   'anydesk.delete': [...ADM_ALL],
@@ -84,20 +90,20 @@ export const PERMISSIONS = {
   'servidores.edit':   [...ADM_ALL],
   'servidores.delete': [...ADM_ALL],
 
-  // Contas Bancárias — adm_financeiro
-  'contas_bancarias.view':   ['master', 'adm_financeiro'],
+  // Contas Bancárias — adm_financeiro + rh (somente leitura)
+  'contas_bancarias.view':   ['master', 'adm_financeiro', 'rh'],
   'contas_bancarias.create': ['master', 'adm_financeiro'],
   'contas_bancarias.edit':   ['master', 'adm_financeiro'],
   'contas_bancarias.delete': ['master', 'adm_financeiro'],
 
-  // Câmeras — somente ADMs
-  'cameras.view':   [...ADM_ALL],
+  // Câmeras — ADMs + rh (somente leitura)
+  'cameras.view':   [...ADM_ALL, 'rh'],
   'cameras.create': [...ADM_ALL],
   'cameras.edit':   [...ADM_ALL],
   'cameras.delete': [...ADM_ALL],
 
   // Tarefas
-  'tarefas.view':   [...ACESSO_ALL, 'gerente'],
+  'tarefas.view':   [...ACESSO_ALL, 'gerente', 'rh'],
   'tarefas.create': [...ACESSO_ALL],
   'tarefas.edit':   [...ADM_ALL, 'operador_conciliador'],
   'tarefas.delete': ['master'],
@@ -111,8 +117,8 @@ export const PERMISSIONS = {
   // Relatórios — todos os roles
   'relatorios.view': [...ACESSO_ALL, 'gerente'],
 
-  // Fiscal — adm_fiscal gerencia; gerente anexa documentos
-  'fiscal.view':    ['master', 'adm_fiscal', 'gerente'],
+  // Fiscal — adm_fiscal gerencia; gerente e rh veem tarefas
+  'fiscal.view':    ['master', 'adm_fiscal', 'gerente', 'rh'],
   'fiscal.geracao': ['master', 'adm_fiscal'],
   'fiscal.lancar':  ['master', 'adm_fiscal'],
   'fiscal.gerente': ['master', 'adm_fiscal', 'gerente'],
@@ -138,7 +144,7 @@ export const PERMISSIONS = {
   'senhas_tef.delete': [...ADM_ALL],
 
   // Controle de Caixas
-  'controle_caixas.view':       ['master', 'adm_financeiro', 'operador_caixa', 'operador_conciliador'],
+  'controle_caixas.view':       ['master', 'adm_financeiro', 'operador_caixa', 'operador_conciliador', 'rh'],
   'controle_caixas.configurar': ['master'],
 
   // Bobinas — somente master
@@ -159,15 +165,19 @@ export const PERMISSIONS = {
   'contas_pagar.marcar_pago': ['master', 'adm_contas_pagar'],
 
   // Estoque — adm_transpombal (Compras)
-  'estoque.view': ['master', 'adm_transpombal'],
+  'estoque.view':         ['master', 'adm_transpombal'],
+  'estoque.contagem':     ['master', 'adm_transpombal', 'operador_contagem'],
+  'uso_consumo.view':     ['master', 'adm_financeiro', 'adm_transpombal'],
+  'uso_consumo.lancar':   ['master', 'adm_financeiro'],
+  'uso_consumo.produtos': ['master', 'adm_financeiro'],
 
   // Transpombal
   'transpombal.view': ['master', 'adm_transpombal'],
   'transpombal.edit': ['master', 'adm_transpombal'],
 
   // Medição de Tanques — gerentes registram o nível diário
-  'tanques.view': ['master', 'adm_transpombal', 'gerente'],
-  'tanques.edit': ['master', 'adm_transpombal', 'gerente'],
+  'tanques.view': ['master', 'adm_transpombal', 'adm_fiscal', 'gerente'],
+  'tanques.edit': ['master', 'adm_transpombal', 'adm_fiscal', 'gerente'],
 
   // Máscaras (DRE / Fluxo de Caixa) — somente master
   'mascaras.view': ['master'],
@@ -230,7 +240,9 @@ export const ROLE_LABELS: Record<Role, string> = {
   adm_contas_pagar:     'Perfil ADM (Contas a Pagar)',
   operador_caixa:       'Operador (Fechador de Caixa)',
   operador_conciliador: 'Operador (Conciliador Bancário)',
+  operador_contagem:    'Operador (Contagem de Estoque)',
   gerente:              'Gerente',
+  rh:                   'RH',
 }
 
 export const ROLE_COLORS: Record<Role, string> = {
@@ -242,5 +254,7 @@ export const ROLE_COLORS: Record<Role, string> = {
   adm_contas_pagar:     'bg-orange-100 text-orange-800',
   operador_caixa:       'bg-green-100 text-green-800',
   operador_conciliador: 'bg-cyan-100 text-cyan-800',
+  operador_contagem:    'bg-lime-100 text-lime-800',
   gerente:              'bg-teal-100 text-teal-800',
+  rh:                   'bg-rose-100 text-rose-800',
 }

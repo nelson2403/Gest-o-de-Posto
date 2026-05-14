@@ -328,6 +328,9 @@ export default function MarketingDashboard() {
               </div>
             )}
 
+            {/* Enviar para Contas a Pagar */}
+            {!isGerente && <SolicitacoesPagamentoMarketing />}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Ranking de postos */}
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
@@ -398,11 +401,12 @@ export default function MarketingDashboard() {
             </div>
 
             {/* Links rápidos */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {[
-                { href: '/marketing/patrocinio', icon: Gift, label: 'Patrocínios', desc: 'Solicitações e aprovações', color: 'text-emerald-600 bg-emerald-50' },
-                { href: '/marketing/acoes', icon: Megaphone, label: 'Ações', desc: 'Campanhas e comprovantes', color: 'text-violet-600 bg-violet-50' },
-                { href: '/marketing/conciliacao', icon: Link2, label: 'Conciliação', desc: 'Sistema vs AutoSystem', color: 'text-blue-600 bg-blue-50' },
+                { href: '/marketing/patrocinio',  icon: Gift,     label: 'Patrocínios',      desc: 'Solicitações e aprovações',    color: 'text-emerald-600 bg-emerald-50' },
+                { href: '/marketing/acoes',       icon: Megaphone, label: 'Ações',            desc: 'Campanhas e comprovantes',    color: 'text-violet-600 bg-violet-50' },
+                { href: '/marketing/conciliacao', icon: Link2,    label: 'Conciliação',       desc: 'Sistema vs AutoSystem',       color: 'text-blue-600 bg-blue-50' },
+                { href: '/contas-pagar/boletos',  icon: Send,     label: 'Contas a Pagar',   desc: 'Acompanhar boletos enviados', color: 'text-orange-600 bg-orange-50' },
               ].map(item => (
                 <Link key={item.href} href={item.href}
                   className="flex items-center gap-3 bg-white border border-gray-100 rounded-xl p-4 hover:shadow-md transition-shadow group"
@@ -419,8 +423,6 @@ export default function MarketingDashboard() {
               ))}
             </div>
 
-            {/* Enviar para Contas a Pagar */}
-            {!isGerente && <SolicitacoesPagamentoMarketing />}
           </>
         )}
       </div>

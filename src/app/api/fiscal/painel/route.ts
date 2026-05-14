@@ -28,30 +28,31 @@ export async function GET(req: NextRequest) {
       return posto_id ? q.eq('posto_id', posto_id) : q
     }
 
+    const BOLETO_COLS = 'id, fornecedor_nome, valor_as, boleto_vencimento, boleto_valor, boleto_url, boletos, postos(nome)'
+
     const [
       { data: pendentesGerente },
       { data: aguardandoFiscal },
       { data: boletosVencendo },
       { data: boletosVencidos },
       { data: semBoleto },
+      { data: todosBoletosAnexados },
     ] = await Promise.all([
       applyPosto(supabase.from('fiscal_tarefas').select('id, fornecedor_nome, valor_as, data_emissao, postos(nome)'))
         .in('status', ['pendente_gerente', 'nf_rejeitada'])
-        .order('criada_em', { ascending: true })
-        .limit(50),
+        .order('criada_em', { ascending: true }),
 
       applyPosto(supabase.from('fiscal_tarefas').select('id, fornecedor_nome, valor_as, data_emissao, boleto_vencimento, postos(nome)'))
         .eq('status', 'aguardando_fiscal')
-        .order('boleto_vencimento', { ascending: true })
-        .limit(50),
+        .order('boleto_vencimento', { ascending: true }),
 
-      applyPosto(supabase.from('fiscal_tarefas').select('id, fornecedor_nome, valor_as, boleto_vencimento, postos(nome)'))
+      applyPosto(supabase.from('fiscal_tarefas').select(BOLETO_COLS))
         .eq('status', 'aguardando_fiscal')
         .gte('boleto_vencimento', hoje)
         .lte('boleto_vencimento', em7dias)
         .order('boleto_vencimento', { ascending: true }),
 
-      applyPosto(supabase.from('fiscal_tarefas').select('id, fornecedor_nome, valor_as, boleto_vencimento, postos(nome)'))
+      applyPosto(supabase.from('fiscal_tarefas').select(BOLETO_COLS))
         .eq('status', 'aguardando_fiscal')
         .lt('boleto_vencimento', hoje)
         .order('boleto_vencimento', { ascending: true }),
@@ -59,20 +60,27 @@ export async function GET(req: NextRequest) {
       applyPosto(supabase.from('fiscal_tarefas').select('id, fornecedor_nome, valor_as, postos(nome)'))
         .eq('status', 'aguardando_fiscal')
         .is('boleto_url', null),
+
+      // Todos os boletos anexados — inclui vencimentos futuros
+      applyPosto(supabase.from('fiscal_tarefas').select(BOLETO_COLS))
+        .eq('status', 'aguardando_fiscal')
+        .not('boleto_url', 'is', null)
+        .order('boleto_vencimento', { ascending: true, nullsFirst: false }),
     ])
 
     return NextResponse.json({
-      pendentes_gerente:  pendentesGerente ?? [],
-      aguardando_fiscal:  aguardandoFiscal ?? [],
-      boletos_vencendo:   boletosVencendo ?? [],
-      boletos_vencidos:   boletosVencidos ?? [],
-      sem_boleto:         semBoleto ?? [],
+      pendentes_gerente:      pendentesGerente ?? [],
+      aguardando_fiscal:      aguardandoFiscal ?? [],
+      boletos_vencendo:       boletosVencendo  ?? [],
+      boletos_vencidos:       boletosVencidos  ?? [],
+      sem_boleto:             semBoleto        ?? [],
+      todos_boletos_anexados: todosBoletosAnexados ?? [],
       totais: {
         pendentes_gerente: pendentesGerente?.length ?? 0,
         aguardando_fiscal: aguardandoFiscal?.length ?? 0,
-        boletos_vencendo:  boletosVencendo?.length ?? 0,
-        boletos_vencidos:  boletosVencidos?.length ?? 0,
-        sem_boleto:        semBoleto?.length ?? 0,
+        boletos_vencendo:  boletosVencendo?.length  ?? 0,
+        boletos_vencidos:  boletosVencidos?.length  ?? 0,
+        sem_boleto:        semBoleto?.length        ?? 0,
       },
     })
   } catch (e: any) {

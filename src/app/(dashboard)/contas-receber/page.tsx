@@ -103,7 +103,7 @@ function TabelaTransacoes({ transacoes }: { transacoes: Transacao[] }) {
     return (
       <>
         <tr className={isReceber ? 'bg-orange-50' : 'bg-emerald-50'}>
-          <td colSpan={6} className={cn('px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider', isReceber ? 'text-orange-700' : 'text-emerald-700')}>
+          <td colSpan={99} className={cn('px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider', isReceber ? 'text-orange-700' : 'text-emerald-700')}>
             {isReceber
               ? <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> A Receber ({rows.length})</span>
               : <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Recebidos ({rows.length})</span>}
@@ -111,9 +111,12 @@ function TabelaTransacoes({ transacoes }: { transacoes: Transacao[] }) {
         </tr>
         {rows.map((t, i) => (
           <tr key={i} className={cn('hover:brightness-95 transition-colors text-[12px]', isReceber ? 'bg-orange-50/30' : '')}>
-            <td className="px-4 py-2 font-mono text-gray-500">{t.documento ?? '—'}</td>
-            <td className="px-3 py-2 text-gray-400">{t.tipo_doc ?? '—'}</td>
-            <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{fmtData(t.data)}</td>
+            <td className="hidden sm:table-cell px-4 py-2 font-mono text-gray-500">{t.documento ?? '—'}</td>
+            <td className="hidden md:table-cell px-3 py-2 text-gray-400">{t.tipo_doc ?? '—'}</td>
+            <td className="px-3 py-2 text-gray-700 max-w-[150px]">
+              <span className="truncate block">{t.pessoa_nome || '—'}</span>
+            </td>
+            <td className="hidden sm:table-cell px-3 py-2 text-gray-500 whitespace-nowrap">{fmtData(t.data)}</td>
             <td className="px-3 py-2 whitespace-nowrap">
               <span className={isReceber ? 'text-orange-600 font-medium' : 'text-gray-600'}>{fmtData(t.vencto)}</span>
             </td>
@@ -137,9 +140,10 @@ function TabelaTransacoes({ transacoes }: { transacoes: Transacao[] }) {
       <table className="w-full text-[12px]">
         <thead>
           <tr className="bg-gray-50 border-b border-gray-100">
-            <th className="text-left px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Documento</th>
-            <th className="text-left px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Tipo</th>
-            <th className="text-left px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Lançamento</th>
+            <th className="hidden sm:table-cell text-left px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Documento</th>
+            <th className="hidden md:table-cell text-left px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Tipo</th>
+            <th className="text-left px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Cliente</th>
+            <th className="hidden sm:table-cell text-left px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Lançamento</th>
             <th className="text-left px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Vencimento</th>
             <th className="text-right px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Valor</th>
             <th className="text-left px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Status</th>
@@ -151,7 +155,7 @@ function TabelaTransacoes({ transacoes }: { transacoes: Transacao[] }) {
         </tbody>
         <tfoot>
           <tr className="border-t border-gray-200 bg-gray-50">
-            <td colSpan={4} className="px-4 py-2 text-[11px] font-semibold">
+            <td colSpan={5} className="px-4 py-2 text-[11px] font-semibold">
               <span className="flex gap-4">
                 {totReceber > 0  && <span className="text-orange-600">{formatCurrency(totReceber)} a receber</span>}
                 {totRecebido > 0 && <span className="text-emerald-600">{formatCurrency(totRecebido)} recebido</span>}

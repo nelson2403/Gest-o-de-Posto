@@ -259,10 +259,10 @@ export default function MaquininhasPage() {
                       <tr className="border-b border-gray-100">
                         <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Adquirente</th>
                         <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Nº Série</th>
-                        <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Modelo</th>
+                        <th className="hidden sm:table-cell text-left px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Modelo</th>
                         <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Status</th>
-                        <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Motivo</th>
-                        <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Aluguel</th>
+                        <th className="hidden md:table-cell text-left px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Motivo</th>
+                        <th className="hidden sm:table-cell text-left px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Aluguel</th>
                         <th className="px-4 py-2.5" />
                       </tr>
                     </thead>
@@ -277,18 +277,18 @@ export default function MaquininhasPage() {
                               ? <span className="font-mono text-[12px] bg-gray-100 px-1.5 py-0.5 rounded">{m.numero_serie}</span>
                               : <span className="text-gray-400">—</span>}
                           </td>
-                          <td className="px-4 py-2.5 text-gray-600">
+                          <td className="hidden sm:table-cell px-4 py-2.5 text-gray-600">
                             {m.modelo ?? <span className="text-gray-400">—</span>}
                           </td>
                           <td className="px-4 py-2.5">
                             <StatusMaquininhaBadge status={m.status} />
                           </td>
-                          <td className="px-4 py-2.5">
+                          <td className="hidden md:table-cell px-4 py-2.5">
                             {m.motivo_status
                               ? <span className="text-[12px] text-gray-500 max-w-[140px] truncate block" title={m.motivo_status}>{m.motivo_status}</span>
                               : <span className="text-gray-400">—</span>}
                           </td>
-                          <td className="px-4 py-2.5">
+                          <td className="hidden sm:table-cell px-4 py-2.5">
                             {m.valor_aluguel !== null && m.valor_aluguel !== undefined
                               ? <span className="text-[12px] font-medium text-emerald-700">{formatCurrency(m.valor_aluguel)}</span>
                               : <span className="text-gray-400">—</span>}

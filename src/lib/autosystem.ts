@@ -1658,12 +1658,17 @@ export async function buscarNfeManifestos(
             nr.valor::float
      FROM nfe_resumo nr
      WHERE nr.empresa = ANY($1::bigint[])
-       AND nr.data_emissao >= (NOW() - INTERVAL '90 days')::date
+       AND nr.data_emissao >= (NOW() - INTERVAL '45 days')::date
        AND EXISTS (SELECT 1 FROM nfe_manifestacao nm WHERE nm.nfe = nr.nfe)
        AND NOT EXISTS (
          SELECT 1 FROM nfe_manifestacao nm
          WHERE nm.nfe = nr.nfe
            AND nm.nfe_evento IN (210200, 210220, 210240)
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM nfe_manifestacao nm
+         WHERE nm.nfe = nr.nfe
+           AND nm.situacao_nfe = 3
        )
      ORDER BY nr.data_emissao DESC
      LIMIT 1000`,
@@ -1686,6 +1691,77 @@ export async function buscarNfeManifestosPorGrids(
   )
 }
 
+// Itens de uma NF-e lida do XML armazenado em nfe_xml.fonte_xml
+export interface ItemNfe {
+  numero:          number
+  codigo_produto:  string
+  descricao:       string
+  quantidade:      number
+  unidade:         string
+  preco_unitario:  number
+  valor:           number
+}
+
+function parseItensNfe(xml: string): ItemNfe[] {
+  const itens: ItemNfe[] = []
+  const detRegex = /<det[^>]*nItem="(\d+)"[^>]*>([\s\S]*?)<\/det>/g
+  let match: RegExpExecArray | null
+  while ((match = detRegex.exec(xml)) !== null) {
+    const numero = parseInt(match[1])
+    const det = match[2]
+    const get = (tag: string) => {
+      const m = new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`).exec(det)
+      return m ? m[1].trim() : ''
+    }
+    itens.push({
+      numero,
+      codigo_produto: get('cProd'),
+      descricao:      get('xProd'),
+      quantidade:     parseFloat(get('qCom') || get('qTrib') || '0'),
+      unidade:        get('uCom') || get('uTrib'),
+      preco_unitario: parseFloat(get('vUnCom') || get('vUnTrib') || '0'),
+      valor:          parseFloat(get('vProd') || '0'),
+    })
+  }
+  return itens
+}
+
+// Busca os itens de uma NF pelo grid de nfe_resumo, lendo o XML do AS
+export async function buscarItensNfe(nfeGrid: number): Promise<ItemNfe[]> {
+  const rows = await query<{ fonte_xml: string }>(
+    `SELECT nx.fonte_xml
+     FROM nfe_xml nx
+     JOIN nfe_resumo nr ON nr.nfe = nx.nfe
+     WHERE nr.grid = $1
+     LIMIT 1`,
+    [nfeGrid],
+  )
+  if (!rows.length || !rows[0].fonte_xml) return []
+  return parseItensNfe(rows[0].fonte_xml)
+}
+
+// Verifica se NFs (por grid de nfe_resumo) já foram manifestadas externamente no SEFAZ.
+// Retorna para cada grid o último evento de manifestação (210200=confirmada, 210220=desconhecida, 210240=não realizada).
+export async function verificarManifestacaoExterna(
+  grids: number[],
+): Promise<{ grid: string; nfe_evento: number }[]> {
+  if (!grids.length) return []
+  return query(
+    `SELECT nr.grid::text, nm_last.nfe_evento::int
+     FROM nfe_resumo nr
+     JOIN LATERAL (
+       SELECT nfe_evento
+       FROM nfe_manifestacao nm2
+       WHERE nm2.nfe = nr.nfe
+         AND nm2.nfe_evento IN (210200, 210220, 210240)
+       ORDER BY nm2.grid DESC
+       LIMIT 1
+     ) nm_last ON true
+     WHERE nr.grid = ANY($1::bigint[])`,
+    [grids],
+  )
+}
+
 // Detecta se uma NF já foi lançada no estoque via lmc_entrada.documento
 export async function verificarLancamentoNfe(
   documentos: string[],
@@ -1698,6 +1774,246 @@ export async function verificarLancamentoNfe(
      WHERE documento = ANY($1::text[])`,
     [documentos],
   )
+}
+
+// ── Análise de Vendas & Precificação ─────────────────────────────────────────
+
+// Campos confirmados no AutoSystem via information_schema:
+//   lancto.preco_unit          = preço praticado na venda
+//   lancto.preco_unit_orig     = preço original antes do desconto
+//   lancto.valor_desconto      = desconto por unidade (campo direto)
+//   produto.preco_unit         = preço tabela cadastrado
+//   produto.preco_custo        = custo cadastrado no produto
+//   estoque_lancto.custo_medio = custo médio unitário no momento da venda
+
+export interface VendaAnaliseProduto extends Record<string, unknown> {
+  produto:        number
+  produto_nome:   string
+  grupo:          number
+  qtd:            number
+  venda:          number
+  custo:          number
+  preco_medio:    number
+  custo_unitario: number
+  preco_tabela:   number | null
+  total_desconto: number
+}
+
+export interface VendaDesconto extends Record<string, unknown> {
+  grid:          number
+  empresa:       number
+  data:          string
+  produto_nome:  string
+  quantidade:    number
+  preco_unit:    number
+  preco_orig:    number
+  preco_tabela:  number
+  desconto_unit: number
+  desconto_perc: number
+}
+
+export async function buscarAnaliseVendasPorProduto(
+  empresaIds: number[],
+  dataIni:    string,
+  dataFim:    string,
+  grupoIds?:  number[],
+): Promise<{ produtos: VendaAnaliseProduto[]; temPrecoTabela: boolean }> {
+  if (!empresaIds.length) return { produtos: [], temPrecoTabela: false }
+  const params: unknown[] = [empresaIds, dataIni, dataFim]
+  const grupoFlt = grupoIds && grupoIds.length > 0
+    ? (params.push(grupoIds), `AND p.grupo = ANY($${params.length}::bigint[])`)
+    : ''
+
+  const rows = await query<{
+    produto:        number
+    nome_b:         Buffer | null
+    grupo:          number
+    qtd:            number
+    venda:          number
+    custo:          number
+    preco_medio:    number
+    custo_unitario: number
+    preco_tabela:   number | null
+    total_desconto: number
+  }>(
+    `SELECT
+       l.produto::bigint AS produto,
+       p.nome::bytea     AS nome_b,
+       p.grupo::bigint   AS grupo,
+       SUM(l.quantidade)::float                                                         AS qtd,
+       SUM(l.valor)::float                                                              AS venda,
+       SUM(ABS(el.custo_medio * el.movimento))::float                                   AS custo,
+       (SUM(l.valor) / NULLIF(SUM(l.quantidade), 0))::float                            AS preco_medio,
+       (SUM(ABS(el.custo_medio * el.movimento)) / NULLIF(SUM(l.quantidade), 0))::float AS custo_unitario,
+       MAX(p.preco_unit)::float                                                          AS preco_tabela,
+       COALESCE(SUM(l.valor_desconto * l.quantidade), 0)::float                         AS total_desconto
+     FROM lancto l
+       LEFT JOIN estoque_lancto el ON el.lancto = l.grid
+       LEFT JOIN produto p         ON l.produto = p.grid
+     WHERE l.empresa = ANY($1::bigint[])
+       AND l.operacao = 'V'
+       AND l.data BETWEEN $2::date AND $3::date
+       ${grupoFlt}
+     GROUP BY l.produto, p.nome, p.grupo
+     ORDER BY venda DESC
+     LIMIT 500`,
+    params,
+  )
+
+  return {
+    produtos: rows.map(r => ({
+      produto:        Number(r.produto),
+      produto_nome:   decodeBytea(r.nome_b).trim(),
+      grupo:          Number(r.grupo),
+      qtd:            Number(r.qtd),
+      venda:          Number(r.venda),
+      custo:          Number(r.custo),
+      preco_medio:    Number(r.preco_medio),
+      custo_unitario: Number(r.custo_unitario),
+      preco_tabela:   r.preco_tabela != null ? Number(r.preco_tabela) : null,
+      total_desconto: Number(r.total_desconto),
+    })),
+    temPrecoTabela: true,
+  }
+}
+
+export async function buscarAnaliseVendasPorMes(
+  empresaIds: number[],
+  dataIni:    string,
+  dataFim:    string,
+  grupoIds?:  number[],
+): Promise<{ mes: string; venda: number; custo: number }[]> {
+  if (!empresaIds.length) return []
+  const params: unknown[] = [empresaIds, dataIni, dataFim]
+  const grupoFlt = grupoIds && grupoIds.length > 0
+    ? (params.push(grupoIds), `AND p.grupo = ANY($${params.length}::bigint[])`)
+    : ''
+
+  return query<{ mes: string; venda: number; custo: number }>(
+    `SELECT
+       to_char(l.data, 'YYYY-MM') AS mes,
+       SUM(l.valor)::float                              AS venda,
+       SUM(ABS(el.custo_medio * el.movimento))::float   AS custo
+     FROM lancto l
+       LEFT JOIN estoque_lancto el ON el.lancto = l.grid
+       LEFT JOIN produto p         ON l.produto = p.grid
+     WHERE l.empresa = ANY($1::bigint[])
+       AND l.operacao = 'V'
+       AND l.data BETWEEN $2::date AND $3::date
+       ${grupoFlt}
+     GROUP BY to_char(l.data, 'YYYY-MM')
+     ORDER BY mes ASC`,
+    params,
+  )
+}
+
+export async function buscarVendasComDesconto(
+  empresaIds: number[],
+  dataIni:    string,
+  dataFim:    string,
+  grupoIds?:  number[],
+): Promise<{ rows: VendaDesconto[]; temPrecoTabela: boolean }> {
+  if (!empresaIds.length) return { rows: [], temPrecoTabela: false }
+  const params: unknown[] = [empresaIds, dataIni, dataFim]
+  const grupoFlt = grupoIds && grupoIds.length > 0
+    ? (params.push(grupoIds), `AND p.grupo = ANY($${params.length}::bigint[])`)
+    : ''
+
+  const raw = await query<{
+    grid:          number
+    empresa:       number
+    data:          string
+    nome_b:        Buffer | null
+    quantidade:    number
+    preco_unit:    number
+    preco_orig:    number
+    preco_tabela:  number
+    desconto_unit: number
+    desconto_perc: number
+  }>(
+    `SELECT
+       l.grid::bigint                                                                          AS grid,
+       l.empresa::bigint                                                                       AS empresa,
+       to_char(l.data, 'YYYY-MM-DD')                                                          AS data,
+       p.nome::bytea                                                                           AS nome_b,
+       l.quantidade::float                                                                     AS quantidade,
+       l.preco_unit::float                                                                     AS preco_unit,
+       COALESCE(NULLIF(l.preco_unit_orig, 0), l.preco_unit)::float                            AS preco_orig,
+       p.preco_unit::float                                                                     AS preco_tabela,
+       l.valor_desconto::float                                                                 AS desconto_unit,
+       (l.valor_desconto / NULLIF(COALESCE(NULLIF(l.preco_unit_orig,0), l.preco_unit), 0) * 100)::float AS desconto_perc
+     FROM lancto l
+       JOIN produto p ON p.grid = l.produto
+     WHERE l.empresa = ANY($1::bigint[])
+       AND l.operacao = 'V'
+       AND l.data BETWEEN $2::date AND $3::date
+       ${grupoFlt}
+       AND l.valor_desconto > 0
+     ORDER BY (l.valor_desconto * l.quantidade) DESC, l.data DESC
+     LIMIT 2000`,
+    params,
+  )
+
+  return {
+    rows: raw.map(r => ({
+      grid:          Number(r.grid),
+      empresa:       Number(r.empresa),
+      data:          String(r.data),
+      produto_nome:  decodeBytea(r.nome_b).trim(),
+      quantidade:    Number(r.quantidade),
+      preco_unit:    Number(r.preco_unit),
+      preco_orig:    Number(r.preco_orig),
+      preco_tabela:  Number(r.preco_tabela),
+      desconto_unit: Number(r.desconto_unit),
+      desconto_perc: Number(r.desconto_perc),
+    })),
+    temPrecoTabela: true,
+  }
+}
+
+// ── Estoque por empresa + grupo (contagem física) ────────────────────────────
+
+export interface EstoqueProdutoContagem extends Record<string, unknown> {
+  produto:       number
+  produto_nome:  string
+  unid_med:      string
+  estoque:       number
+  custo_medio:   number
+  valor_total:   number
+}
+
+export async function buscarEstoquePorGrupo(
+  empresaId: number,
+  grupoId:   number,
+): Promise<EstoqueProdutoContagem[]> {
+  const rows = await query<{
+    produto:     number
+    nome_b:      Buffer | null
+    unid_med:    string
+    estoque:     number
+    custo_medio: number
+  }>(
+    `SELECT ep.produto::bigint,
+            p.nome::bytea     AS nome_b,
+            p.unid_med::text,
+            SUM(ep.estoque)::float                              AS estoque,
+            COALESCE(AVG(NULLIF(ep.custo_medio,0)),0)::float   AS custo_medio
+     FROM estoque_produto ep
+     JOIN produto p ON p.grid = ep.produto
+     WHERE ep.empresa = $1
+       AND p.grupo    = $2
+     GROUP BY ep.produto, p.nome, p.unid_med
+     ORDER BY p.nome::text`,
+    [empresaId, grupoId],
+  )
+  return rows.map(r => ({
+    produto:      Number(r.produto),
+    produto_nome: decodeBytea(r.nome_b).trim(),
+    unid_med:     String(r.unid_med || 'UN'),
+    estoque:      Number(r.estoque),
+    custo_medio:  Number(r.custo_medio),
+    valor_total:  Number(r.estoque) * Number(r.custo_medio),
+  }))
 }
 
 // ── calcularMovimento ────────────────────────────────────────────────────────

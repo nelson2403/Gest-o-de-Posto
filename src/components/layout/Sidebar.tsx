@@ -11,7 +11,7 @@ import {
   Archive, Layers, CheckSquare, ScanSearch, ReceiptText, Lock,
   TrendingUp, Wallet, Receipt, Settings, Megaphone, Gift, Database,
   ArrowLeftRight, Plus, Trash2, Eye, EyeOff, X, Check, ChevronDown,
-  PackageSearch, Truck, CalendarDays, ShoppingCart, Scale,
+  PackageSearch, Truck, CalendarDays, ShoppingCart, Scale, Hash,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { useAuthContext } from '@/contexts/AuthContext'
@@ -64,6 +64,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/maquininhas',                 label: 'Maquininhas',          icon: Smartphone,  permission: 'maquininhas.view' as Permission },
       { href: '/taxas',                       label: 'Taxas',                icon: Percent,     permission: 'taxas.view' as Permission },
       { href: '/adquirentes',                 label: 'Adquirentes',          icon: CreditCard,  permission: 'adquirentes.view' as Permission },
+      { href: '/codigos-implantacao',         label: 'Cód. de Implantação',  icon: Hash,        permission: 'implantacao.view' as Permission },
       { href: '/contas-bancarias',            label: 'Contas Bancárias',     icon: Landmark,    permission: 'contas_bancarias.view' as Permission },
     ],
   },
@@ -77,6 +78,7 @@ const NAV_GROUPS: NavGroup[] = [
           { href: '/contas-pagar/conferencia', label: 'Conferência Diária',     icon: ClipboardList, permission: 'contas_pagar.lancar' as Permission },
           { href: '/contas-pagar/fixas',       label: 'Despesas Fixas',          icon: Wallet,        permission: 'contas_pagar.fixas.view' as Permission },
           { href: '/contas-pagar/titulos',     label: 'Títulos Contas a Pagar',  icon: Database,      permission: 'contas_pagar.view' as Permission },
+          { href: '/contas-pagar/boletos',     label: 'Boletos e Solicitações',  icon: Receipt,       permission: 'contas_pagar.view' as Permission },
         ],
       },
       {
@@ -94,22 +96,24 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Acessos',
     items: [
-      { href: '/portais',            label: 'Portais',            icon: Globe,    permission: 'portais.view' as Permission },
-      { href: '/acessos-unificados', label: 'Acessos Unificados', icon: Link2,    permission: 'acessos.view' as Permission },
-      { href: '/acessos-postos',     label: 'Acessos dos Postos', icon: KeyRound, permission: 'acessos.view' as Permission },
+      { href: '/portais',            label: 'Portais',            icon: Globe,    permission: 'portais.view' as Permission,    hideForRoles: ['adm_fiscal'] },
+      { href: '/acessos-unificados', label: 'Acessos Unificados', icon: Link2,    permission: 'acessos.view' as Permission,    hideForRoles: ['adm_fiscal'] },
+      { href: '/acessos-postos',     label: 'Acessos dos Postos', icon: KeyRound, permission: 'acessos.view' as Permission,    hideForRoles: ['adm_fiscal'] },
       { href: '/acessos-anydesk',    label: 'AnyDesk',            icon: Monitor,  permission: 'anydesk.view' as Permission },
-      { href: '/servidores',         label: 'Servidores',         icon: Server,   permission: 'servidores.view' as Permission, hideForRoles: ['adm_contas_pagar'] },
-      { href: '/acessos-cameras',    label: 'Câmeras',            icon: Camera,   permission: 'cameras.view' as Permission,   hideForRoles: ['adm_contas_pagar'] },
-      { href: '/senhas-tef',         label: 'Senhas TEF',         icon: Lock,     permission: 'senhas_tef.view' as Permission, hideForRoles: ['adm_contas_pagar'] },
+      { href: '/servidores',         label: 'Servidores',         icon: Server,   permission: 'servidores.view' as Permission, hideForRoles: ['adm_contas_pagar', 'adm_fiscal'] },
+      { href: '/acessos-cameras',    label: 'Câmeras',            icon: Camera,   permission: 'cameras.view' as Permission,   hideForRoles: ['adm_contas_pagar', 'adm_fiscal'] },
+      { href: '/senhas-tef',         label: 'Senhas TEF',         icon: Lock,     permission: 'senhas_tef.view' as Permission, hideForRoles: ['adm_contas_pagar', 'adm_fiscal'] },
     ],
   },
   {
     label: 'Estoque',
     items: [
-      { href: '/estoque',             label: 'Estoque',            icon: PackageSearch, permission: 'estoque.view' as Permission },
-      { href: '/sugestao-pedido',     label: 'Sugestão de Pedido', icon: ShoppingCart,  permission: 'estoque.view' as Permission },
-      { href: '/fornecedores',        label: 'Fornecedores',       icon: Truck,         permission: 'estoque.view' as Permission },
-      { href: '/rotina-fornecedores', label: 'Rotina de Visitas',  icon: CalendarDays,  permission: 'estoque.view' as Permission },
+      { href: '/estoque',             label: 'Estoque',            icon: PackageSearch,  permission: 'estoque.view' as Permission },
+      { href: '/estoque/contagem',    label: 'Contagem',           icon: ClipboardList,  permission: 'estoque.contagem' as Permission },
+      { href: '/estoque/uso-consumo', label: 'Uso e Consumo',      icon: Archive,        permission: 'uso_consumo.view' as Permission },
+      { href: '/sugestao-pedido',     label: 'Sugestão de Pedido', icon: ShoppingCart,   permission: 'estoque.view' as Permission },
+      { href: '/fornecedores',        label: 'Fornecedores',       icon: Truck,          permission: 'estoque.view' as Permission },
+      { href: '/rotina-fornecedores', label: 'Rotina de Visitas',  icon: CalendarDays,   permission: 'estoque.view' as Permission },
     ],
   },
   {
@@ -395,10 +399,15 @@ export function Sidebar() {
       {/* Navegação com grupos colapsáveis */}
       <nav className="flex-1 overflow-y-auto py-1.5 scrollbar-thin space-y-px">
         {NAV_GROUPS.map(group => {
-          const visibleItems = group.items.filter(item =>
-            (!item.permission || canUser(item.permission)) &&
-            (!item.hideForRoles || !role || !item.hideForRoles.includes(role))
-          )
+          const visibleItems = group.items.filter(item => {
+            const permOk = !item.permission || canUser(item.permission)
+            const roleOk = !item.hideForRoles || !role || !item.hideForRoles.includes(role)
+            if (!permOk || !roleOk) return false
+            if (item.children && !item.permission) {
+              return item.children.some(c => !c.permission || canUser(c.permission))
+            }
+            return true
+          })
           if (!visibleItems.length) return null
 
           const isOpen = collapsed || openGroups.has(group.label)

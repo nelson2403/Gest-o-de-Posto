@@ -7,7 +7,9 @@ export type Role =
   | 'adm_contas_pagar'
   | 'operador_caixa'
   | 'operador_conciliador'
+  | 'operador_contagem'
   | 'gerente'
+  | 'rh'
 export type StatusEmpresa = 'ativo' | 'inativo' | 'suspenso'
 export type StatusMaquininha = 'ativo' | 'inativo' | 'estoque' | 'manutencao' | 'extraviada' | 'devolvida'
 
@@ -76,6 +78,51 @@ export interface Adquirente {
   nome: string
   ativo: boolean
   criado_em: string
+}
+
+export interface AdquirenteImplantacao {
+  id: string
+  empresa_id: string
+  adquirente_id: string
+  posto_id: string
+  codigo: string
+  observacoes: string | null
+  criado_em: string
+  atualizado_em: string
+  adquirente?: Adquirente
+  posto?: Posto
+}
+
+export type UcMovimentoTipo = 'entrada' | 'transferencia' | 'saida'
+
+export interface UcProduto {
+  id: string
+  empresa_id: string
+  nome: string
+  categoria: string | null
+  unidade: string
+  preco_unitario: number | null
+  estoque_minimo: number
+  ativo: boolean
+  criado_em: string
+  atualizado_em: string
+}
+
+export interface UcMovimento {
+  id: string
+  empresa_id: string
+  produto_id: string
+  tipo: UcMovimentoTipo
+  quantidade: number
+  valor_unitario: number | null
+  posto_id: string | null
+  observacoes: string | null
+  usuario_id: string | null
+  data: string
+  criado_em: string
+  produto?: UcProduto
+  posto?: Posto
+  usuario?: { nome: string }
 }
 
 export interface Maquininha {

@@ -1,5 +1,6 @@
 import { AuthProvider } from '@/contexts/AuthContext'
 import { Topbar } from '@/components/layout/Topbar'
+import { IAAssistente } from '@/components/ia/IAAssistente'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -9,6 +10,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <main className="flex-1 min-w-0 w-full overflow-y-auto overflow-x-hidden">
           {children}
         </main>
+        <IAAssistente />
       </div>
     </AuthProvider>
   )

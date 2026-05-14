@@ -195,27 +195,29 @@ export default function ConferenciaPage() {
         {/* Filtros */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 print:hidden">
           <div className="flex flex-wrap items-end gap-3">
-            <div>
-              <Label className="text-[12px] text-gray-500 mb-1 block">Data</Label>
-              <Input
-                type="date"
-                value={selectedData}
-                onChange={e => setSelectedData(e.target.value)}
-                className="h-9 text-[13px] w-44"
-              />
+            <div className="flex items-end gap-2 flex-wrap">
+              <div>
+                <Label className="text-[12px] text-gray-500 mb-1 block">Data</Label>
+                <Input
+                  type="date"
+                  value={selectedData}
+                  onChange={e => setSelectedData(e.target.value)}
+                  className="h-9 text-[13px] w-40"
+                />
+              </div>
+              <Button size="sm" variant="outline" onClick={load}
+                disabled={loading} className="h-9 gap-1.5 text-[12px]">
+                <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+                Atualizar
+              </Button>
             </div>
-            <Button size="sm" variant="outline" onClick={load}
-              disabled={loading} className="h-9 gap-1.5 text-[12px]">
-              <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-              Atualizar
-            </Button>
-            <div className="flex-1 min-w-[200px] relative">
+            <div className="flex-1 min-w-[160px] relative">
               <Label className="text-[12px] text-gray-500 mb-1 block">Buscar empresa</Label>
               <Search className="absolute left-2.5 top-[31px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
               <Input
                 value={busca}
                 onChange={e => setBusca(e.target.value)}
-                placeholder="Nome do posto ou empresa..."
+                placeholder="Nome do posto..."
                 className="h-9 text-[13px] pl-8"
               />
             </div>
@@ -283,14 +285,16 @@ export default function ConferenciaPage() {
               )}
             </div>
 
-            <div className="ml-auto flex gap-2">
+            <div className="ml-auto flex gap-2 flex-wrap justify-end">
               <Button size="sm" variant="ghost" onClick={expandirTodas}
                 disabled={!empresasFiltradas.length} className="h-9 text-[12px]">
-                Expandir todas
+                <span className="hidden sm:inline">Expandir todas</span>
+                <span className="sm:hidden">Expandir</span>
               </Button>
               <Button size="sm" variant="ghost" onClick={recolherTodas}
                 disabled={!empresasFiltradas.length} className="h-9 text-[12px]">
-                Recolher todas
+                <span className="hidden sm:inline">Recolher todas</span>
+                <span className="sm:hidden">Recolher</span>
               </Button>
               <div ref={printMenuRef} className="relative">
                 <Button size="sm" variant="outline"
@@ -346,7 +350,7 @@ export default function ConferenciaPage() {
         ) : (
           <>
             {/* KPIs gerais */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 print:hidden">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 print:hidden">
               {[
                 { label: 'Total geral',  value: fmtBRL(totalGeral),    sub: `${qtTotal} título(s) · ${empresasVisiveis.length} empresa(s)`, color: 'bg-gray-500' },
                 { label: 'A Vencer',     value: fmtBRL(totalAVencer),  sub: `${qtAVencer} título(s)`,                                        color: 'bg-blue-500' },
@@ -372,9 +376,9 @@ export default function ConferenciaPage() {
                 <table className="w-full text-[13px] print:text-[9pt] print:table-fixed">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
-                      <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide print:px-2 print:py-1">Empresa</th>
-                      <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-44 print:w-[26%] print:px-2 print:py-1">Valor total</th>
-                      <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-28 print:w-[12%] print:px-2 print:py-1">Títulos</th>
+                      <th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide print:px-2 print:py-1">Empresa</th>
+                      <th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide print:w-[26%] print:px-2 print:py-1">Valor total</th>
+                      <th className="hidden sm:table-cell text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide print:w-[12%] print:px-2 print:py-1">Títulos</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -411,10 +415,10 @@ export default function ConferenciaPage() {
                                 )}
                               </div>
                             </td>
-                            <td className="px-4 py-2.5 text-right tabular-nums font-bold text-gray-800 print:px-2 print:py-1">
+                            <td className="px-3 py-2.5 text-right tabular-nums font-bold text-gray-800 print:px-2 print:py-1 whitespace-nowrap">
                               {fmtBRL(e.total)}
                             </td>
-                            <td className="px-4 py-2.5 text-right text-[12px] text-gray-500 tabular-nums print:px-2 print:py-1 print:text-[9pt]">
+                            <td className="hidden sm:table-cell px-3 py-2.5 text-right text-[12px] text-gray-500 tabular-nums print:px-2 print:py-1 print:text-[9pt]">
                               {e.qt_total}
                             </td>
                           </tr>
@@ -426,13 +430,13 @@ export default function ConferenciaPage() {
                                   <table className="w-full text-[12.5px] print:text-[8pt] print:table-fixed">
                                     <thead>
                                       <tr className="border-b border-gray-200 text-[10.5px] text-gray-400 uppercase tracking-wide print:text-[7.5pt] print:text-gray-600">
-                                        <th className="text-left px-2 py-1.5 font-semibold w-24 print:w-[10%] print:px-1 print:py-0.5">Data</th>
-                                        <th className="text-left px-2 py-1.5 font-semibold w-28 print:w-[11%] print:px-1 print:py-0.5">Documento</th>
+                                        <th className="hidden sm:table-cell text-left px-2 py-1.5 font-semibold w-24 print:w-[10%] print:px-1 print:py-0.5">Data</th>
+                                        <th className="hidden md:table-cell text-left px-2 py-1.5 font-semibold w-28 print:w-[11%] print:px-1 print:py-0.5">Documento</th>
                                         <th className="text-left px-2 py-1.5 font-semibold print:w-[22%] print:px-1 print:py-0.5">Fornecedor</th>
-                                        <th className="text-left px-2 py-1.5 font-semibold w-44 print:w-[16%] print:px-1 print:py-0.5">Motivo</th>
-                                        <th className="text-left px-2 py-1.5 font-semibold print:w-[14%] print:px-1 print:py-0.5">Observação</th>
-                                        <th className="text-right px-2 py-1.5 font-semibold w-32 print:w-[15%] print:px-1 print:py-0.5">Valor</th>
-                                        <th className="text-center px-2 py-1.5 font-semibold w-28 print:w-[12%] print:px-1 print:py-0.5">Situação</th>
+                                        <th className="hidden sm:table-cell text-left px-2 py-1.5 font-semibold w-44 print:w-[16%] print:px-1 print:py-0.5">Motivo</th>
+                                        <th className="hidden lg:table-cell text-left px-2 py-1.5 font-semibold print:w-[14%] print:px-1 print:py-0.5">Observação</th>
+                                        <th className="text-right px-2 py-1.5 font-semibold w-28 print:w-[15%] print:px-1 print:py-0.5">Valor</th>
+                                        <th className="text-center px-2 py-1.5 font-semibold w-24 print:w-[12%] print:px-1 print:py-0.5">Situação</th>
                                       </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
@@ -440,17 +444,17 @@ export default function ConferenciaPage() {
                                         const cfg = SITUACAO_CFG[t.situacao] ?? SITUACAO_CFG.a_vencer
                                         return (
                                           <tr key={t.mlid ?? i} className={cn('hover:bg-white', t.situacao === 'em_atraso' && 'bg-red-50/30')}>
-                                            <td className={cn('px-2 py-1.5 whitespace-nowrap print:whitespace-normal print:px-1 print:py-0.5', t.situacao === 'em_atraso' ? 'text-red-600 font-medium' : 'text-gray-700')}>
+                                            <td className={cn('hidden sm:table-cell px-2 py-1.5 whitespace-nowrap print:whitespace-normal print:px-1 print:py-0.5', t.situacao === 'em_atraso' ? 'text-red-600 font-medium' : 'text-gray-700')}>
                                               {fmtDate(t.data)}
                                             </td>
-                                            <td className="px-2 py-1.5 font-mono text-[11.5px] text-gray-600 print:text-[7.5pt] print:px-1 print:py-0.5 print:break-all">{t.documento || '—'}</td>
-                                            <td className="px-2 py-1.5 text-gray-700 max-w-[220px] print:max-w-none print:px-1 print:py-0.5">
+                                            <td className="hidden md:table-cell px-2 py-1.5 font-mono text-[11.5px] text-gray-600 print:text-[7.5pt] print:px-1 print:py-0.5 print:break-all">{t.documento || '—'}</td>
+                                            <td className="px-2 py-1.5 text-gray-700 max-w-[140px] print:max-w-none print:px-1 print:py-0.5">
                                               <span className="truncate block print:whitespace-normal print:truncate-none">{t.pessoa_nome || '—'}</span>
                                             </td>
-                                            <td className="px-2 py-1.5 text-gray-600 max-w-[180px] print:max-w-none print:px-1 print:py-0.5">
+                                            <td className="hidden sm:table-cell px-2 py-1.5 text-gray-600 max-w-[180px] print:max-w-none print:px-1 print:py-0.5">
                                               <span className="truncate block print:whitespace-normal print:truncate-none">{t.motivo_nome || '—'}</span>
                                             </td>
-                                            <td className="px-2 py-1.5 text-gray-600 max-w-[260px] print:max-w-none print:px-1 print:py-0.5">
+                                            <td className="hidden lg:table-cell px-2 py-1.5 text-gray-600 max-w-[260px] print:max-w-none print:px-1 print:py-0.5">
                                               <span className="truncate block print:whitespace-normal print:truncate-none">{t.obs || '—'}</span>
                                             </td>
                                             <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-gray-700 whitespace-nowrap print:whitespace-normal print:px-1 print:py-0.5">
@@ -481,7 +485,7 @@ export default function ConferenciaPage() {
                   </tbody>
                   <tfoot>
                     <tr className="bg-gray-50 border-t-2 border-gray-200">
-                      <td className="px-4 py-2.5 text-[12px] font-semibold text-gray-600">
+                      <td className="px-3 py-2.5 text-[12px] font-semibold text-gray-600">
                         Total ({empresasVisiveis.length} empresa{empresasVisiveis.length !== 1 ? 's' : ''}
                         {empresas.length !== empresasVisiveis.length && ` de ${empresas.length}`})
                         {postosOcultos.size > 0 && (
@@ -490,8 +494,8 @@ export default function ConferenciaPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-right font-bold text-gray-800 tabular-nums">{fmtBRL(totalGeral)}</td>
-                      <td className="px-4 py-2.5 text-right text-[12px] text-gray-500 tabular-nums">{qtTotal}</td>
+                      <td className="px-3 py-2.5 text-right font-bold text-gray-800 tabular-nums whitespace-nowrap">{fmtBRL(totalGeral)}</td>
+                      <td className="hidden sm:table-cell px-3 py-2.5 text-right text-[12px] text-gray-500 tabular-nums">{qtTotal}</td>
                     </tr>
                   </tfoot>
                 </table>

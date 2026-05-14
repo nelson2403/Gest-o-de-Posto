@@ -93,8 +93,8 @@ export function DataTable<TData, TValue>({
   return (
     <div className="space-y-3 animate-fade-in">
       {/* Toolbar */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1 max-w-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
           <Input
             placeholder={searchPlaceholder}
@@ -111,7 +111,7 @@ export function DataTable<TData, TValue>({
             className="pl-8 h-9 text-[13px] bg-white border-gray-200 shadow-sm"
           />
         </div>
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
+        {actions && <div className="flex items-center gap-2 flex-wrap">{actions}</div>}
       </div>
 
       {/* Tabela */}

@@ -26,7 +26,7 @@ const QUICK_ACCESS = [
   { href: '/acessos-unificados', label: 'Ac. Unificados', icon: Link2,         iconColor: 'text-teal-600',    iconBg: 'bg-teal-50',    permission: 'acessos.view' as Permission },
   { href: '/acessos-postos',     label: 'Ac. Postos',     icon: MapPin,        iconColor: 'text-orange-600',  iconBg: 'bg-orange-50',  permission: 'acessos.view' as Permission },
   { href: '/tarefas',            label: 'Tarefas',        icon: ClipboardList, iconColor: 'text-amber-600',   iconBg: 'bg-amber-50',   permission: 'tarefas.view' as Permission },
-  { href: '/servidores',         label: 'Servidores',     icon: Server,        iconColor: 'text-gray-600',    iconBg: 'bg-gray-100',   permission: 'servidores.view' as Permission },
+  { href: '/servidores',         label: 'Servidores',     icon: Server,        iconColor: 'text-gray-600',    iconBg: 'bg-gray-100',   permission: 'servidores.view' as Permission, hideForRoles: ['adm_fiscal', 'adm_contas_pagar'] as Role[] },
   { href: '/taxas',              label: 'Taxas',          icon: TrendingUp,    iconColor: 'text-green-600',   iconBg: 'bg-green-50',   permission: 'taxas.view' as Permission },
   { href: '/portais',            label: 'Portais',        icon: Globe,         iconColor: 'text-blue-600',    iconBg: 'bg-blue-50',    permission: 'portais.view' as Permission },
 ]
@@ -88,7 +88,6 @@ function CustomTooltip({ active, payload, label }: any) {
 // ─── Página ───────────────────────────────────────────────────────────────────
 
 interface CaixaRow { grid: string; nome: string; ultimo_caixa_fechado: string | null }
-interface TarefaResumida { id: string; titulo: string; descricao: string | null; status: string; prioridade: string; data_conclusao_prevista: string | null; posto: { nome: string } | null }
 interface SolicitacaoResumida { id: string; tipo: 'bobina' | 'desinstalacao'; status: 'pendente' | 'atendida' | 'cancelada' | 'solicitado'; observacoes: string | null; criado_em: string; postos: { nome: string } | null }
 
 function diffDias(iso: string) {
@@ -106,14 +105,14 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!usuario) return
-    if (role === 'adm_transpombal')  { router.replace('/transpombal');              return }
-    if (role === 'gerente')          { router.replace('/tanques');                 return }
-    if (role === 'adm_contas_pagar') { router.replace('/contas-pagar/conferencia'); return }
+    if (role === 'adm_transpombal')   { router.replace('/transpombal');              return }
+    if (role === 'gerente')           { router.replace('/tanques');                 return }
+    if (role === 'adm_contas_pagar')  { router.replace('/contas-pagar/conferencia'); return }
+    if (role === 'operador_contagem') { router.replace('/estoque/contagem');         return }
   }, [usuario, role])
 
   const [data,         setData]         = useState<DashboardEmpresa | null>(null)
   const [caixas,       setCaixas]       = useState<CaixaRow[]>([])
-  const [tarefas,      setTarefas]      = useState<TarefaResumida[]>([])
   const [solicitacoes, setSolicitacoes] = useState<SolicitacaoResumida[]>([])
   const [loading,      setLoading]      = useState(true)
   const [lastSync,     setLastSync]     = useState<string | null>(null)
@@ -122,18 +121,13 @@ export default function DashboardPage() {
     async function load() {
       if (!usuario || isRestrito) { setLoading(false); return }
 
-      const [viewRes, caixaRes, tarefasRes, solicitacoesRes] = await Promise.all([
+      const [viewRes, caixaRes, solicitacoesRes] = await Promise.all([
         (() => {
           let q = supabase.from('vw_dashboard_empresa').select('*')
           if (usuario.role !== 'master') q = q.eq('empresa_id', usuario.empresa_id)
           return q
         })(),
         fetch('/api/caixa-externo'),
-        supabase.from('tarefas').select('id, titulo, descricao, status, prioridade, data_conclusao_prevista, posto:postos(nome)')
-          .or('categoria.neq.conciliacao_bancaria,categoria.is.null')
-          .in('status', ['pendente', 'em_andamento'])
-          .order('data_conclusao_prevista', { ascending: true, nullsFirst: false })
-          .limit(6),
         supabase.from('solicitacoes_bobinas')
           .select('id, tipo, status, observacoes, criado_em, postos(nome)')
           .in('status', ['pendente', 'solicitado'])
@@ -164,7 +158,6 @@ export default function DashboardPage() {
         setCaixas(cj.data ?? [])
       } catch {}
 
-      if (tarefasRes.data) setTarefas(tarefasRes.data as unknown as TarefaResumida[])
       if (solicitacoesRes.data) setSolicitacoes(solicitacoesRes.data as unknown as SolicitacaoResumida[])
 
       setLastSync(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))
@@ -175,7 +168,10 @@ export default function DashboardPage() {
 
   const hora      = new Date().getHours()
   const saudacao  = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'
-  const quickAccessVisivel = QUICK_ACCESS.filter(item => canUser(item.permission))
+  const quickAccessVisivel = QUICK_ACCESS.filter(item =>
+    canUser(item.permission) &&
+    !(item.hideForRoles?.includes(role as Role))
+  )
 
   // ── Dados calculados dos caixas ──────────────────────────────────
   const caixaStats = (() => {
@@ -372,58 +368,36 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ── Tarefas pendentes ── */}
-        {!isRestrito && !loading && tarefas.length > 0 && (
+        {/* ── Atalhos Financeiros ── */}
+        {!isRestrito && (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
-                  <ClipboardList className="w-4 h-4 text-amber-600" />
-                </div>
-                <div>
-                  <p className="text-[13px] font-semibold text-gray-800">Tarefas em Aberto</p>
-                  <p className="text-[11px] text-gray-400">{tarefas.length} pendentes</p>
-                </div>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
+                <TrendingUp className="w-4 h-4 text-emerald-600" />
               </div>
-              <Link href="/tarefas/avulsas" className="text-[11px] text-[#8B1A14] font-medium hover:underline flex items-center gap-1">
-                Ver todas <ArrowRight className="w-3 h-3" />
-              </Link>
+              <div>
+                <p className="text-[13px] font-semibold text-gray-800">Financeiro</p>
+                <p className="text-[11px] text-gray-400">Acesso rápido às seções financeiras</p>
+              </div>
             </div>
-            <div className="space-y-2">
-              {tarefas.map(t => {
-                const isOverdueDash = t.data_conclusao_prevista
-                  ? new Date(t.data_conclusao_prevista) < new Date(new Date().toDateString())
-                  : false
-                const prioColors: Record<string, string> = {
-                  urgente: 'bg-red-500', alta: 'bg-orange-500', media: 'bg-yellow-400', baixa: 'bg-slate-300'
-                }
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {[
+                { href: '/contas-pagar/conferencia', label: 'Conferência Diária',  icon: ClipboardList, color: 'text-[#8B1A14]', bg: 'bg-[#8B1A14]/8' },
+                { href: '/contas-pagar/titulos',     label: 'Títulos a Pagar',     icon: CreditCard,    color: 'text-blue-600',   bg: 'bg-blue-50' },
+                { href: '/contas-pagar/fixas',        label: 'Despesas Fixas',      icon: Building2,     color: 'text-purple-600', bg: 'bg-purple-50' },
+                { href: '/contas-receber',            label: 'Contas a Receber',    icon: ArrowRight,    color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                { href: '/controle-dinheiro',         label: 'Controle de Dinheiro', icon: CheckCircle2, color: 'text-amber-600',  bg: 'bg-amber-50' },
+                { href: '/analitico',                 label: 'Analítico',           icon: TrendingUp,    color: 'text-indigo-600', bg: 'bg-indigo-50' },
+              ].map(item => {
+                const Icon = item.icon
                 return (
-                  <div key={t.id} className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
-                    <span className={cn('w-2 h-2 rounded-full mt-1.5 flex-shrink-0', prioColors[t.prioridade] ?? 'bg-gray-300')} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-medium text-gray-800 leading-tight">{t.titulo}</p>
-                      {t.descricao && <p className="text-[11px] text-gray-500 mt-0.5 truncate">{t.descricao}</p>}
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        {t.posto && (
-                          <span className="flex items-center gap-1 text-[10px] text-[#8B1A14] font-medium">
-                            <MapPin className="w-3 h-3" />{(t.posto as any).nome}
-                          </span>
-                        )}
-                        {t.data_conclusao_prevista && (
-                          <span className={cn('flex items-center gap-1 text-[10px]', isOverdueDash ? 'text-red-600 font-semibold' : 'text-gray-400')}>
-                            <Clock className="w-3 h-3" />
-                            {isOverdueDash ? 'Atrasada — ' : ''}Prazo: {(() => { const [y,m,d] = t.data_conclusao_prevista!.split('-'); return `${d}/${m}/${y}` })()}
-                          </span>
-                        )}
-                      </div>
+                  <Link key={item.href} href={item.href}
+                    className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-all group">
+                    <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0', item.bg)}>
+                      <Icon className={cn('w-3.5 h-3.5', item.color)} />
                     </div>
-                    <span className={cn(
-                      'text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0',
-                      t.status === 'em_andamento' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200'
-                    )}>
-                      {t.status === 'em_andamento' ? 'Em andamento' : 'Pendente'}
-                    </span>
-                  </div>
+                    <span className="text-[12px] font-medium text-gray-700 group-hover:text-gray-900 leading-tight">{item.label}</span>
+                  </Link>
                 )
               })}
             </div>

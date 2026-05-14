@@ -73,10 +73,15 @@ const config: Config = {
           from: { height: 'var(--radix-accordion-content-height)' },
           to: { height: '0' },
         },
+        'scan-line': {
+          '0%, 100%': { top: '4px' },
+          '50%':      { top: 'calc(100% - 4px)' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
-        'accordion-up': 'accordion-up 0.2s ease-out',
+        'accordion-up':   'accordion-up 0.2s ease-out',
+        'scan-line':      'scan-line 1.5s ease-in-out infinite',
       },
     },
   },

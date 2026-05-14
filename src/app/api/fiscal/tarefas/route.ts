@@ -25,7 +25,13 @@ export async function GET(req: NextRequest) {
       .select('*, postos(nome)')
       .order('criada_em', { ascending: false })
 
-    if (status) query = query.eq('status', status)
+    if (status === 'abertas') {
+      query = query.not('status', 'in', '(concluida,desconhecida)')
+    } else if (status) {
+      query = query.eq('status', status)
+    } else {
+      query = query.not('status', 'in', '(concluida,desconhecida)')
+    }
 
     // Gerente vê apenas tarefas do próprio posto — filtro obrigatório no servidor
     if (usuario.role === 'gerente') {

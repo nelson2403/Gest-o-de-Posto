@@ -45,7 +45,124 @@ export async function GET(req: NextRequest) {
         `SELECT * FROM nfe_resumo WHERE data_emissao >= $1::date LIMIT 3`,
         [dataIni],
       )
-      // Verificar códigos reais de nfe_evento usados na nfe_manifestacao
+      // ── DIAGNÓSTICO MANIFESTOS CANCELADOS ──────────────────────────────────
+      // 1. Verifica se nfe_resumo tem alguma coluna de situação/cancelamento
+      const colunasResumoSituacao = await queryAS(
+        `SELECT column_name, data_type
+         FROM information_schema.columns
+         WHERE table_name = 'nfe_resumo'
+           AND (column_name ILIKE '%situac%'
+             OR column_name ILIKE '%cancel%'
+             OR column_name ILIKE '%status%'
+             OR column_name ILIKE '%sit%')
+         ORDER BY ordinal_position`,
+        [],
+      )
+
+      // 2. Colunas de nfe_manifestacao com foco em situação
+      const colunasManiSit = await queryAS(
+        `SELECT column_name, data_type
+         FROM information_schema.columns
+         WHERE table_name = 'nfe_manifestacao'
+         ORDER BY ordinal_position`,
+        [],
+      )
+
+      // 3. Valores distintos de situacao_nfe na nfe_manifestacao
+      let situacaoNfeDistintos: any[] = []
+      try {
+        situacaoNfeDistintos = await queryAS(
+          `SELECT situacao_nfe, COUNT(*)::int AS total
+           FROM nfe_manifestacao
+           GROUP BY situacao_nfe
+           ORDER BY total DESC`,
+          [],
+        )
+      } catch {}
+
+      // 4. NFs que passam no filtro atual mas estão canceladas (últimos 90 dias)
+      const nfsCanceladasPassandoFiltro = await queryAS(
+        `SELECT nr.grid::bigint, nr.nfe::bigint, nr.emitente_nome::text,
+                to_char(nr.data_emissao,'YYYY-MM-DD') AS data_emissao,
+                nr.valor::float,
+                nm_last.situacao_nfe AS situacao_nfe_no_manifesto,
+                nm_last.nfe_evento   AS ultimo_evento
+         FROM nfe_resumo nr
+         JOIN LATERAL (
+           SELECT nfe_evento, situacao_nfe
+           FROM nfe_manifestacao nm2
+           WHERE nm2.nfe = nr.nfe
+           ORDER BY nm2.nfe DESC
+           LIMIT 1
+         ) nm_last ON true
+         WHERE nr.empresa = ANY($1::bigint[])
+           AND nr.data_emissao >= (NOW() - INTERVAL '90 days')::date
+           AND EXISTS (SELECT 1 FROM nfe_manifestacao nm WHERE nm.nfe = nr.nfe)
+           AND NOT EXISTS (
+             SELECT 1 FROM nfe_manifestacao nm
+             WHERE nm.nfe = nr.nfe AND nm.nfe_evento IN (210200, 210220, 210240)
+           )
+         ORDER BY nr.data_emissao ASC
+         LIMIT 20`,
+        [empresaGrids],
+      )
+
+      // 5. Contagem: total com filtro atual vs. total excluindo situacao_nfe=3
+      const comparativo = await queryAS(
+        `SELECT
+           COUNT(DISTINCT nr.grid) FILTER (WHERE true)::int AS total_atual,
+           COUNT(DISTINCT nr.grid) FILTER (
+             WHERE NOT EXISTS (
+               SELECT 1 FROM nfe_manifestacao nm3
+               WHERE nm3.nfe = nr.nfe AND nm3.situacao_nfe = 3
+             )
+           )::int AS total_apos_fix
+         FROM nfe_resumo nr
+         WHERE nr.empresa = ANY($1::bigint[])
+           AND nr.data_emissao >= (NOW() - INTERVAL '90 days')::date
+           AND EXISTS (SELECT 1 FROM nfe_manifestacao nm WHERE nm.nfe = nr.nfe)
+           AND NOT EXISTS (
+             SELECT 1 FROM nfe_manifestacao nm
+             WHERE nm.nfe = nr.nfe AND nm.nfe_evento IN (210200, 210220, 210240)
+           )`,
+        [empresaGrids],
+      )
+
+      // 6. Amostra das NFs canceladas (situacao_nfe=3) dentro de 90 dias
+      const canceladasRecentes = await queryAS(
+        `SELECT nr.grid::bigint, nr.empresa::bigint,
+                nr.emitente_nome::text,
+                to_char(nr.data_emissao,'YYYY-MM-DD') AS data_emissao,
+                nr.valor::float,
+                nm_sit.situacao_nfe,
+                nm_sit.nfe_evento
+         FROM nfe_resumo nr
+         JOIN LATERAL (
+           SELECT nfe_evento, situacao_nfe
+           FROM nfe_manifestacao nm2
+           WHERE nm2.nfe = nr.nfe
+           ORDER BY nm2.grid DESC
+           LIMIT 1
+         ) nm_sit ON true
+         WHERE nr.empresa = ANY($1::bigint[])
+           AND nr.data_emissao >= (NOW() - INTERVAL '90 days')::date
+           AND EXISTS (SELECT 1 FROM nfe_manifestacao nm WHERE nm.nfe = nr.nfe)
+           AND NOT EXISTS (
+             SELECT 1 FROM nfe_manifestacao nm
+             WHERE nm.nfe = nr.nfe AND nm.nfe_evento IN (210200, 210220, 210240)
+           )
+           AND EXISTS (
+             SELECT 1 FROM nfe_manifestacao nm
+             WHERE nm.nfe = nr.nfe AND nm.situacao_nfe = 3
+           )
+         ORDER BY nr.data_emissao DESC
+         LIMIT 15`,
+        [empresaGrids],
+      )
+
+      // ── FIM DIAGNÓSTICO ─────────────────────────────────────────────────────
+
+    // Verificar códigos reais de nfe_evento usados na nfe_manifestacao
       const eventosUsados = await queryAS(
         `SELECT nm.nfe_evento, COUNT(*)::int AS total
          FROM nfe_manifestacao nm
@@ -166,6 +283,13 @@ export async function GET(req: NextRequest) {
         _colunas_nfe_manifestacao: colunasManifestacao,
         _amostra_nfe_manifestacao: amostrasManifestacao,
         _nfs_bela_vista_detalhado: nfsBellaVistaComEventos,
+        // DIAGNÓSTICO CANCELADOS
+        _colunas_nfe_resumo_situacao: colunasResumoSituacao,
+        _colunas_nfe_manifestacao_todas: colunasManiSit,
+        _situacao_nfe_distintos: situacaoNfeDistintos,
+        _nfs_canceladas_passando_filtro: nfsCanceladasPassandoFiltro,
+        _comparativo_antes_depois_fix: comparativo,
+        _canceladas_recentes_90dias: canceladasRecentes,
       }] as any
     } catch (e: any) {
       erroAS = e.message

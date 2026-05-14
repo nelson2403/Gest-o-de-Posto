@@ -12,7 +12,7 @@ import {
   TrendingUp, Wallet, Receipt, Settings, Megaphone, Gift, Database,
   ArrowLeftRight, Eye, EyeOff, X, ChevronDown,
   PackageSearch, Truck, CalendarDays, ShoppingCart, Menu,
-  Bell, Sun, Moon, CheckCheck, Scale, Banknote,
+  Bell, Sun, Moon, CheckCheck, Scale, Banknote, Hash,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { useAuthContext } from '@/contexts/AuthContext'
@@ -42,6 +42,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/maquininhas',                 label: 'Maquininhas',        icon: Smartphone, permission: 'maquininhas.view' as Permission },
       { href: '/taxas',                       label: 'Taxas',              icon: Percent,    permission: 'taxas.view' as Permission },
       { href: '/adquirentes',                 label: 'Adquirentes',        icon: CreditCard, permission: 'adquirentes.view' as Permission },
+      { href: '/codigos-implantacao',         label: 'Cód. de Implantação', icon: Hash,       permission: 'implantacao.view' as Permission },
       { href: '/contas-bancarias',            label: 'Contas Bancárias',   icon: Landmark,   permission: 'contas_bancarias.view' as Permission },
       {
         label: 'Máscaras', icon: Layers, permission: 'mascaras.view' as Permission, divider: true,
@@ -67,9 +68,10 @@ const NAV_GROUPS: NavGroup[] = [
       {
         label: 'Contas a Pagar', icon: Receipt, permission: 'contas_pagar.view' as Permission,
         children: [
-          { href: '/contas-pagar/conferencia', label: 'Conferência Diária', icon: ClipboardList, permission: 'contas_pagar.lancar' as Permission },
-          { href: '/contas-pagar/fixas',       label: 'Despesas Fixas',     icon: Wallet,        permission: 'contas_pagar.fixas.view' as Permission },
-          { href: '/contas-pagar/titulos',     label: 'Títulos a Pagar',    icon: Database,      permission: 'contas_pagar.view' as Permission },
+          { href: '/contas-pagar/conferencia', label: 'Conferência Diária',    icon: ClipboardList, permission: 'contas_pagar.lancar' as Permission },
+          { href: '/contas-pagar/fixas',       label: 'Despesas Fixas',        icon: Wallet,        permission: 'contas_pagar.fixas.view' as Permission },
+          { href: '/contas-pagar/titulos',     label: 'Títulos a Pagar',       icon: Database,      permission: 'contas_pagar.view' as Permission },
+          { href: '/contas-pagar/boletos',     label: 'Boletos e Solicitações', icon: Receipt,       permission: 'contas_pagar.view' as Permission },
         ],
       },
       {
@@ -88,7 +90,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Fiscal',
     items: [
-      { href: '/fiscal',         label: 'Painel Fiscal',      icon: Scale,         permission: 'fiscal.view' as Permission, hideForRoles: ['gerente'] },
+      { href: '/fiscal',         label: 'Painel Fiscal',      icon: Scale,         permission: 'fiscal.view' as Permission, hideForRoles: ['gerente', 'rh'] },
       { href: '/fiscal/tarefas', label: 'Tarefas Fiscal',     icon: ClipboardList, permission: 'fiscal.view' as Permission },
       { href: '/fiscal/geracao', label: 'Geração de Tarefas', icon: FileText,      permission: 'fiscal.geracao' as Permission },
     ],
@@ -97,6 +99,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Compras',
     items: [
       { href: '/estoque',             label: 'Estoque',            icon: PackageSearch, permission: 'estoque.view' as Permission },
+      { href: '/estoque/contagem',    label: 'Contagem',           icon: ClipboardList, permission: 'estoque.contagem' as Permission },
+      { href: '/estoque/uso-consumo', label: 'Uso e Consumo',      icon: Archive,       permission: 'uso_consumo.view' as Permission },
       { href: '/sugestao-pedido',     label: 'Sugestão de Pedido', icon: ShoppingCart,  permission: 'estoque.view' as Permission },
       { href: '/fornecedores',        label: 'Fornecedores',       icon: Truck,         permission: 'estoque.view' as Permission },
       { href: '/rotina-fornecedores', label: 'Rotina de Visitas',  icon: CalendarDays,  permission: 'estoque.view' as Permission },
@@ -122,13 +126,13 @@ const NAV_GROUPS: NavGroup[] = [
       {
         label: 'Acessos', icon: KeyRound, permission: null,
         children: [
-          { href: '/portais',            label: 'Portais',            icon: Globe,    permission: 'portais.view' as Permission },
-          { href: '/acessos-unificados', label: 'Acessos Unificados', icon: Link2,    permission: 'acessos.view' as Permission },
-          { href: '/acessos-postos',     label: 'Acessos dos Postos', icon: KeyRound, permission: 'acessos.view' as Permission },
+          { href: '/portais',            label: 'Portais',            icon: Globe,    permission: 'portais.view' as Permission,    hideForRoles: ['adm_fiscal'] },
+          { href: '/acessos-unificados', label: 'Acessos Unificados', icon: Link2,    permission: 'acessos.view' as Permission,    hideForRoles: ['adm_fiscal'] },
+          { href: '/acessos-postos',     label: 'Acessos dos Postos', icon: KeyRound, permission: 'acessos.view' as Permission,    hideForRoles: ['adm_fiscal'] },
           { href: '/acessos-anydesk',    label: 'AnyDesk',            icon: Monitor,  permission: 'anydesk.view' as Permission },
-          { href: '/servidores',         label: 'Servidores',         icon: Server,   permission: 'servidores.view' as Permission, hideForRoles: ['adm_contas_pagar'] },
-          { href: '/acessos-cameras',    label: 'Câmeras',            icon: Camera,   permission: 'cameras.view' as Permission,   hideForRoles: ['adm_contas_pagar'] },
-          { href: '/senhas-tef',         label: 'Senhas TEF',         icon: Lock,     permission: 'senhas_tef.view' as Permission, hideForRoles: ['adm_contas_pagar'] },
+          { href: '/servidores',         label: 'Servidores',         icon: Server,   permission: 'servidores.view' as Permission, hideForRoles: ['adm_contas_pagar', 'adm_fiscal'] },
+          { href: '/acessos-cameras',    label: 'Câmeras',            icon: Camera,   permission: 'cameras.view' as Permission,   hideForRoles: ['adm_contas_pagar', 'adm_fiscal'] },
+          { href: '/senhas-tef',         label: 'Senhas TEF',         icon: Lock,     permission: 'senhas_tef.view' as Permission, hideForRoles: ['adm_contas_pagar', 'adm_fiscal'] },
         ],
       },
       { href: '/relatorios', label: 'Relatórios', icon: FileText, permission: 'relatorios.view' as Permission },
@@ -137,11 +141,12 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Analítico',
     items: [
-      { href: '/analitico', label: 'Analítico', icon: BarChart2, permission: 'analitico.view' as Permission },
+      { href: '/analitico',        label: 'Analítico',          icon: BarChart2,  permission: 'analitico.view' as Permission },
+      { href: '/analise-vendas',   label: 'Análise de Vendas',  icon: TrendingUp, permission: 'analitico.view' as Permission },
     ],
   },
   {
-    label: 'Coligadas',
+    label: 'Outros',
     items: [
       { href: '/transpombal', label: 'Transpombal — Frota', icon: Truck, permission: 'transpombal.view' as Permission },
       { href: '/tanques',     label: 'Medição de Tanques',  icon: Fuel,  permission: 'tanques.view' as Permission },
@@ -286,10 +291,11 @@ export function Topbar() {
   const { theme, toggleTheme } = useTheme()
   const role = usuario?.role as Role | undefined
 
-  const [openGroup,   setOpenGroup]   = useState<string | null>(null)
-  const [openFlyout,  setOpenFlyout]  = useState<string | null>(null)
-  const [mobileOpen,  setMobileOpen]  = useState(false)
-  const [userOpen,    setUserOpen]    = useState(false)
+  const [openGroup,    setOpenGroup]    = useState<string | null>(null)
+  const [openFlyout,   setOpenFlyout]   = useState<string | null>(null)
+  const [mobileOpen,   setMobileOpen]   = useState(false)
+  const [mobileGroups, setMobileGroups] = useState<Set<string>>(new Set())
+  const [userOpen,     setUserOpen]     = useState(false)
   const navRef  = useRef<HTMLDivElement>(null)
   const userRef = useRef<HTMLDivElement>(null)
   const groupRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -306,6 +312,14 @@ export function Topbar() {
 
   // Fecha ao navegar
   useEffect(() => { setOpenGroup(null); setOpenFlyout(null); setMobileOpen(false); setUserOpen(false) }, [pathname])
+
+  // Auto-expande o grupo ativo ao abrir o drawer mobile
+  useEffect(() => {
+    if (!mobileOpen) return
+    const activeGroup = NAV_GROUPS.find(g => groupHasActive(g))
+    if (activeGroup) setMobileGroups(new Set([activeGroup.label]))
+    else setMobileGroups(new Set())
+  }, [mobileOpen])
 
   function isActive(href: string) {
     return href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(href + '/')
@@ -429,10 +443,18 @@ export function Topbar() {
         {/* Nav groups — desktop */}
         <nav ref={navRef} className="hidden md:flex items-center gap-0 flex-1 min-w-0">
           {NAV_GROUPS.map(group => {
-            const visibleItems = group.items.filter(i =>
-              (!i.permission || canUser(i.permission)) &&
-              (!i.hideForRoles || !role || !i.hideForRoles.includes(role))
-            )
+            const visibleItems = group.items.filter(i => {
+              const permOk = !i.permission || canUser(i.permission)
+              const roleOk = !i.hideForRoles || !role || !i.hideForRoles.includes(role)
+              if (!permOk || !roleOk) return false
+              if (i.children && !i.permission) {
+                return i.children.some(c =>
+                  (!c.permission || canUser(c.permission)) &&
+                  (!c.hideForRoles || !role || !c.hideForRoles.includes(role))
+                )
+              }
+              return true
+            })
             if (!visibleItems.length) return null
             const isGroupActive = groupHasActive(group)
             const isOpen = openGroup === group.label
@@ -603,83 +625,133 @@ export function Topbar() {
 
           {/* Mobile hamburger */}
           <button onClick={() => setMobileOpen(v => !v)}
-            className="md:hidden w-8 h-8 rounded-lg flex items-center justify-center text-[hsl(220,20%,55%)] hover:text-white hover:bg-white/[0.08] transition-colors ml-1">
-            <Menu className="w-4.5 h-4.5" />
+            className="md:hidden w-8 h-8 rounded-lg flex items-center justify-center text-white/70 hover:text-white hover:bg-white/[0.08] transition-colors ml-1">
+            {mobileOpen ? <X className="w-4.5 h-4.5" /> : <Menu className="w-4.5 h-4.5" />}
           </button>
         </div>
       </div>
 
       {/* Dropdown menus — positioned below each group button */}
 
-      {/* Mobile nav drawer */}
+    </header>
+
+      {/* Mobile side drawer — overlay */}
       {mobileOpen && (
-        <div className="md:hidden border-t border-white/[0.06] bg-[#140503] max-h-[70vh] overflow-y-auto">
-          {canUser('dashboard.view') && (
-            <Link href="/" className={cn('flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium border-b border-white/[0.04]',
-              pathname === '/' ? 'text-[#ffaa99]' : 'text-white/50')}>
-              <LayoutDashboard className="w-4 h-4" /> Dashboard
-            </Link>
-          )}
-          {NAV_GROUPS.map(group => {
-            const visibleItems = group.items.filter(i =>
-              (!i.permission || canUser(i.permission)) &&
-              (!i.hideForRoles || !role || !i.hideForRoles.includes(role))
-            )
-            if (!visibleItems.length) return null
-            return (
-              <div key={group.label}>
-                <p className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white/25 border-b border-white/[0.04]">{group.label}</p>
-                {visibleItems.map(item => {
-                  const Icon = item.icon
-                  if (item.children) {
-                    const visibleChildren = item.children.filter(c => !c.permission || canUser(c.permission))
-                    if (!visibleChildren.length) return null
-                    return (
-                      <div key={item.label}>
-                        <p className="px-4 pt-2 pb-1 text-[10px] font-semibold text-white/30 uppercase tracking-wider">{item.label}</p>
-                        {visibleChildren.map(child => {
-                          const ChildIcon = child.icon
-                          const childActive = isActive(child.href)
-                          return (
-                            <Link key={child.href} href={child.href}
-                              onClick={() => setMobileOpen(false)}
-                              className={cn('flex items-center gap-2.5 pl-7 pr-4 py-2.5 text-[13px] font-medium border-b border-white/[0.03] transition-colors',
-                                childActive ? 'text-[#ffaa99] bg-[#8b1a14]/10' : 'text-white/50 hover:text-white hover:bg-white/[0.05]')}>
-                              <ChildIcon className="w-3.5 h-3.5 flex-shrink-0" />
-                              {child.label}
-                            </Link>
-                          )
-                        })}
-                      </div>
-                    )
-                  }
-                  const active = item.href ? isActive(item.href) : false
-                  return (
-                    <Link key={item.href} href={item.href!}
-                      onClick={() => setMobileOpen(false)}
-                      className={cn('flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium border-b border-white/[0.03] transition-colors',
-                        active ? 'text-[#ffaa99] bg-[#8b1a14]/10' : 'text-white/50 hover:text-white hover:bg-white/[0.05]')}>
-                      <Icon className="w-4 h-4 flex-shrink-0" />
-                      {item.label}
-                    </Link>
-                  )
-                })}
+        <div
+          className="md:hidden fixed inset-0 z-50 flex justify-end"
+          onClick={() => setMobileOpen(false)}
+        >
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/60" />
+
+          {/* Drawer panel */}
+          <div
+            className="relative w-[80vw] max-w-[300px] h-full bg-[#140503] flex flex-col overflow-hidden shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Drawer header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06] flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <img src="/logo.png" alt="" className="h-7 w-auto" />
+                <span className="text-[13px] font-bold text-white">Menu</span>
               </div>
-            )
-          })}
-          <div className="border-t border-white/[0.06] py-2">
-            <button onClick={() => { setMobileOpen(false); setShowSenha(true) }}
-              className="flex items-center gap-2.5 w-full px-4 py-3 text-[13px] text-white/50 hover:text-white">
-              <Lock className="w-4 h-4" /> Trocar Senha
-            </button>
-            <button onClick={() => { setMobileOpen(false); signOut() }}
-              className="flex items-center gap-2.5 w-full px-4 py-3 text-[13px] text-red-400 hover:text-red-300">
-              <LogOut className="w-4 h-4" /> Sair
-            </button>
+              <button onClick={() => setMobileOpen(false)} className="w-7 h-7 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/[0.08]">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto">
+              {canUser('dashboard.view') && (
+                <Link href="/" onClick={() => setMobileOpen(false)}
+                  className={cn('flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium border-b border-white/[0.04]',
+                    pathname === '/' ? 'text-[#ffaa99]' : 'text-white/60')}>
+                  <LayoutDashboard className="w-4 h-4" /> Dashboard
+                </Link>
+              )}
+              {NAV_GROUPS.map(group => {
+                const visibleItems = group.items.filter(i =>
+                  (!i.permission || canUser(i.permission)) &&
+                  (!i.hideForRoles || !role || !i.hideForRoles.includes(role))
+                )
+                if (!visibleItems.length) return null
+                const isExpanded = mobileGroups.has(group.label)
+                const hasActive  = groupHasActive(group)
+                return (
+                  <div key={group.label}>
+                    <button
+                      onClick={() => setMobileGroups(prev => {
+                        const next = new Set(prev)
+                        if (next.has(group.label)) next.delete(group.label)
+                        else next.add(group.label)
+                        return next
+                      })}
+                      className="w-full flex items-center justify-between px-4 py-2.5 bg-white/[0.02] hover:bg-white/[0.05] transition-colors border-b border-white/[0.03]"
+                    >
+                      <span className={cn('text-[9.5px] font-bold uppercase tracking-widest', hasActive ? 'text-[#ffaa99]/70' : 'text-white/30')}>
+                        {group.label}
+                      </span>
+                      <ChevronDown className={cn('w-3 h-3 text-white/30 transition-transform duration-200', isExpanded && 'rotate-180')} />
+                    </button>
+                    {isExpanded && visibleItems.map(item => {
+                      const Icon = item.icon
+                      if (item.children) {
+                        const visibleChildren = item.children.filter(c =>
+                          (!c.permission || canUser(c.permission)) &&
+                          (!c.hideForRoles || !role || !c.hideForRoles.includes(role))
+                        )
+                        if (!visibleChildren.length) return null
+                        return (
+                          <div key={item.label}>
+                            <p className="px-4 pt-2 pb-1 text-[10px] font-semibold text-white/30 uppercase tracking-wider flex items-center gap-2">
+                              <Icon className="w-3 h-3" />{item.label}
+                            </p>
+                            {visibleChildren.map(child => {
+                              const ChildIcon = child.icon
+                              const childActive = isActive(child.href)
+                              return (
+                                <Link key={child.href} href={child.href}
+                                  onClick={() => setMobileOpen(false)}
+                                  className={cn('flex items-center gap-2.5 pl-8 pr-4 py-2.5 text-[13px] font-medium border-b border-white/[0.03] transition-colors',
+                                    childActive ? 'text-[#ffaa99] bg-[#8b1a14]/20' : 'text-white/60 hover:text-white hover:bg-white/[0.05]')}>
+                                  <ChildIcon className="w-3.5 h-3.5 flex-shrink-0 opacity-70" />
+                                  {child.label}
+                                </Link>
+                              )
+                            })}
+                          </div>
+                        )
+                      }
+                      const active = item.href ? isActive(item.href) : false
+                      return (
+                        <Link key={item.href} href={item.href!}
+                          onClick={() => setMobileOpen(false)}
+                          className={cn('flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium border-b border-white/[0.03] transition-colors',
+                            active ? 'text-[#ffaa99] bg-[#8b1a14]/20' : 'text-white/60 hover:text-white hover:bg-white/[0.05]')}>
+                          <Icon className="w-4 h-4 flex-shrink-0 opacity-70" />
+                          {item.label}
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Drawer footer */}
+            <div className="border-t border-white/[0.06] py-2 flex-shrink-0">
+              <button onClick={() => { setMobileOpen(false); setShowSenha(true) }}
+                className="flex items-center gap-2.5 w-full px-4 py-3 text-[13px] text-white/60 hover:text-white hover:bg-white/[0.05] transition-colors">
+                <Lock className="w-4 h-4" /> Trocar Senha
+              </button>
+              <button onClick={() => { setMobileOpen(false); signOut() }}
+                className="flex items-center gap-2.5 w-full px-4 py-3 text-[13px] text-red-400 hover:text-red-300 hover:bg-red-500/5 transition-colors">
+                <LogOut className="w-4 h-4" /> Sair
+              </button>
+            </div>
           </div>
         </div>
       )}
-    </header>
 
     {/* ── Modal Trocar Senha ── */}
     {showSenha && (

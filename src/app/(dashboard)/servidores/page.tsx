@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Header } from '@/components/layout/Header'
 import { DataTable } from '@/components/shared/DataTable'
@@ -16,20 +16,102 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from '@/hooks/use-toast'
 import { useAuthContext } from '@/contexts/AuthContext'
 import { can } from '@/lib/utils/permissions'
-import { Plus, Pencil, Trash2, Server, Loader2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Server, Loader2, Lock, ShieldCheck } from 'lucide-react'
 import { CopyButton } from '@/components/shared/CopyButton'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { ServidorPosto, Posto, Role } from '@/types/database.types'
 
+const SESSION_KEY = 'servidores_unlocked'
+
 type ServidorRow = ServidorPosto & { posto?: { nome: string } }
 
 const EMPTY = { posto_id: '', nome_banco: '', ip: '', porta: '5432', usuario: '', senha: '', observacoes: '' }
+
+function PinLock({ onUnlock }: { onUnlock: () => void }) {
+  const [pin, setPin]       = useState('')
+  const [error, setError]   = useState(false)
+  const [loading, setLoading] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  async function verify() {
+    if (!pin.trim()) return
+    setLoading(true)
+    setError(false)
+    try {
+      const res = await fetch('/api/servidores/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin }),
+      })
+      if (res.ok) {
+        sessionStorage.setItem(SESSION_KEY, '1')
+        onUnlock()
+      } else {
+        setError(true)
+        setPin('')
+        inputRef.current?.focus()
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[70vh] gap-6">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-16 h-16 rounded-2xl bg-orange-100 flex items-center justify-center">
+          <Lock className="w-8 h-8 text-orange-600" />
+        </div>
+        <h2 className="text-[17px] font-bold text-gray-800">Acesso Restrito</h2>
+        <p className="text-[13px] text-gray-500 text-center max-w-xs">
+          Esta área é protegida. Digite a senha de acesso para continuar.
+        </p>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 w-full max-w-xs space-y-4">
+        <div className="space-y-1.5">
+          <Label className="text-[12px] font-medium text-gray-600">Senha de acesso</Label>
+          <Input
+            ref={inputRef}
+            type="password"
+            value={pin}
+            onChange={e => { setPin(e.target.value); setError(false) }}
+            onKeyDown={e => e.key === 'Enter' && verify()}
+            placeholder="••••••"
+            className={error ? 'border-red-400 focus-visible:ring-red-300' : ''}
+          />
+          {error && (
+            <p className="text-[12px] text-red-500">Senha incorreta. Tente novamente.</p>
+          )}
+        </div>
+        <Button
+          onClick={verify}
+          disabled={loading || !pin.trim()}
+          className="w-full bg-orange-500 hover:bg-orange-600 gap-2"
+        >
+          {loading
+            ? <Loader2 className="w-4 h-4 animate-spin" />
+            : <ShieldCheck className="w-4 h-4" />}
+          Entrar
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 export default function ServidoresPage() {
   const { usuario } = useAuthContext()
   const supabase = createClient()
   const role = usuario?.role as Role | undefined
   const canManage = can(role ?? null, 'servidores.edit')
+
+  const [unlocked, setUnlocked] = useState(false)
+
+  useEffect(() => {
+    if (sessionStorage.getItem(SESSION_KEY) === '1') setUnlocked(true)
+  }, [])
 
   const [servidores, setServidores] = useState<ServidorRow[]>([])
   const [postos,     setPostos]     = useState<Posto[]>([])
@@ -180,6 +262,10 @@ export default function ServidoresPage() {
       },
     },
   ]
+
+  if (!unlocked) {
+    return <PinLock onUnlock={() => setUnlocked(true)} />
+  }
 
   return (
     <div className="animate-fade-in">
