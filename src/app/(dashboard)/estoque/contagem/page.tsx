@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils/cn'
 import { formatCurrency } from '@/lib/utils/formatters'
 import {
   ClipboardCheck, Search, Save, Printer, ChevronDown, ChevronRight,
-  Loader2, Package, AlertTriangle, History, Plus, Eye, RefreshCw, Barcode, Camera,
+  Loader2, Package, AlertTriangle, History, Plus, Eye, RefreshCw, Barcode, Camera, Pencil, X,
 } from 'lucide-react'
 
 const BarcodeScannerCamera = dynamic(() => import('@/components/BarcodeScannerCamera'), { ssr: false })
@@ -129,8 +129,8 @@ function TabelaProdutos({
   produtos: ProdutoContagem[]
   busca: string
   setBusca: (v: string) => void
-  filtroEstoque: 'todos' | 'zerados' | 'com_estoque'
-  setFiltroEstoque: (v: 'todos' | 'zerados' | 'com_estoque') => void
+  filtroEstoque: 'todos' | 'zerados' | 'com_estoque' | 'negativos'
+  setFiltroEstoque: (v: 'todos' | 'zerados' | 'com_estoque' | 'negativos') => void
   postoNome: string
   grupoNome: string
   setQtd: (id: number, val: string) => void
@@ -140,7 +140,8 @@ function TabelaProdutos({
   const filtrados = produtos
     .filter(p =>
       filtroEstoque === 'zerados'     ? p.estoque === 0 :
-      filtroEstoque === 'com_estoque' ? p.estoque > 0   : true
+      filtroEstoque === 'com_estoque' ? p.estoque > 0   :
+      filtroEstoque === 'negativos'   ? p.estoque < 0   : true
     )
     .filter(p => busca.trim() ? p.produto_nome.toLowerCase().includes(busca.toLowerCase()) : true)
 
@@ -273,6 +274,7 @@ function TabelaProdutos({
               { key: 'todos',       label: 'Todos' },
               { key: 'com_estoque', label: 'C/ estoque' },
               { key: 'zerados',     label: 'Zerados' },
+              { key: 'negativos',   label: 'Negativos' },
             ] as const).map(({ key, label }) => (
               <button
                 key={key}
@@ -282,6 +284,7 @@ function TabelaProdutos({
                   filtroEstoque === key
                     ? key === 'zerados'     ? 'bg-red-500 text-white'
                     : key === 'com_estoque' ? 'bg-green-500 text-white'
+                    : key === 'negativos'   ? 'bg-red-700 text-white'
                     :                        'bg-gray-600 text-white'
                     : 'bg-white text-gray-500 hover:bg-gray-50',
                 )}
@@ -400,7 +403,7 @@ function TabelaProdutos({
 
 // ── Histórico ─────────────────────────────────────────────────────────────────
 
-function Historico({ refresh }: { refresh: number }) {
+function Historico({ refresh, onEditar }: { refresh: number; onEditar: (c: ContagemSalva, det: any) => void }) {
   const [contagens,       setContagens]       = useState<ContagemSalva[]>([])
   const [loading,         setLoading]         = useState(false)
   const [expanded,        setExpanded]        = useState<string | null>(null)
@@ -485,6 +488,15 @@ function Historico({ refresh }: { refresh: number }) {
                 </button>
                 {det && (
                   <button
+                    onClick={() => onEditar(c, det)}
+                    className="h-7 px-2.5 rounded-lg border border-indigo-200 bg-white hover:bg-indigo-50 text-indigo-600 text-[11px] font-medium flex items-center gap-1 transition-colors"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    <span className="hidden sm:inline">Editar</span>
+                  </button>
+                )}
+                {det && (
+                  <button
                     onClick={() => imprimir(det)}
                     className="h-7 px-2.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-medium flex items-center gap-1 transition-colors"
                   >
@@ -566,8 +578,10 @@ export default function ContagemEstoquePage() {
   const [loading,        setLoading]        = useState(false)
   const [saving,         setSaving]         = useState(false)
   const [busca,          setBusca]          = useState('')
-  const [filtroEstoque,  setFiltroEstoque]  = useState<'todos' | 'zerados' | 'com_estoque'>('todos')
+  const [filtroEstoque,  setFiltroEstoque]  = useState<'todos' | 'zerados' | 'com_estoque' | 'negativos'>('todos')
   const [saved,          setSaved]          = useState<{ id: string } | null>(null)
+  const [editandoId,     setEditandoId]     = useState<string | null>(null)
+  const [editandoLabel,  setEditandoLabel]  = useState('')
 
   const posto = postos.find(p => p.id === postoId)
   const grupo = grupos.find(g => g.id === grupoId)
@@ -583,18 +597,52 @@ export default function ContagemEstoquePage() {
       .catch(() => {})
   }, [])
 
-  async function carregar() {
-    if (!posto?.codigo_empresa_externo || !grupoId) return
+  async function carregar(opts?: {
+    empresaId?: string
+    grupoIdStr?: string
+    preenchidos?: Record<number, number | null>
+  }) {
+    const empId = opts?.empresaId ?? posto?.codigo_empresa_externo
+    const grpId = opts?.grupoIdStr ?? grupoId
+    if (!empId || !grpId) return
     setLoading(true)
     setSaved(null)
     setProdutos([])
     setBusca('')
     try {
-      const res  = await fetch(`/api/estoque/contagem-produtos?empresaId=${posto.codigo_empresa_externo}&grupoId=${grupoId}`)
+      const res  = await fetch(`/api/estoque/contagem-produtos?empresaId=${empId}&grupoId=${grpId}`)
       const json = await res.json()
       if (!res.ok) { toast({ variant: 'destructive', title: 'Erro', description: json.error }); return }
-      setProdutos((json.produtos ?? []).map((p: any) => ({ ...p, qtd_contada: '' })))
+      const pre = opts?.preenchidos
+      setProdutos((json.produtos ?? []).map((p: any) => ({
+        ...p,
+        qtd_contada: pre && pre[Number(p.produto)] != null ? String(pre[Number(p.produto)]) : '',
+      })))
     } finally { setLoading(false) }
+  }
+
+  async function carregarParaEditar(c: ContagemSalva, det: any) {
+    const postoEncontrado = postos.find(p => p.codigo_empresa_externo === c.codigo_empresa_externo)
+    if (!postoEncontrado) {
+      toast({ variant: 'destructive', title: 'Posto não encontrado', description: c.posto_nome })
+      return
+    }
+    const preenchidos: Record<number, number | null> = {}
+    for (const it of (det?.contagens_estoque_itens ?? [])) {
+      preenchidos[Number(it.produto_id)] = it.qtd_contada
+    }
+    setPostoId(postoEncontrado.id)
+    setGrupoId(c.grupo_id)
+    setDataContagem(c.data_contagem)
+    setEditandoId(c.id)
+    setEditandoLabel(`${c.posto_nome} · ${c.grupo_nome}`)
+    setSaved(null)
+    setView('nova')
+    await carregar({
+      empresaId:  c.codigo_empresa_externo,
+      grupoIdStr: c.grupo_id,
+      preenchidos,
+    })
   }
 
   function setQtd(produtoId: number, val: string) {
@@ -605,34 +653,48 @@ export default function ContagemEstoquePage() {
     if (!posto || !grupo || !produtos.length) return
     setSaving(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data: usuario }  = await supabase.from('usuarios').select('empresa_id').eq('id', user!.id).single()
+      const itens = produtos.map(p => ({
+        produto_id:   p.produto,
+        produto_nome: p.produto_nome,
+        unid_med:     p.unid_med,
+        qtd_sistema:  p.estoque,
+        custo_medio:  p.custo_medio,
+        qtd_contada:  p.qtd_contada !== '' ? parseFloat(p.qtd_contada) : null,
+      }))
 
-      const res = await fetch('/api/estoque/contagens', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          empresa_id: usuario?.empresa_id ?? posto.empresa_id,
-          codigo_empresa_externo: posto.codigo_empresa_externo,
-          posto_nome: posto.nome,
-          grupo_id: grupoId,
-          grupo_nome: grupo.nome,
-          data_contagem: dataContagem,
-          itens: produtos.map(p => ({
-            produto_id:   p.produto,
-            produto_nome: p.produto_nome,
-            unid_med:     p.unid_med,
-            qtd_sistema:  p.estoque,
-            custo_medio:  p.custo_medio,
-            qtd_contada:  p.qtd_contada !== '' ? parseFloat(p.qtd_contada) : null,
-          })),
-        }),
-      })
-      const json = await res.json()
-      if (!res.ok) { toast({ variant: 'destructive', title: 'Erro', description: json.error }); return }
-      setSaved({ id: json.id })
-      setRefresh(r => r + 1)
-      toast({ title: 'Contagem salva com sucesso!' })
+      if (editandoId) {
+        const res = await fetch(`/api/estoque/contagens/${editandoId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data_contagem: dataContagem, itens }),
+        })
+        const json = await res.json()
+        if (!res.ok) { toast({ variant: 'destructive', title: 'Erro', description: json.error }); return }
+        setSaved({ id: editandoId })
+        setRefresh(r => r + 1)
+        toast({ title: 'Contagem atualizada com sucesso!' })
+      } else {
+        const { data: { user } } = await supabase.auth.getUser()
+        const { data: usuario }  = await supabase.from('usuarios').select('empresa_id').eq('id', user!.id).single()
+        const res = await fetch('/api/estoque/contagens', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: usuario?.empresa_id ?? posto.empresa_id,
+            codigo_empresa_externo: posto.codigo_empresa_externo,
+            posto_nome: posto.nome,
+            grupo_id: grupoId,
+            grupo_nome: grupo.nome,
+            data_contagem: dataContagem,
+            itens,
+          }),
+        })
+        const json = await res.json()
+        if (!res.ok) { toast({ variant: 'destructive', title: 'Erro', description: json.error }); return }
+        setSaved({ id: json.id })
+        setRefresh(r => r + 1)
+        toast({ title: 'Contagem salva com sucesso!' })
+      }
     } finally { setSaving(false) }
   }
 
@@ -656,7 +718,7 @@ export default function ContagemEstoquePage() {
         {/* Sub-nav */}
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl flex-shrink-0">
           <button
-            onClick={() => setView('nova')}
+            onClick={() => { setView('nova'); setEditandoId(null); setEditandoLabel(''); setProdutos([]); setSaved(null) }}
             className={cn(
               'flex items-center gap-1 md:gap-1.5 px-2.5 md:px-4 py-1.5 rounded-lg text-[11px] md:text-[13px] font-semibold transition-all',
               view === 'nova'
@@ -683,6 +745,24 @@ export default function ContagemEstoquePage() {
         </div>
       </div>
 
+      {/* ── Banner de edição ── */}
+      {view === 'nova' && editandoId && (
+        <div className="flex-shrink-0 px-3 md:px-6 py-2 bg-indigo-50 border-b border-indigo-200 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Pencil className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+            <span className="text-[12px] font-semibold text-indigo-700 truncate">Editando: {editandoLabel}</span>
+            <span className="text-[11px] text-indigo-400 hidden sm:inline">— atualize as quantidades e salve novamente</span>
+          </div>
+          <button
+            onClick={() => { setEditandoId(null); setEditandoLabel(''); setProdutos([]); setSaved(null) }}
+            className="flex items-center gap-1 text-[11px] text-indigo-500 hover:text-indigo-700 flex-shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Cancelar edição</span>
+          </button>
+        </div>
+      )}
+
       {/* ── Filtros (só Nova Contagem) ── */}
       {view === 'nova' && (
         <div className="flex-shrink-0 px-3 md:px-6 py-2 bg-white border-b border-gray-100">
@@ -691,7 +771,7 @@ export default function ContagemEstoquePage() {
               <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Posto</label>
               <select
                 value={postoId}
-                onChange={e => { setPostoId(e.target.value); setProdutos([]); setSaved(null) }}
+                onChange={e => { setPostoId(e.target.value); setProdutos([]); setSaved(null); setEditandoId(null); setEditandoLabel('') }}
                 className="h-8 px-2.5 rounded-lg border border-gray-200 text-[12px] bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30"
               >
                 <option value="">Selecione o posto...</option>
@@ -702,7 +782,7 @@ export default function ContagemEstoquePage() {
               <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Grupo</label>
               <select
                 value={grupoId}
-                onChange={e => { setGrupoId(e.target.value); setProdutos([]); setSaved(null) }}
+                onChange={e => { setGrupoId(e.target.value); setProdutos([]); setSaved(null); setEditandoId(null); setEditandoLabel('') }}
                 className="h-8 px-2.5 rounded-lg border border-gray-200 text-[12px] bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-400/30"
               >
                 <option value="">Selecione o grupo...</option>
@@ -719,7 +799,7 @@ export default function ContagemEstoquePage() {
               />
             </div>
             <button
-              onClick={carregar}
+              onClick={() => carregar()}
               disabled={!postoId || !grupoId || loading}
               className="h-8 px-4 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-[12px] font-semibold transition-colors flex items-center gap-1.5 shadow-sm flex-shrink-0"
             >
@@ -773,7 +853,7 @@ export default function ContagemEstoquePage() {
         )}
 
         {/* ── Histórico ── */}
-        {view === 'historico' && <Historico refresh={refresh} />}
+        {view === 'historico' && <Historico refresh={refresh} onEditar={carregarParaEditar} />}
       </div>
 
       {/* ── Rodapé de ações (só quando tem produtos carregados) ── */}
@@ -804,10 +884,13 @@ export default function ContagemEstoquePage() {
             <button
               onClick={salvar}
               disabled={saving || totalContados === 0}
-              className="h-8 px-4 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-[12px] font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+              className={cn(
+                'h-8 px-4 rounded-lg disabled:opacity-50 text-white text-[12px] font-semibold flex items-center gap-1.5 transition-colors shadow-sm',
+                editandoId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-orange-500 hover:bg-orange-600',
+              )}
             >
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              Salvar
+              {editandoId ? 'Atualizar' : 'Salvar'}
             </button>
           </div>
         </div>

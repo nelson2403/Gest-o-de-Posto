@@ -5,7 +5,8 @@ import { queryAS } from '@/lib/autosystem'
 export const dynamic = 'force-dynamic'
 
 // GET /api/estoque/produto-por-barras?codigo=XXXX&empresaId=YYY
-// Busca um produto pelo código de barras no AUTOSYSTEM
+// Coluna confirmada via debug: produto.codigo_barra (text)
+// Tabela adicional: produto_codigo_barra (produto FK, codigo_barra text)
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -19,39 +20,64 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Parâmetros ausentes' }, { status: 400 })
   }
 
-  // Tenta descobrir qual coluna de código de barras existe na tabela produto
-  const colunas = await queryAS(
-    `SELECT column_name FROM information_schema.columns
-     WHERE table_name = 'produto'
-       AND column_name IN ('cod_barras','ean','ean13','codigo_barras','barcode','cod_ean')
-     LIMIT 5`,
-    [],
-  )
+  // 1. Coluna principal: produto.codigo_barra com filtro de empresa
+  try {
+    const rows = await queryAS(
+      `SELECT p.grid::bigint AS produto_id
+       FROM produto p
+       JOIN estoque_produto ep ON ep.produto = p.grid AND ep.empresa = $1
+       WHERE p.codigo_barra::text = $2
+       LIMIT 1`,
+      [empresaId, codigo],
+    )
+    if (rows.length) {
+      return NextResponse.json({ produto_id: Number((rows[0] as any).produto_id) })
+    }
+  } catch {}
 
-  if (!colunas.length) {
-    return NextResponse.json({ produto_id: null, mensagem: 'Tabela produto não possui coluna de código de barras' })
-  }
+  // 2. Tabela de múltiplos códigos: produto_codigo_barra
+  try {
+    const rows = await queryAS(
+      `SELECT pcb.produto::bigint AS produto_id
+       FROM produto_codigo_barra pcb
+       JOIN estoque_produto ep ON ep.produto = pcb.produto AND ep.empresa = $1
+       WHERE pcb.codigo_barra::text = $2
+       LIMIT 1`,
+      [empresaId, codigo],
+    )
+    if (rows.length) {
+      return NextResponse.json({ produto_id: Number((rows[0] as any).produto_id) })
+    }
+  } catch {}
 
-  const coluna = (colunas[0] as any).column_name as string
+  // 3. Fallback: produto.codigo_barra sem filtro de empresa
+  //    (produto cadastrado mas sem estoque registrado nessa empresa)
+  try {
+    const rows = await queryAS(
+      `SELECT grid::bigint AS produto_id
+       FROM produto
+       WHERE codigo_barra::text = $1
+       LIMIT 1`,
+      [codigo],
+    )
+    if (rows.length) {
+      return NextResponse.json({ produto_id: Number((rows[0] as any).produto_id) })
+    }
+  } catch {}
 
-  // Busca o produto pelo código de barras
-  const rows = await queryAS(
-    `SELECT p.grid::bigint AS produto_id,
-            p.nome::bytea  AS nome_b
-     FROM produto p
-     JOIN estoque_produto ep ON ep.produto = p.grid
-     WHERE ep.empresa = $1
-       AND p.${coluna}::text = $2
-     LIMIT 1`,
-    [empresaId, codigo],
-  )
+  // 4. Fallback: produto_codigo_barra sem filtro de empresa
+  try {
+    const rows = await queryAS(
+      `SELECT produto::bigint AS produto_id
+       FROM produto_codigo_barra
+       WHERE codigo_barra::text = $1
+       LIMIT 1`,
+      [codigo],
+    )
+    if (rows.length) {
+      return NextResponse.json({ produto_id: Number((rows[0] as any).produto_id) })
+    }
+  } catch {}
 
-  if (!rows.length) {
-    return NextResponse.json({ produto_id: null })
-  }
-
-  const row = rows[0] as any
-  return NextResponse.json({
-    produto_id: Number(row.produto_id),
-  })
+  return NextResponse.json({ produto_id: null })
 }

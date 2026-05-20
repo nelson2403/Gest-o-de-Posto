@@ -1647,10 +1647,9 @@ export interface NfeResumoRow extends Record<string, unknown> {
 export async function buscarNfeManifestos(
   empresaGrids: number[],
 ): Promise<NfeResumoRow[]> {
-  // Retorna apenas NFs com "Ciência da Operação" — ou seja:
-  // • Existe registro em nfe_manifestacao (NF recebida)
-  // • NÃO tem evento final: 210200 (Confirmação), 210220 (Desconhecimento), 210240 (Não Realizada)
-  // Isso espelha exatamente a tela "Manifestação de Destinatário" do AUTOSYSTEM
+  // Espelha a tela "Manifestação de Destinatário" do AUTOSYSTEM:
+  // NFs recebidas (destinatário = empresa) sem evento final de manifestação.
+  // Removidas condições que filtravam NFs válidas (EXISTS obrigatório + situacao_nfe=3).
   return query<NfeResumoRow>(
     `SELECT nr.grid::bigint, nr.empresa::bigint, nr.nfe::bigint,
             nr.emitente_nome::text, nr.emitente_cpf::text,
@@ -1658,17 +1657,11 @@ export async function buscarNfeManifestos(
             nr.valor::float
      FROM nfe_resumo nr
      WHERE nr.empresa = ANY($1::bigint[])
-       AND nr.data_emissao >= (NOW() - INTERVAL '45 days')::date
-       AND EXISTS (SELECT 1 FROM nfe_manifestacao nm WHERE nm.nfe = nr.nfe)
+       AND nr.data_emissao >= (NOW() - INTERVAL '90 days')::date
        AND NOT EXISTS (
          SELECT 1 FROM nfe_manifestacao nm
          WHERE nm.nfe = nr.nfe
            AND nm.nfe_evento IN (210200, 210220, 210240)
-       )
-       AND NOT EXISTS (
-         SELECT 1 FROM nfe_manifestacao nm
-         WHERE nm.nfe = nr.nfe
-           AND nm.situacao_nfe = 3
        )
      ORDER BY nr.data_emissao DESC
      LIMIT 1000`,

@@ -21,9 +21,11 @@ interface Tanque {
   capacidade_litros: number
   ordem: number
   medida_litros: number | null
+  criado_em:  string | null
+  salvo_por:  string | null
 }
 
-type DiaInfo = { preenchidos: number; total: number }
+type DiaInfo = { preenchidos: number; total: number; criado_em?: string }
 type HistoricoData = {
   dias: string[]
   porPosto: Record<string, Record<string, DiaInfo>>
@@ -350,8 +352,8 @@ function HeatMapHistorico({
                         <td key={d} className={cn('px-2 py-2 text-center border-l border-gray-100', isToday ? 'bg-orange-50/50' : '')}>
                           <button
                             onClick={() => onGoToDay(posto, d)}
-                            title={`${posto} — ${d}: ${info ? `${info.preenchidos}/${info.total}` : 'sem dados'}`}
-                            className={cn('w-8 h-8 rounded-lg text-[10px] font-bold flex flex-col items-center justify-center mx-auto gap-0 transition-all hover:scale-110 hover:shadow-sm', cls)}>
+                            title={`${posto} — ${d}: ${info ? `${info.preenchidos}/${info.total}` : 'sem dados'}${info?.criado_em ? ` · salvo às ${new Date(info.criado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}`}
+                            className={cn('rounded-lg text-[10px] font-bold flex flex-col items-center justify-center mx-auto gap-0 transition-all hover:scale-110 hover:shadow-sm px-1 py-1 min-w-[32px]', cls)}>
                             {info && info.preenchidos > 0
                               ? (info.preenchidos === info.total
                                   ? <CheckCircle2 className="w-4 h-4" />
@@ -361,6 +363,11 @@ function HeatMapHistorico({
                                 : isToday
                                   ? <Clock className="w-3.5 h-3.5" />
                                   : <span className="text-[9px]">—</span>}
+                            {info?.criado_em && info.preenchidos > 0 && (
+                              <span className="text-[8px] font-normal leading-tight mt-0.5 opacity-80">
+                                {new Date(info.criado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            )}
                           </button>
                         </td>
                       )
@@ -742,6 +749,24 @@ export default function TanquesPage() {
                 </p>
               </div>
             </div>
+
+            {/* Banner de última atualização */}
+            {(() => {
+              const comHora = tanquesDetalhe.find(t => t.criado_em)
+              if (!comHora) return null
+              const dt = new Date(comHora.criado_em!)
+              const hora = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+              const dia  = dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+              return (
+                <div className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[12px] text-emerald-700">
+                  <Clock className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    Medição salva em <strong>{dia}</strong> às <strong>{hora}</strong>
+                    {comHora.salvo_por ? <> por <strong>{comHora.salvo_por}</strong></> : null}
+                  </span>
+                </div>
+              )
+            })()}
 
             {tanquesDetalhe.length === 0 ? (
               <div className="text-center py-12 text-gray-400 text-sm">Nenhum tanque cadastrado para este posto.</div>
