@@ -1495,6 +1495,56 @@ export async function buscarCartaoConciliaProduto(): Promise<{ grid: number; des
   return query(`SELECT grid::bigint AS grid, descricao::text, taxa_perc::float FROM cartao_concilia_produto`)
 }
 
+// ── vendas de combustível em litros por produto (para validação de medições) ──
+
+// Mapeamento: palavra-chave do grupo AUTOSYSTEM → código do produto nos tanques
+const GRUPO_PARA_PRODUTO: Array<{ keys: string[]; produto: string }> = [
+  { keys: ['RACING', 'PODIUM', 'V-POWER', 'SHELL V'],   produto: 'G.R'    },
+  { keys: ['ADITIVAD', 'FORMULA', 'ADBL'],               produto: 'G.A'    },
+  { keys: ['GASOLINA'],                                   produto: 'G.C'    },
+  { keys: ['ETANOL', 'ALCOOL', 'ÁLCOOL'],                produto: 'ETANOL' },
+  { keys: ['S-10', 'S10', 'S 10'],                       produto: 'D.S-10' },
+  { keys: ['DIESEL'],                                     produto: 'D.C'    },
+]
+
+function mapGrupoToProduto(nomeGrupo: string): string {
+  const upper = nomeGrupo.toUpperCase()
+  for (const { keys, produto } of GRUPO_PARA_PRODUTO) {
+    if (keys.some(k => upper.includes(k))) return produto
+  }
+  return ''
+}
+
+export async function buscarVendasCombustivel(
+  empresaId: number,
+  data: string,  // YYYY-MM-DD
+): Promise<{ produto: string; litros: number; grupo_nome: string }[]> {
+  const rows = await query<{ grupo_nome: Buffer | null; litros: number }>(
+    `SELECT
+       gp.nome::bytea   AS grupo_nome,
+       SUM(l.quantidade)::float AS litros
+     FROM lancto l
+     JOIN produto p        ON l.produto = p.grid
+     JOIN grupo_produto gp ON p.grupo   = gp.grid
+     WHERE l.empresa  = $1
+       AND l.data     = $2::date
+       AND l.operacao = 'V'
+       AND l.quantidade > 0
+     GROUP BY gp.grid, gp.nome`,
+    [empresaId, data],
+  )
+
+  const map: Record<string, { litros: number; grupo_nome: string }> = {}
+  for (const r of rows) {
+    const nome    = decodeBytea(r.grupo_nome).trim()
+    const produto = mapGrupoToProduto(nome)
+    if (!produto) continue
+    if (!map[produto]) map[produto] = { litros: 0, grupo_nome: nome }
+    map[produto].litros += Number(r.litros)
+  }
+  return Object.entries(map).map(([produto, { litros, grupo_nome }]) => ({ produto, litros, grupo_nome }))
+}
+
 // ── movto por motivo ─────────────────────────────────────────────────────────
 
 export async function buscarMovtosPorMotivo(

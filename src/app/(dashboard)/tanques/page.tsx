@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils/cn'
 import {
   Loader2, Save, RefreshCw, Droplets, ArrowLeft,
   AlertTriangle, CalendarDays, LayoutGrid, CheckCircle2, XCircle, Clock,
+  Settings, Plus, Trash2,
 } from 'lucide-react'
 import type { Role } from '@/types/database.types'
 
@@ -400,10 +401,98 @@ export default function TanquesPage() {
   const [medicoes,      setMedicoes]      = useState<Record<string, string>>({})
   const [loading,       setLoading]       = useState(true)
   const [saving,        setSaving]        = useState(false)
-  const [viewMode,      setViewMode]      = useState<'geral' | 'detalhe' | 'historico'>(isGerente ? 'detalhe' : 'geral')
+  const [viewMode,      setViewMode]      = useState<'geral' | 'detalhe' | 'historico' | 'admin'>(isGerente ? 'detalhe' : 'geral')
   const [filtroBaixo,   setFiltroBaixo]   = useState(false)
   const [historico,     setHistorico]     = useState<HistoricoData | null>(null)
   const [loadingHist,   setLoadingHist]   = useState(false)
+
+  // ── Gerenciamento de tanques (master) ─────────────────────────────────────
+  const [adminPostos,     setAdminPostos]     = useState<{ id: string; nome: string }[]>([])
+  const [adminTanques,    setAdminTanques]    = useState<{ id: string; posto_id: string; posto_nome: string; produto: string; capacidade_litros: number; bandeira: string; ordem: number; ativo: boolean }[]>([])
+  const [adminPosto,      setAdminPosto]      = useState('')
+  const [adminLoading,    setAdminLoading]    = useState(false)
+  const [adminSaving,     setAdminSaving]     = useState(false)
+  const [novoTanque,      setNovoTanque]      = useState({ produto: 'G.C', capacidade_litros: '', bandeira: 'BR', ordem: '' })
+
+  const carregarAdmin = useCallback(async () => {
+    setAdminLoading(true)
+    try {
+      const res  = await fetch('/api/tanques/admin')
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      setAdminPostos(json.postos ?? [])
+      setAdminTanques(json.tanques ?? [])
+      if (!adminPosto && json.postos?.length) setAdminPosto(json.postos[0].id)
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Erro', description: e.message })
+    } finally {
+      setAdminLoading(false)
+    }
+  }, [adminPosto])
+
+  useEffect(() => {
+    if (viewMode === 'admin') carregarAdmin()
+  }, [viewMode])
+
+  async function adicionarTanque() {
+    if (!adminPosto || !novoTanque.produto || !novoTanque.capacidade_litros) {
+      toast({ variant: 'destructive', title: 'Preencha posto, produto e capacidade' })
+      return
+    }
+    const postoSel = adminPostos.find(p => p.id === adminPosto)
+    if (!postoSel) return
+    setAdminSaving(true)
+    try {
+      const res = await fetch('/api/tanques/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          posto_id:          adminPosto,
+          posto_nome:        postoSel.nome,
+          produto:           novoTanque.produto,
+          capacidade_litros: Number(novoTanque.capacidade_litros),
+          bandeira:          novoTanque.bandeira,
+          ordem:             novoTanque.ordem ? Number(novoTanque.ordem) : (adminTanques.filter(t => t.posto_id === adminPosto && t.ativo).length + 1),
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      toast({ title: 'Tanque adicionado!' })
+      setNovoTanque({ produto: 'G.C', capacidade_litros: '', bandeira: 'BR', ordem: '' })
+      carregarAdmin()
+      carregar(data)
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Erro', description: e.message })
+    } finally {
+      setAdminSaving(false)
+    }
+  }
+
+  async function desativarTanque(id: string) {
+    if (!confirm('Desativar este tanque?')) return
+    try {
+      const res = await fetch('/api/tanques/admin', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ativo: false }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      toast({ title: 'Tanque desativado' })
+      carregarAdmin()
+      carregar(data)
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Erro', description: e.message })
+    }
+  }
+
+  // ── Segurança de medições ──────────────────────────────────────────────────
+  const [vendasSeg, setVendasSeg] = useState<{
+    medidasAnteriores: { tanque_id: string; produto: string; medida_anterior: number | null; data_anterior: string }[]
+    vendas: { produto: string; litros: number }[]
+    data_referencia: string
+  } | null>(null)
+  const [loadingVendas, setLoadingVendas] = useState(false)
 
   const carregar = useCallback(async (d: string) => {
     setLoading(true)
@@ -447,9 +536,74 @@ export default function TanquesPage() {
   // Carrega histórico automaticamente junto com os dados principais
   useEffect(() => { carregarHistorico() }, [carregarHistorico])
 
+  // Carrega dados de segurança quando entra na vista de detalhe
+  useEffect(() => {
+    if (viewMode !== 'detalhe' || !postoFiltro) { setVendasSeg(null); return }
+    setLoadingVendas(true)
+    fetch(`/api/tanques/vendas-combustivel?postoNome=${encodeURIComponent(postoFiltro)}&data=${data}`)
+      .then(r => r.json())
+      .then(json => { if (!json.error) setVendasSeg(json) })
+      .catch(() => {})
+      .finally(() => setLoadingVendas(false))
+  }, [viewMode, postoFiltro, data])
+
   async function salvar() {
     if (!postoFiltro) return
     const tanquesAtual = porPosto[postoFiltro] ?? []
+
+    // ── Validação de segurança ────────────────────────────────────────────────
+    {
+      const bloqueios: string[] = []
+
+      for (const t of tanquesAtual) {
+        const raw = medicoes[t.id]
+        if (!raw || raw === '') continue
+
+        const digitado   = parseInt(raw, 10)
+        const produtoKey = t.produto === 'E.T' ? 'ETANOL' : t.produto
+        const segDado    = vendasSeg?.medidasAnteriores.find(m => m.tanque_id === t.id)
+        const medAnt     = segDado?.medida_anterior ?? null
+
+        // Sem referência de ontem → não bloqueia (primeiro dia)
+        if (medAnt === null) continue
+
+        // Abastecimento: medida subiu → não bloqueia
+        if (digitado > medAnt + 200) continue
+
+        const litrosVend = vendasSeg?.vendas.find(v => v.produto === produtoKey)?.litros ?? null
+
+        if (litrosVend !== null) {
+          // Com dados AUTOSYSTEM: valida contra esperado real
+          const medEsperada = Math.max(0, medAnt - litrosVend)
+          const tolerancia  = Math.max(500, medEsperada * 0.10)
+          const desvio      = Math.abs(digitado - medEsperada)
+          if (desvio > tolerancia) {
+            bloqueios.push(
+              `${t.produto}: informado ${fmtL(digitado)}L, esperado ~${fmtL(Math.round(medEsperada))}L (desvio ${fmtL(Math.round(desvio))}L)`
+            )
+          }
+        } else {
+          // Sem dados AUTOSYSTEM: heurística — queda > 40% de ontem é suspeita
+          const queda        = medAnt - digitado
+          const quedaMaxima  = Math.max(medAnt * 0.40, 1000)
+          if (queda > quedaMaxima) {
+            bloqueios.push(
+              `${t.produto}: queda de ${fmtL(Math.round(queda))}L em relação a ontem (${fmtL(medAnt)}L → ${fmtL(digitado)}L)`
+            )
+          }
+        }
+      }
+
+      if (bloqueios.length > 0) {
+        toast({
+          variant: 'destructive',
+          title: `Salvamento bloqueado — ${bloqueios.length} desvio${bloqueios.length > 1 ? 's' : ''} detectado${bloqueios.length > 1 ? 's' : ''}`,
+          description: bloqueios.join(' | '),
+        })
+        return
+      }
+    }
+
     const payload = tanquesAtual.map(t => ({
       tanque_id:     t.id,
       posto_nome:    t.posto_nome,
@@ -513,6 +667,7 @@ export default function TanquesPage() {
     : [
         { key: 'geral',     label: 'Visão Geral'      },
         { key: 'historico', label: 'Controle de Dias' },
+        ...(role === 'master' ? [{ key: 'admin', label: 'Gerenciar Tanques' }] : []),
       ]
 
   return (
@@ -697,6 +852,171 @@ export default function TanquesPage() {
             </div>
           </>
 
+        ) : viewMode === 'admin' ? (
+          /* ── Vista Gerenciamento (master) ─────────────────────────────── */
+          <div className="space-y-6">
+            {adminLoading ? (
+              <div className="flex items-center gap-2 text-gray-400 py-10 justify-center">
+                <Loader2 className="w-5 h-5 animate-spin" /><span className="text-sm">Carregando…</span>
+              </div>
+            ) : (
+              <>
+                {/* Seletor de posto */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <label className="text-[13px] font-semibold text-gray-600">Posto:</label>
+                  <select
+                    value={adminPosto}
+                    onChange={e => setAdminPosto(e.target.value)}
+                    className="h-9 px-3 text-[13px] border border-gray-200 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-400/30"
+                  >
+                    {adminPostos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </select>
+                </div>
+
+                {/* Tanques do posto selecionado */}
+                {(() => {
+                  const tanquesPosto = adminTanques.filter(t => t.posto_id === adminPosto)
+                  const postoSel = adminPostos.find(p => p.id === adminPosto)
+                  return (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-[13px] font-bold text-gray-700">
+                          Tanques de <span className="text-orange-600">{postoSel?.nome}</span>
+                          {' '}({tanquesPosto.filter(t => t.ativo).length} ativos)
+                        </h3>
+                      </div>
+
+                      {/* Lista de tanques existentes */}
+                      {tanquesPosto.length === 0 ? (
+                        <p className="text-[13px] text-gray-400 text-center py-6 border border-dashed border-gray-200 rounded-xl">
+                          Nenhum tanque cadastrado para este posto
+                        </p>
+                      ) : (
+                        <div className="border border-gray-200 rounded-xl overflow-hidden">
+                          <table className="w-full text-[12px]">
+                            <thead className="bg-gray-50 border-b border-gray-200">
+                              <tr>
+                                <th className="px-4 py-2.5 text-left font-semibold text-gray-600">Produto</th>
+                                <th className="px-4 py-2.5 text-left font-semibold text-gray-600">Capacidade</th>
+                                <th className="px-4 py-2.5 text-left font-semibold text-gray-600">Bandeira</th>
+                                <th className="px-4 py-2.5 text-center font-semibold text-gray-600">Ordem</th>
+                                <th className="px-4 py-2.5 text-center font-semibold text-gray-600">Status</th>
+                                <th className="px-4 py-2.5" />
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {tanquesPosto.map(t => (
+                                <tr key={t.id} className={cn('hover:bg-gray-50', !t.ativo && 'opacity-40')}>
+                                  <td className="px-4 py-2.5">
+                                    <span className={cn('font-bold', getProdutoCfg(t.produto).text)}>{t.produto}</span>
+                                  </td>
+                                  <td className="px-4 py-2.5 text-gray-700">{fmtL(t.capacidade_litros)} L</td>
+                                  <td className="px-4 py-2.5">
+                                    <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded', BANDEIRA_BADGE[t.bandeira] ?? 'bg-gray-100 text-gray-500')}>
+                                      {t.bandeira}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-2.5 text-center text-gray-500">{t.ordem}</td>
+                                  <td className="px-4 py-2.5 text-center">
+                                    {t.ativo
+                                      ? <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">Ativo</span>
+                                      : <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-semibold">Inativo</span>
+                                    }
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right">
+                                    {t.ativo && (
+                                      <button
+                                        onClick={() => desativarTanque(t.id)}
+                                        className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                        title="Desativar tanque"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                    {!t.ativo && (
+                                      <button
+                                        onClick={async () => {
+                                          const res = await fetch('/api/tanques/admin', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, ativo: true }) })
+                                          if (res.ok) { toast({ title: 'Tanque reativado' }); carregarAdmin(); carregar(data) }
+                                        }}
+                                        className="text-[11px] text-green-600 hover:underline"
+                                      >
+                                        Reativar
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {/* Formulário de novo tanque */}
+                      <div className="border border-dashed border-orange-300 rounded-xl p-4 bg-orange-50/40 space-y-3">
+                        <p className="text-[12px] font-bold text-orange-700 flex items-center gap-1.5">
+                          <Plus className="w-3.5 h-3.5" /> Adicionar Tanque
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div>
+                            <label className="text-[11px] font-semibold text-gray-600 block mb-1">Produto *</label>
+                            <select
+                              value={novoTanque.produto}
+                              onChange={e => setNovoTanque(p => ({ ...p, produto: e.target.value }))}
+                              className="w-full h-9 px-2 text-[13px] border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-400/30"
+                            >
+                              {PRODUTOS_ORDEM.map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[11px] font-semibold text-gray-600 block mb-1">Capacidade (L) *</label>
+                            <input
+                              type="number" min={1000} step={1000}
+                              placeholder="Ex: 30000"
+                              value={novoTanque.capacidade_litros}
+                              onChange={e => setNovoTanque(p => ({ ...p, capacidade_litros: e.target.value }))}
+                              className="w-full h-9 px-2.5 text-[13px] border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-400/30"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[11px] font-semibold text-gray-600 block mb-1">Bandeira</label>
+                            <select
+                              value={novoTanque.bandeira}
+                              onChange={e => setNovoTanque(p => ({ ...p, bandeira: e.target.value }))}
+                              className="w-full h-9 px-2 text-[13px] border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-400/30"
+                            >
+                              <option value="BR">BR</option>
+                              <option value="SHELL">SHELL</option>
+                              <option value="SHELL/IPIRANGA">SHELL/IPIRANGA</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[11px] font-semibold text-gray-600 block mb-1">Ordem</label>
+                            <input
+                              type="number" min={1} step={1}
+                              placeholder="Auto"
+                              value={novoTanque.ordem}
+                              onChange={e => setNovoTanque(p => ({ ...p, ordem: e.target.value }))}
+                              className="w-full h-9 px-2.5 text-[13px] border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-400/30"
+                            />
+                          </div>
+                        </div>
+                        <button
+                          onClick={adicionarTanque}
+                          disabled={adminSaving}
+                          className="flex items-center gap-2 h-9 px-5 text-[13px] font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded-lg disabled:opacity-50 transition-colors"
+                        >
+                          {adminSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                          Adicionar
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })()}
+              </>
+            )}
+          </div>
+
         ) : (
           /* ── Vista Detalhe / Input ────────────────────────────────────── */
           <>
@@ -771,6 +1091,39 @@ export default function TanquesPage() {
             {tanquesDetalhe.length === 0 ? (
               <div className="text-center py-12 text-gray-400 text-sm">Nenhum tanque cadastrado para este posto.</div>
             ) : (
+              <>
+              {loadingVendas && (
+                <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Carregando referência de segurança…
+                </div>
+              )}
+              {vendasSeg && (() => {
+                const comRef = vendasSeg.medidasAnteriores.filter(m => m.medida_anterior !== null).length
+                const comVendas = vendasSeg.vendas.length
+                if (comRef === 0) return (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-700">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    Sem medição de <strong>{vendasSeg.data_referencia}</strong> — validação de segurança inativa (primeiro dia)
+                  </div>
+                )
+                return (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-700">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    Segurança ativa: referência <strong>{vendasSeg.data_referencia}</strong>
+                    {comVendas > 0
+                      ? <> — {comRef} tanque{comRef !== 1 ? 's' : ''} + vendas AUTOSYSTEM</>
+                      : <> — {comRef} tanque{comRef !== 1 ? 's' : ''} (sem dados AUTOSYSTEM)</>
+                    }
+                  </div>
+                )
+              })()}
+              {!loadingVendas && !vendasSeg && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-[11px] text-gray-500">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  Não foi possível carregar referência de segurança
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {tanquesDetalhe.map(tanque => {
                   const cfg      = getProdutoCfg(tanque.produto)
@@ -778,6 +1131,42 @@ export default function TanquesPage() {
                   const medVal   = raw !== undefined && raw !== '' ? parseInt(raw, 10) : (tanque.medida_litros ?? 0)
                   const pct      = tanque.capacidade_litros > 0 ? Math.min(100, Math.round((medVal / tanque.capacidade_litros) * 100)) : 0
                   const temValor = (raw !== undefined && raw !== '') || tanque.medida_litros !== null
+                  const digitado = raw !== undefined && raw !== ''
+
+                  // ── Cálculo de segurança ─────────────────────────────────
+                  const produto_key = tanque.produto === 'E.T' ? 'ETANOL' : tanque.produto
+                  const segDado     = vendasSeg?.medidasAnteriores.find(m => m.tanque_id === tanque.id)
+                  const medAnt      = segDado?.medida_anterior ?? null
+                  const litrosVend  = vendasSeg?.vendas.find(v => v.produto === produto_key)?.litros ?? null
+                  const medEsperada = (medAnt !== null && litrosVend !== null) ? Math.max(0, medAnt - litrosVend) : null
+                  const tolerancia  = medEsperada !== null ? Math.max(500, medEsperada * 0.10) : 500
+
+                  type SegStatus = 'ok' | 'abastecimento' | 'atencao' | 'alerta'
+                  let segStatus: SegStatus = 'ok'
+                  let segMsg = ''
+
+                  if (digitado && medAnt !== null) {
+                    const digitadoN = parseInt(raw, 10)
+                    if (digitadoN > medAnt + 200) {
+                      segStatus = 'abastecimento'
+                      segMsg = `↑ ${fmtL(digitadoN - medAnt)}L acima de ontem — abastecimento detectado?`
+                    } else if (medEsperada !== null) {
+                      const desvio = Math.abs(digitadoN - medEsperada)
+                      if (desvio > tolerancia * 2) {
+                        segStatus = 'alerta'
+                        segMsg = `Desvio de ${fmtL(Math.round(desvio))}L — esperado ~${fmtL(Math.round(medEsperada))}L`
+                      } else if (desvio > tolerancia) {
+                        segStatus = 'atencao'
+                        segMsg = `Desvio de ${fmtL(Math.round(desvio))}L — esperado ~${fmtL(Math.round(medEsperada))}L`
+                      }
+                    }
+                  }
+
+                  const segBorder = !digitado ? 'border-gray-200'
+                    : segStatus === 'alerta'        ? 'border-red-400 ring-1 ring-red-300'
+                    : segStatus === 'atencao'       ? 'border-amber-400 ring-1 ring-amber-300'
+                    : segStatus === 'abastecimento' ? 'border-blue-400 ring-1 ring-blue-300'
+                    : 'border-emerald-400'
 
                   return (
                     <div key={tanque.id} className={cn('rounded-xl border shadow-sm overflow-hidden', cfg.bg, 'border-gray-200')}>
@@ -816,10 +1205,36 @@ export default function TanquesPage() {
                             value={medicoes[tanque.id] ?? (tanque.medida_litros !== null ? String(tanque.medida_litros) : '')}
                             onChange={e => setMedicoes(prev => ({ ...prev, [tanque.id]: e.target.value }))}
                             placeholder="0"
-                            className="flex-1 h-9 px-3 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent"
+                            className={cn(
+                              'flex-1 h-9 px-3 rounded-lg border bg-white text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-colors',
+                              segBorder,
+                            )}
                           />
                           <span className="text-[11px] text-gray-400 shrink-0">L</span>
                         </div>
+
+                        {/* Referência de segurança */}
+                        {medEsperada !== null && !digitado && (
+                          <p className="text-[10px] text-gray-400 mt-1">
+                            Esperado ~{fmtL(Math.round(medEsperada))}L
+                            {medAnt !== null && litrosVend !== null && <> (ontem {fmtL(medAnt)}L − vendas {fmtL(Math.round(litrosVend))}L)</>}
+                          </p>
+                        )}
+                        {digitado && segStatus === 'ok' && medEsperada !== null && (
+                          <p className="text-[10px] text-emerald-600 mt-1 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> Dentro do esperado (~{fmtL(Math.round(medEsperada))}L)
+                          </p>
+                        )}
+                        {digitado && segStatus === 'abastecimento' && (
+                          <p className="text-[10px] text-blue-600 mt-1">{segMsg}</p>
+                        )}
+                        {digitado && segStatus === 'atencao' && (
+                          <p className="text-[10px] text-amber-600 mt-1 font-semibold">⚠ {segMsg}</p>
+                        )}
+                        {digitado && segStatus === 'alerta' && (
+                          <p className="text-[10px] text-red-600 mt-1 font-bold">🚨 {segMsg}</p>
+                        )}
+
                         {medVal > tanque.capacidade_litros && (
                           <p className="text-[10px] text-red-500 mt-1">Valor maior que a capacidade</p>
                         )}
@@ -828,6 +1243,7 @@ export default function TanquesPage() {
                   )
                 })}
               </div>
+              </>
             )}
           </>
         )}

@@ -285,13 +285,20 @@ export default function TarefasPage() {
   useEffect(() => {
     if (!usuario?.id) return
     load()
-    // Carrega usuários para o form (atribuição de responsável)
     supabase
       .from('usuarios')
       .select('id, nome')
       .eq('ativo', true)
       .order('nome')
       .then(({ data }) => { if (data) setUsuarios(data) })
+
+    // Atualiza em tempo real quando outra sessão insere/edita/exclui tarefas
+    const channel = supabase
+      .channel('tarefas-conciliacao-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tarefas' }, () => { load() })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usuario?.id])
 

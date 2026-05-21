@@ -146,6 +146,9 @@ export default function UsuariosPage() {
   // ── Multi-postos para operador_caixa ───────────────────────────
   const [postosCaixaSel, setPostosCaixaSel] = useState<Set<string>>(new Set())
 
+  // ── Postos selecionados na criação do conciliador ───────────────
+  const [postosConciliadorSel, setPostosConciliadorSel] = useState<Set<string>>(new Set())
+
   async function load() {
     setLoading(true)
     const [usuariosRes, recorrentesRes, postosRes] = await Promise.all([
@@ -218,6 +221,7 @@ export default function UsuariosPage() {
     setForm({ ...EMPTY_FORM, empresa_id: empId })
     setPostosForm([])
     setPostosCaixaSel(new Set())
+    setPostosConciliadorSel(new Set())
     setShowPass(false)
     setOpenForm(true)
   }
@@ -427,6 +431,23 @@ export default function UsuariosPage() {
       if (!res.ok) {
         toast({ variant: 'destructive', title: 'Erro ao criar', description: data.error })
       } else {
+        if (form.role === 'operador_conciliador' && postosConciliadorSel.size > 0 && data.id) {
+          await Promise.all(Array.from(postosConciliadorSel).map(postoId => {
+            const posto = postosForm.find(p => p.id === postoId)
+            return supabase.from('tarefas_recorrentes').insert({
+              empresa_id: form.empresa_id || null,
+              usuario_id: data.id,
+              posto_id: postoId,
+              titulo: `Conciliação Bancária — ${posto?.nome ?? postoId}`,
+              descricao: `Conciliar os lançamentos bancários do posto ${posto?.nome ?? postoId}.`,
+              categoria: 'conciliacao_bancaria',
+              prioridade: 'alta',
+              carencia_dias: 4,
+              tolerancia_dias: 1,
+              ativo: true,
+            })
+          }))
+        }
         toast({ title: 'Usuário criado!' })
         setOpenForm(false)
         load()
@@ -570,7 +591,7 @@ export default function UsuariosPage() {
               </Button>
             )}
             {/* Botão postos — conciliador */}
-            {temRecorrentes && can(role ?? null, 'usuarios.edit') && (
+            {u.role === 'operador_conciliador' && can(role ?? null, 'usuarios.edit') && (
               <Button
                 variant="ghost" size="icon"
                 className="h-8 w-8 text-gray-400 hover:text-cyan-600 hover:bg-cyan-50"
@@ -877,7 +898,7 @@ export default function UsuariosPage() {
                 onValueChange={v => {
                   const newRole = v as Role
                   setForm(p => ({ ...p, role: newRole, posto_fechamento_id: '' }))
-                  if (newRole === 'operador_caixa' || newRole === 'gerente') {
+                  if (newRole === 'operador_caixa' || newRole === 'gerente' || newRole === 'operador_conciliador') {
                     const empId = form.empresa_id || usuario?.empresa_id || ''
                     loadPostosParaFechador(empId)
                   } else {
@@ -1000,6 +1021,41 @@ export default function UsuariosPage() {
                   </Select>
                 )}
                 <p className="text-[11px] text-gray-400">O gerente verá somente os tanques e medições do posto selecionado.</p>
+              </div>
+            )}
+            {form.role === 'operador_conciliador' && (
+              <div className="space-y-1.5">
+                <Label className="text-[12px] font-medium text-gray-600">
+                  Postos do conciliador
+                  {postosConciliadorSel.size > 0 && (
+                    <span className="ml-1.5 text-cyan-600">({postosConciliadorSel.size} selecionado{postosConciliadorSel.size > 1 ? 's' : ''})</span>
+                  )}
+                </Label>
+                {postosForm.length === 0 ? (
+                  <p className="text-[12px] text-gray-400 italic">
+                    {form.empresa_id ? 'Nenhum posto encontrado para esta empresa.' : 'Selecione a empresa primeiro.'}
+                  </p>
+                ) : (
+                  <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                    {postosForm.map(p => (
+                      <label key={p.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-cyan-50 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={postosConciliadorSel.has(p.id)}
+                          onChange={() => setPostosConciliadorSel(prev => {
+                            const next = new Set(prev)
+                            if (next.has(p.id)) next.delete(p.id)
+                            else next.add(p.id)
+                            return next
+                          })}
+                          className="rounded border-gray-300 text-cyan-600 accent-cyan-600"
+                        />
+                        <span className="text-[13px] text-gray-700">{p.nome}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[11px] text-gray-400">Selecione os postos que este conciliador será responsável por conciliar.</p>
               </div>
             )}
           </div>

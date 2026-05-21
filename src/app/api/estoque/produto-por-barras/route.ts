@@ -20,10 +20,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Parâmetros ausentes' }, { status: 400 })
   }
 
+  function decodeNome(b: any): string | null {
+    if (!b) return null
+    try { return Buffer.isBuffer(b) ? b.toString('latin1').trim() : String(b).trim() } catch { return null }
+  }
+
   // 1. Coluna principal: produto.codigo_barra com filtro de empresa
   try {
     const rows = await queryAS(
-      `SELECT p.grid::bigint AS produto_id
+      `SELECT p.grid::bigint AS produto_id, p.codigo::text AS produto_codigo, p.nome::bytea AS nome_b
        FROM produto p
        JOIN estoque_produto ep ON ep.produto = p.grid AND ep.empresa = $1
        WHERE p.codigo_barra::text = $2
@@ -31,53 +36,58 @@ export async function GET(req: NextRequest) {
       [empresaId, codigo],
     )
     if (rows.length) {
-      return NextResponse.json({ produto_id: Number((rows[0] as any).produto_id) })
+      const r = rows[0] as any
+      return NextResponse.json({ produto_id: Number(r.produto_id), produto_codigo: r.produto_codigo ?? null, produto_nome: decodeNome(r.nome_b) })
     }
   } catch {}
 
   // 2. Tabela de múltiplos códigos: produto_codigo_barra
   try {
     const rows = await queryAS(
-      `SELECT pcb.produto::bigint AS produto_id
+      `SELECT pcb.produto::bigint AS produto_id, p.codigo::text AS produto_codigo, p.nome::bytea AS nome_b
        FROM produto_codigo_barra pcb
+       JOIN produto p ON p.grid = pcb.produto
        JOIN estoque_produto ep ON ep.produto = pcb.produto AND ep.empresa = $1
        WHERE pcb.codigo_barra::text = $2
        LIMIT 1`,
       [empresaId, codigo],
     )
     if (rows.length) {
-      return NextResponse.json({ produto_id: Number((rows[0] as any).produto_id) })
+      const r = rows[0] as any
+      return NextResponse.json({ produto_id: Number(r.produto_id), produto_codigo: r.produto_codigo ?? null, produto_nome: decodeNome(r.nome_b) })
     }
   } catch {}
 
   // 3. Fallback: produto.codigo_barra sem filtro de empresa
-  //    (produto cadastrado mas sem estoque registrado nessa empresa)
   try {
     const rows = await queryAS(
-      `SELECT grid::bigint AS produto_id
+      `SELECT grid::bigint AS produto_id, codigo::text AS produto_codigo, nome::bytea AS nome_b
        FROM produto
        WHERE codigo_barra::text = $1
        LIMIT 1`,
       [codigo],
     )
     if (rows.length) {
-      return NextResponse.json({ produto_id: Number((rows[0] as any).produto_id) })
+      const r = rows[0] as any
+      return NextResponse.json({ produto_id: Number(r.produto_id), produto_codigo: r.produto_codigo ?? null, produto_nome: decodeNome(r.nome_b) })
     }
   } catch {}
 
   // 4. Fallback: produto_codigo_barra sem filtro de empresa
   try {
     const rows = await queryAS(
-      `SELECT produto::bigint AS produto_id
-       FROM produto_codigo_barra
-       WHERE codigo_barra::text = $1
+      `SELECT pcb.produto::bigint AS produto_id, p.codigo::text AS produto_codigo, p.nome::bytea AS nome_b
+       FROM produto_codigo_barra pcb
+       JOIN produto p ON p.grid = pcb.produto
+       WHERE pcb.codigo_barra::text = $1
        LIMIT 1`,
       [codigo],
     )
     if (rows.length) {
-      return NextResponse.json({ produto_id: Number((rows[0] as any).produto_id) })
+      const r = rows[0] as any
+      return NextResponse.json({ produto_id: Number(r.produto_id), produto_codigo: r.produto_codigo ?? null, produto_nome: decodeNome(r.nome_b) })
     }
   } catch {}
 
-  return NextResponse.json({ produto_id: null })
+  return NextResponse.json({ produto_id: null, produto_codigo: null, produto_nome: null })
 }
