@@ -62,12 +62,17 @@ export async function POST(req: NextRequest) {
     } catch {}
 
     // ── Passo 1: aguardando_fiscal → concluída / boleto_pendente ─────────────
-    const { data: tarefasAguardando } = await admin
+    const { data: tarefasAguardando, count: totalAguardando } = await admin
       .from('fiscal_tarefas')
-      .select('id, nfe_resumo_grid, boleto_url, boletos')
+      .select('id, nfe_resumo_grid, boleto_url, boletos', { count: 'exact' })
       .eq('status', 'aguardando_fiscal')
 
     let concluidasStep1 = 0
+    let semBoletoCount = 0
+    let comBoletoCount = 0
+    let updateConcluidaCount = 0
+    let updateBoletoCount = 0
+    const debugGridsLancados: string[] = []
 
     if (tarefasAguardando?.length) {
       const gridsAguardando = tarefasAguardando
@@ -87,7 +92,7 @@ export async function POST(req: NextRequest) {
       if (gridsAguardando.length) {
         try {
           const lancamentos = await verificarLancamentoNfe(gridsAguardando)
-          lancamentos.forEach(l => gridsLancados.add(l.grid))
+          lancamentos.forEach(l => { gridsLancados.add(l.grid); debugGridsLancados.push(l.grid) })
         } catch {}
       }
 
@@ -102,18 +107,24 @@ export async function POST(req: NextRequest) {
 
         const comBoleto = concluir.filter(temBoleto)
         const semBoleto = concluir.filter(t => !temBoleto(t))
+        semBoletoCount = semBoleto.length
+        comBoletoCount = comBoleto.length
 
         if (semBoleto.length) {
-          await admin
+          const { error: e1, count: c1 } = await admin
             .from('fiscal_tarefas')
-            .update({ status: 'concluida', lancado_em: agora, concluida_em: agora, atualizada_em: agora })
+            .update({ status: 'concluida', lancado_em: agora, concluida_em: agora, atualizada_em: agora }, { count: 'exact' })
             .in('id', semBoleto.map(t => t.id))
+          if (e1) console.error('[cron-fiscal-sync] update concluida erro:', e1.message)
+          updateConcluidaCount = c1 ?? 0
         }
         if (comBoleto.length) {
-          await admin
+          const { error: e2, count: c2 } = await admin
             .from('fiscal_tarefas')
-            .update({ status: 'boleto_pendente', lancado_em: agora, atualizada_em: agora })
+            .update({ status: 'boleto_pendente', lancado_em: agora, atualizada_em: agora }, { count: 'exact' })
             .in('id', comBoleto.map(t => t.id))
+          if (e2) console.error('[cron-fiscal-sync] update boleto_pendente erro:', e2.message)
+          updateBoletoCount = c2 ?? 0
         }
 
         concluidasStep1 = concluir.length
@@ -165,10 +176,18 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       importadas,
-      concluidas:         concluidasStep1 + concluidasStep2,
-      concluidas_step1:   concluidasStep1,
-      concluidas_step2:   concluidasStep2,
-      desconhecidas_auto: desconhecidasAuto,
+      concluidas:           concluidasStep1 + concluidasStep2,
+      concluidas_step1:     concluidasStep1,
+      concluidas_step2:     concluidasStep2,
+      desconhecidas_auto:   desconhecidasAuto,
+      debug: {
+        total_aguardando:   totalAguardando,
+        grids_lancados:     debugGridsLancados.length,
+        sem_boleto:         semBoletoCount,
+        com_boleto:         comBoletoCount,
+        rows_updated_concluida: updateConcluidaCount,
+        rows_updated_boleto:    updateBoletoCount,
+      },
     })
   } catch (e: any) {
     console.error('[cron-fiscal-sync] erro:', e.message)
