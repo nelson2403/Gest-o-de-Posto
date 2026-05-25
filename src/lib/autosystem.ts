@@ -1947,17 +1947,36 @@ export async function verificarManifestacaoExterna(
   )
 }
 
-// Detecta se uma NF já foi lançada no estoque via lmc_entrada.documento
+// Detecta se NFs (por grid de nfe_resumo) já foram lançadas no estoque via lmc_entrada.
+//
+// O campo lmc_entrada.documento guarda o número da NF — não o grid de nfe_resumo.
+// A join correta é via FK nfe (se a coluna existir) ou via nr.numero = le.documento.
+// Retorna os grids confirmados como strings para comparação com o Set no sync.
 export async function verificarLancamentoNfe(
-  documentos: string[],
-): Promise<{ documento: string; lancto: number; data_emissao: string }[]> {
-  if (!documentos.length) return []
-  return query(
-    `SELECT documento::text, lancto::bigint,
-            to_char(data_emissao, 'YYYY-MM-DD') AS data_emissao
-     FROM lmc_entrada
-     WHERE documento = ANY($1::text[])`,
-    [documentos],
+  nfeResumoGrids: number[],
+): Promise<{ grid: string }[]> {
+  if (!nfeResumoGrids.length) return []
+
+  const cols = await colunasExistentes('lmc_entrada', ['nfe'])
+
+  if (cols.has('nfe')) {
+    // Caminho preferencial: join direto pelo FK nfe (mais confiável)
+    return query<{ grid: string }>(
+      `SELECT DISTINCT nr.grid::text
+       FROM nfe_resumo nr
+       JOIN lmc_entrada le ON le.nfe = nr.nfe
+       WHERE nr.grid = ANY($1::bigint[])`,
+      [nfeResumoGrids],
+    )
+  }
+
+  // Fallback: join pelo número da NF (nr.numero = le.documento)
+  return query<{ grid: string }>(
+    `SELECT DISTINCT nr.grid::text
+     FROM nfe_resumo nr
+     JOIN lmc_entrada le ON le.documento::text = nr.numero::text
+     WHERE nr.grid = ANY($1::bigint[])`,
+    [nfeResumoGrids],
   )
 }
 

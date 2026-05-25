@@ -1,23 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { verificarLancamentoNfe, verificarManifestacaoExterna, buscarNfeManifestos } from '@/lib/autosystem'
+import {
+  verificarLancamentoNfe,
+  verificarManifestacaoExterna,
+  buscarNfeManifestos,
+} from '@/lib/autosystem'
 
-// POST — quatro passos:
-//  0. Auto-importa novos manifestos do AUTOSYSTEM → cria tarefas pendente_gerente
-//  1. Tarefas aguardando_fiscal: conclui quando NF já confirmada no SEFAZ (210200) OU lançada em lmc_entrada
-//  2. Tarefas pendente_gerente/nf_rejeitada: conclui/desconhece quando manifestada externamente no SEFAZ
-export async function POST(_req: NextRequest) {
+const CRON_SECRET = process.env.CRON_SECRET ?? 'cron-interno-gestao'
+
+// POST — roda o sync fiscal completo sem exigir sessão de usuário.
+// Chamado automaticamente pelo autosystem.ts ou por um cron externo.
+export async function POST(req: NextRequest) {
+  const secret = req.headers.get('x-cron-secret')
+  if (secret !== CRON_SECRET) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  }
+
   try {
-    const supabase = await createServerClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-
     const admin = createAdminClient()
     const agora = new Date().toISOString()
-    const hoje  = agora.slice(0, 10)
 
-    // ── Passo 0: auto-importar novos manifestos do AUTOSYSTEM ─────────────────
+    // ── Passo 0: importar novos manifestos ────────────────────────────────────
     let importadas = 0
     try {
       const { data: postos } = await admin
@@ -58,12 +61,10 @@ export async function POST(_req: NextRequest) {
       }
     } catch {}
 
-    // ── Passo 1: aguardando_fiscal → concluída ────────────────────────────────
-    // Fecha quando: (a) NF confirmada no SEFAZ com evento 210200, OU
-    //               (b) NF lançada em lmc_entrada (por grid)
+    // ── Passo 1: aguardando_fiscal → concluída / boleto_pendente ─────────────
     const { data: tarefasAguardando } = await admin
       .from('fiscal_tarefas')
-      .select('id, nfe_resumo_grid, nf_valor_informado, boleto_url, boleto_vencimento, boleto_valor, fornecedor_nome, posto_id, valor_as')
+      .select('id, nfe_resumo_grid, boleto_url, boletos')
       .eq('status', 'aguardando_fiscal')
 
     let concluidasStep1 = 0
@@ -73,17 +74,15 @@ export async function POST(_req: NextRequest) {
         .map(t => t.nfe_resumo_grid)
         .filter(Boolean) as number[]
 
-      // (a) Verifica confirmação no SEFAZ (evento 210200)
-      const manifestadasAguardando = gridsAguardando.length
+      // (a) SEFAZ evento 210200
+      const manifestadas = gridsAguardando.length
         ? await verificarManifestacaoExterna(gridsAguardando)
         : []
       const gridsConfirmados = new Set(
-        manifestadasAguardando
-          .filter(m => m.nfe_evento === 210200)
-          .map(m => m.grid)
+        manifestadas.filter(m => m.nfe_evento === 210200).map(m => m.grid)
       )
 
-      // (b) Verifica lançamento em lmc_entrada (join correto via nfe_resumo)
+      // (b) Lançado em lmc_entrada (join correto via nfe_resumo)
       const gridsLancados = new Set<string>()
       if (gridsAguardando.length) {
         try {
@@ -93,23 +92,23 @@ export async function POST(_req: NextRequest) {
       }
 
       const concluir = tarefasAguardando.filter(t => {
-        const gridStr = String(t.nfe_resumo_grid ?? '')
-        return gridsConfirmados.has(gridStr) || gridsLancados.has(gridStr)
+        const g = String(t.nfe_resumo_grid ?? '')
+        return gridsConfirmados.has(g) || gridsLancados.has(g)
       })
 
       if (concluir.length) {
-        // Tarefas COM boleto → boleto_pendente (fiscal precisa enviar ao CP manualmente)
-        const comBoleto = concluir.filter(t => t.boleto_url)
-        // Tarefas SEM boleto → concluída direta
-        const semBoleto = concluir.filter(t => !t.boleto_url)
+        const temBoleto = (t: any) =>
+          (t.boletos?.length > 0 && t.boletos.some((b: any) => b.url)) || !!t.boleto_url
+
+        const comBoleto = concluir.filter(temBoleto)
+        const semBoleto = concluir.filter(t => !temBoleto(t))
 
         if (semBoleto.length) {
           await admin
             .from('fiscal_tarefas')
-            .update({ status: 'concluida', lancado_em: agora, concluida_em: agora, concluida_por: user.id, atualizada_em: agora })
+            .update({ status: 'concluida', lancado_em: agora, concluida_em: agora, atualizada_em: agora })
             .in('id', semBoleto.map(t => t.id))
         }
-
         if (comBoleto.length) {
           await admin
             .from('fiscal_tarefas')
@@ -121,7 +120,7 @@ export async function POST(_req: NextRequest) {
       }
     }
 
-    // ── Passo 2: pendente_gerente/nf_rejeitada → fecha se manifestada no SEFAZ ──
+    // ── Passo 2: pendente_gerente/nf_rejeitada → SEFAZ ───────────────────────
     const { data: tarefasPendentes } = await admin
       .from('fiscal_tarefas')
       .select('id, nfe_resumo_grid')
@@ -132,10 +131,7 @@ export async function POST(_req: NextRequest) {
     let desconhecidasAuto = 0
 
     if (tarefasPendentes?.length) {
-      const grids = tarefasPendentes
-        .map(t => t.nfe_resumo_grid)
-        .filter(Boolean) as number[]
-
+      const grids = tarefasPendentes.map(t => t.nfe_resumo_grid).filter(Boolean) as number[]
       const manifestadas   = await verificarManifestacaoExterna(grids)
       const eventosPorGrid = new Map(manifestadas.map(m => [m.grid, m.nfe_evento]))
 
@@ -146,7 +142,7 @@ export async function POST(_req: NextRequest) {
         const evento = eventosPorGrid.get(String(t.nfe_resumo_grid))
         if (!evento) continue
         if (evento === 210200) confirmar.push(t.id)
-        else desconhecer.push(t.id)   // 210220 ou 210240
+        else desconhecer.push(t.id)
       }
 
       if (confirmar.length) {
@@ -156,7 +152,6 @@ export async function POST(_req: NextRequest) {
           .in('id', confirmar)
         concluidasStep2 = confirmar.length
       }
-
       if (desconhecer.length) {
         await admin
           .from('fiscal_tarefas')
@@ -166,6 +161,8 @@ export async function POST(_req: NextRequest) {
       }
     }
 
+    console.log(`[cron-fiscal-sync] ${agora} — importadas=${importadas} concluidas=${concluidasStep1 + concluidasStep2} desconhecidas=${desconhecidasAuto}`)
+
     return NextResponse.json({
       importadas,
       concluidas:         concluidasStep1 + concluidasStep2,
@@ -174,6 +171,7 @@ export async function POST(_req: NextRequest) {
       desconhecidas_auto: desconhecidasAuto,
     })
   } catch (e: any) {
+    console.error('[cron-fiscal-sync] erro:', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
