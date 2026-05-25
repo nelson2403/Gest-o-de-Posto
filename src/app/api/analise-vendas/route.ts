@@ -27,9 +27,10 @@ export async function GET(req: NextRequest) {
   if (!empresaIds.length) return NextResponse.json({ error: 'Nenhuma empresa' }, { status: 400 })
 
   const grupoIds = grupoIdsRaw ? grupoIdsRaw.split(',').map(Number).filter(n => !isNaN(n) && n > 0) : undefined
+  const breakdownEmpresa = searchParams.get('breakdown') === 'empresa'
 
   const [{ produtos, temPrecoTabela }, porMes, { rows: vendasComDesconto }] = await Promise.all([
-    buscarAnaliseVendasPorProduto(empresaIds, dataIni, dataFim, grupoIds),
+    buscarAnaliseVendasPorProduto(empresaIds, dataIni, dataFim, grupoIds, breakdownEmpresa),
     buscarAnaliseVendasPorMes(empresaIds, dataIni, dataFim, grupoIds),
     buscarVendasComDesconto(empresaIds, dataIni, dataFim, grupoIds),
   ])

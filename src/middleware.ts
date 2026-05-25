@@ -29,10 +29,15 @@ export async function middleware(request: NextRequest) {
   const publicFiles  = ['/manifest.json', '/robots.txt', '/sitemap.xml']
   const isPublic = publicRoutes.some((r) => pathname.startsWith(r)) || publicFiles.includes(pathname)
 
+  // IMPORTANTE: usar `getUser()` (não `getSession()`) — ele valida o JWT com
+  // o servidor do Supabase e, quando o access_token expirou, executa o
+  // refresh usando o refresh_token e reescreve os cookies via o callback
+  // `setAll` acima. Sem isso, a sessão "vence em silêncio" e o front
+  // continua navegando, mas as APIs retornam 401.
   let user = null
   try {
-    const { data } = await supabase.auth.getSession()
-    user = data.session?.user ?? null
+    const { data } = await supabase.auth.getUser()
+    user = data.user ?? null
   } catch {
     return supabaseResponse
   }
