@@ -46,25 +46,30 @@ export async function GET(req: NextRequest) {
         .eq('status', 'aguardando_fiscal')
         .order('boleto_vencimento', { ascending: true }),
 
+      // Boletos pendentes de envio ao CP com vencimento nos próximos 7 dias
       applyPosto(supabase.from('fiscal_tarefas').select(BOLETO_COLS))
-        .eq('status', 'aguardando_fiscal')
+        .eq('status', 'concluida')
+        .eq('boleto_status', 'pendente')
         .gte('boleto_vencimento', hoje)
         .lte('boleto_vencimento', em7dias)
         .order('boleto_vencimento', { ascending: true }),
 
+      // Boletos pendentes de envio ao CP já vencidos
       applyPosto(supabase.from('fiscal_tarefas').select(BOLETO_COLS))
-        .eq('status', 'aguardando_fiscal')
+        .eq('status', 'concluida')
+        .eq('boleto_status', 'pendente')
         .lt('boleto_vencimento', hoje)
         .order('boleto_vencimento', { ascending: true }),
 
+      // Tarefas aguardando fiscal sem boleto
       applyPosto(supabase.from('fiscal_tarefas').select('id, fornecedor_nome, valor_as, postos(nome)'))
         .eq('status', 'aguardando_fiscal')
         .is('boleto_url', null),
 
-      // Todos os boletos anexados — inclui vencimentos futuros
+      // Todos os boletos pendentes de envio ao CP
       applyPosto(supabase.from('fiscal_tarefas').select(BOLETO_COLS))
-        .eq('status', 'aguardando_fiscal')
-        .not('boleto_url', 'is', null)
+        .eq('status', 'concluida')
+        .eq('boleto_status', 'pendente')
         .order('boleto_vencimento', { ascending: true, nullsFirst: false }),
     ])
 

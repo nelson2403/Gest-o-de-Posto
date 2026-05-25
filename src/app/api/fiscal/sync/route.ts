@@ -113,7 +113,7 @@ export async function POST(_req: NextRequest) {
         if (comBoleto.length) {
           await admin
             .from('fiscal_tarefas')
-            .update({ status: 'boleto_pendente', lancado_em: agora, atualizada_em: agora })
+            .update({ status: 'concluida', boleto_status: 'pendente', lancado_em: agora, concluida_em: agora, atualizada_em: agora })
             .in('id', comBoleto.map(t => t.id))
         }
 

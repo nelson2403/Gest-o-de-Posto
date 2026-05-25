@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
         if (comBoleto.length) {
           const { error: e2, count: c2 } = await admin
             .from('fiscal_tarefas')
-            .update({ status: 'boleto_pendente', lancado_em: agora, atualizada_em: agora }, { count: 'exact' })
+            .update({ status: 'concluida', boleto_status: 'pendente', lancado_em: agora, concluida_em: agora, atualizada_em: agora }, { count: 'exact' })
             .in('id', comBoleto.map(t => t.id))
           if (e2) console.error('[cron-fiscal-sync] update boleto_pendente erro:', e2.message)
           updateBoletoCount = c2 ?? 0

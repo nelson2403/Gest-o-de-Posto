@@ -26,12 +26,12 @@ export async function PATCH(_req: NextRequest, { params }: { params: Promise<{ i
 
     const { data: tarefa, error: errTarefa } = await admin
       .from('fiscal_tarefas')
-      .select('id, status, posto_id, fornecedor_nome, nfe_resumo_grid, nf_valor_informado, valor_as, boleto_url, boleto_vencimento, boleto_valor, boletos')
+      .select('id, status, boleto_status, posto_id, fornecedor_nome, nfe_resumo_grid, nf_valor_informado, valor_as, boleto_url, boleto_vencimento, boleto_valor, boletos')
       .eq('id', id)
       .single()
 
     if (errTarefa || !tarefa) return NextResponse.json({ error: 'Tarefa não encontrada' }, { status: 404 })
-    if (tarefa.status !== 'boleto_pendente') return NextResponse.json({ error: 'Tarefa não está com boleto pendente' }, { status: 400 })
+    if (tarefa.boleto_status !== 'pendente') return NextResponse.json({ error: 'Tarefa não possui boleto pendente para envio' }, { status: 400 })
 
     // Monta registros de cp_lancamentos — um por boleto
     const boletos: { url?: string; vencimento?: string; valor?: string | number }[] =
@@ -64,12 +64,11 @@ export async function PATCH(_req: NextRequest, { params }: { params: Promise<{ i
     const { data, error } = await admin
       .from('fiscal_tarefas')
       .update({
-        status:            'concluida',
-        concluida_em:      agora,
-        concluida_por:     user.id,
-        boleto_enviado_em: agora,
+        boleto_status:      'enviado_cp',
+        concluida_por:      user.id,
+        boleto_enviado_em:  agora,
         boleto_enviado_por: user.id,
-        atualizada_em:     agora,
+        atualizada_em:      agora,
       })
       .eq('id', id)
       .select()

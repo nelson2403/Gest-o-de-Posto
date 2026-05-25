@@ -878,6 +878,11 @@ function TarefaRow({
                 <Paperclip className="w-2.5 h-2.5" /> NF
               </span>
             )}
+            {t.boleto_status === 'pendente' && !aberto && (
+              <span title="Boleto pendente de envio ao CP" className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-purple-100 text-purple-700 text-[10px] font-semibold">
+                Boleto Pend.
+              </span>
+            )}
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.bg} ${cfg.color}`}>
               {cfg.label}
             </span>
@@ -1001,37 +1006,32 @@ function TarefaRow({
             {t.status === 'concluida' && (
               <div className="flex items-center gap-2 text-[12px] text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
-                Concluída — NF lançada no AUTOSYSTEM em {fmtDate(t.concluida_em?.slice(0, 10))}
+                NF lançada no AUTOSYSTEM em {fmtDate(t.concluida_em?.slice(0, 10))}
+                {t.boleto_status === 'enviado_cp' && (
+                  <span className="ml-auto text-[11px] text-emerald-600 font-semibold">· Boleto enviado ao CP ✓</span>
+                )}
               </div>
             )}
 
-            {t.status === 'desconhecida' && (
-              <div className="flex items-center gap-2 text-[12px] text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-3">
-                <XCircle className="w-4 h-4 shrink-0" />
-                NF desconhecida pelo gerente — Fiscal deve registrar desconhecimento no AS
-              </div>
-            )}
-
-            {t.status === 'aguardando_fiscal' && (
-              <div className="flex items-center gap-2 text-[12px] text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <Clock className="w-4 h-4 shrink-0" />
-                Documentos enviados — aguardando lançamento no AUTOSYSTEM pelo Fiscal
-              </div>
-            )}
-
-            {t.status === 'boleto_pendente' && (
+            {t.boleto_status === 'pendente' && (
               <div className="space-y-3">
                 <div className="flex items-start gap-2 text-[12px] text-purple-800 bg-purple-50 border border-purple-200 rounded-lg p-3">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-green-600 mt-0.5" />
+                  <AlertCircle className="w-4 h-4 shrink-0 text-purple-600 mt-0.5" />
                   <div>
-                    <p className="font-semibold">NF baixada no AUTOSYSTEM ✓</p>
-                    <p className="text-purple-700 mt-0.5">Boleto pendente de envio ao Contas a Pagar.</p>
-                    {t.boleto_vencimento && (
-                      <p className="mt-1 text-[11px] text-purple-600">
-                        Vencimento: <strong>{fmtDate(t.boleto_vencimento)}</strong>
-                        {t.boleto_valor ? <> · Valor: <strong>{fmt(t.boleto_valor)}</strong></> : null}
-                      </p>
-                    )}
+                    <p className="font-semibold">Boleto pendente de envio ao Contas a Pagar</p>
+                    {(() => {
+                      const bols = t.boletos?.filter((b: any) => b.url) ?? []
+                      const venc = bols[0]?.vencimento ?? t.boleto_vencimento
+                      const val  = bols[0]?.valor ?? t.boleto_valor
+                      return venc || val ? (
+                        <p className="mt-0.5 text-[11px] text-purple-600">
+                          {venc ? <>Vencimento: <strong>{fmtDate(venc)}</strong></> : null}
+                          {venc && val ? ' · ' : null}
+                          {val ? <>Valor: <strong>{fmt(val)}</strong></> : null}
+                          {bols.length > 1 ? <> · <strong>{bols.length} boletos</strong></> : null}
+                        </p>
+                      ) : null
+                    })()}
                   </div>
                 </div>
                 {canFiscal && (
@@ -1047,6 +1047,20 @@ function TarefaRow({
                     Enviar Boleto ao Contas a Pagar
                   </button>
                 )}
+              </div>
+            )}
+
+            {t.status === 'desconhecida' && (
+              <div className="flex items-center gap-2 text-[12px] text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-3">
+                <XCircle className="w-4 h-4 shrink-0" />
+                NF desconhecida pelo gerente — Fiscal deve registrar desconhecimento no AS
+              </div>
+            )}
+
+            {t.status === 'aguardando_fiscal' && (
+              <div className="flex items-center gap-2 text-[12px] text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <Clock className="w-4 h-4 shrink-0" />
+                Documentos enviados — aguardando lançamento no AUTOSYSTEM pelo Fiscal
               </div>
             )}
 

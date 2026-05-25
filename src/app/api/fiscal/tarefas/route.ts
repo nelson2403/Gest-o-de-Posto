@@ -28,10 +28,12 @@ export async function GET(req: NextRequest) {
     if (status === 'abertas') {
       query = query.not('status', 'in', '(concluida,desconhecida)')
     } else if (status === 'nf_anexada') {
-      // NFs já enviadas pelo gerente mas ainda não concluídas do lado fiscal
-      query = query.in('status', ['aguardando_fiscal', 'boleto_pendente']).not('nf_url', 'is', null)
+      // NFs enviadas pelo gerente, aguardando lançamento fiscal
+      query = query.eq('status', 'aguardando_fiscal').not('nf_url', 'is', null)
+    } else if (status === 'boleto_pendente') {
+      // Concluídas (NF lançada) mas com boleto pendente de envio ao CP
+      query = query.eq('status', 'concluida').eq('boleto_status', 'pendente')
     } else if (status === 'concluidas_com_nf') {
-      // Tarefas concluídas que possuem NF anexada pelo gerente
       query = query.eq('status', 'concluida').not('nf_url', 'is', null)
     } else if (status) {
       query = query.eq('status', status)
