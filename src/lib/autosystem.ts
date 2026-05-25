@@ -1359,6 +1359,148 @@ export async function buscarPessoas(grids: number[]): Promise<{ grid: number; no
   )
 }
 
+// ── Funcionários (pessoa) por empresa — usado pelo módulo de Comissionamento.
+//
+// A tabela `pessoa` do AUTOSYSTEM varia entre instâncias — pode ter colunas
+// `empresa`, `cargo`, `codigo`, `email`, `cpf`, `funcionario`, `ativo`. Esta
+// função detecta dinamicamente quais existem e:
+//   • Filtra pela empresa quando há coluna `empresa`
+//   • Tenta restringir a funcionários (cargo IS NOT NULL, OU funcionario = 't')
+//   • Retorna nome/cargo/codigo/email decodificados
+export interface PessoaFuncionario {
+  grid:   number
+  codigo: string | null
+  nome:   string
+  cargo:  string | null
+  email:  string | null
+}
+
+interface PessoaFuncRaw extends Record<string, unknown> {
+  grid:      number
+  codigo:    string | null
+  nome_b:    Buffer | null
+  cargo_b:   Buffer | null
+  email_b:   Buffer | null
+}
+
+// Lista produtos do AUTOSYSTEM — usado pelo construtor de condições do
+// comissionamento (campo `Produto` na regra). Filtra por nome opcionalmente.
+//
+// Detecta colunas opcionais (`codigo`, `ativo`, `grupo`, `subgrupo`) e ignora
+// inativos quando há a coluna. Retorna até `limit` linhas ordenadas por nome.
+export interface ProdutoAS {
+  grid:   number
+  codigo: string | null
+  nome:   string
+}
+
+interface ProdutoASRaw extends Record<string, unknown> {
+  grid:    number
+  codigo:  string | null
+  nome_b:  Buffer | null
+}
+
+export async function buscarProdutosAs(
+  busca?: string,
+  limit:  number = 200,
+): Promise<ProdutoAS[]> {
+  const cols = await colunasExistentes('produto', ['codigo'])
+  const codigoExpr = cols.has('codigo') ? 'codigo::text' : 'NULL::text'
+
+  // Sem filtro por `ativo` — diferentes instâncias do AUTOSYSTEM usam
+  // representações distintas (bool/int/'S'/'N') e isso já estava deixando a
+  // lista vazia. Se necessário, o front pode esconder inativos depois.
+  const params: unknown[] = []
+  const conds:  string[]  = []
+  if (busca && busca.trim()) {
+    params.push(`%${busca.trim().toLowerCase()}%`)
+    conds.push(`lower(nome::text) LIKE $${params.length}::text`)
+  }
+  params.push(limit)
+  const limitParam = `$${params.length}`
+
+  const sql = `
+    SELECT grid::bigint  AS grid,
+           ${codigoExpr} AS codigo,
+           nome::bytea   AS nome_b
+    FROM produto
+    ${conds.length ? `WHERE ${conds.join(' AND ')}` : ''}
+    ORDER BY nome
+    LIMIT ${limitParam}
+  `
+  const rows = await query<ProdutoASRaw>(sql, params)
+  return rows.map(r => ({
+    grid:   Number(r.grid),
+    codigo: r.codigo,
+    nome:   decodeBytea(r.nome_b).trim(),
+  }))
+}
+
+export async function buscarPessoasFuncionariosPorEmpresa(
+  empresaId: number,
+  busca?:    string,
+  limit:     number = 500,
+): Promise<PessoaFuncionario[]> {
+  const cols = await colunasExistentes('pessoa', [
+    'empresa', 'cargo', 'codigo', 'email', 'funcionario', 'ativo',
+  ])
+
+  const hasEmpresa     = cols.has('empresa')
+  const hasCargo       = cols.has('cargo')
+  const hasCodigo      = cols.has('codigo')
+  const hasEmail       = cols.has('email')
+  const hasFuncionario = cols.has('funcionario')
+  const hasAtivo       = cols.has('ativo')
+
+  const cargoExpr  = hasCargo  ? 'cargo::bytea' : 'NULL::bytea'
+  const codigoExpr = hasCodigo ? 'codigo::text' : 'NULL::text'
+  const emailExpr  = hasEmail  ? 'email::bytea' : 'NULL::bytea'
+
+  const params: unknown[] = []
+  const conds:  string[]  = []
+
+  if (hasEmpresa) {
+    params.push(empresaId)
+    conds.push(`empresa = $${params.length}::bigint`)
+  }
+  // Restringe a funcionários quando há uma coluna que permita inferir.
+  // Se houver `funcionario` bool, usa-o; senão, se houver `cargo`, exige cargo não nulo.
+  if (hasFuncionario) {
+    conds.push(`COALESCE(funcionario::text, 'f') IN ('t','true','1','Y','S')`)
+  } else if (hasCargo) {
+    conds.push(`cargo IS NOT NULL AND trim(cargo::text) <> ''`)
+  }
+  if (hasAtivo) {
+    conds.push(`COALESCE(ativo::text, 't') IN ('t','true','1','Y','S')`)
+  }
+  if (busca && busca.trim()) {
+    params.push(`%${busca.trim().toLowerCase()}%`)
+    conds.push(`lower(nome::text) LIKE $${params.length}::text`)
+  }
+  params.push(limit)
+  const limitParam = `$${params.length}`
+
+  const sql = `
+    SELECT grid::bigint     AS grid,
+           ${codigoExpr}    AS codigo,
+           nome::bytea      AS nome_b,
+           ${cargoExpr}     AS cargo_b,
+           ${emailExpr}     AS email_b
+    FROM pessoa
+    ${conds.length ? `WHERE ${conds.join(' AND ')}` : ''}
+    ORDER BY nome
+    LIMIT ${limitParam}
+  `
+  const rows = await query<PessoaFuncRaw>(sql, params)
+  return rows.map(r => ({
+    grid:   Number(r.grid),
+    codigo: r.codigo,
+    nome:   decodeBytea(r.nome_b).trim(),
+    cargo:  decodeBytea(r.cargo_b).trim() || null,
+    email:  decodeBytea(r.email_b).trim() || null,
+  }))
+}
+
 // ── motivo_movto ─────────────────────────────────────────────────────────────
 
 export async function buscarMotivos(grids: number[]): Promise<{ grid: number; nome: string }[]> {
@@ -1789,7 +1931,17 @@ export async function verificarLancamentoNfe(
 export interface VendaAnaliseProduto extends Record<string, unknown> {
   produto:        number
   produto_nome:   string
+  // `tipo` da tabela `produto` no AUTOSYSTEM. Pra postos, 'C' = combustível.
+  // null quando a coluna não existe naquela instância.
+  tipo:           string | null
   grupo:          number
+  grupo_nome:     string | null  // grupo_produto.nome (decoded)
+  subgrupo:       number | null  // null quando a coluna não existe
+  subgrupo_nome:  string | null  // subgrupo_produto.nome (decoded)
+  // Quando `breakdownEmpresa=true` no caller, cada linha vem quebrada por
+  // empresa (id externo do AUTOSYSTEM); caso contrário fica null (o resultado
+  // está agregado entre todas as empresas).
+  empresa_id:     number | null
   qtd:            number
   venda:          number
   custo:          number
@@ -1813,33 +1965,65 @@ export interface VendaDesconto extends Record<string, unknown> {
 }
 
 export async function buscarAnaliseVendasPorProduto(
-  empresaIds: number[],
-  dataIni:    string,
-  dataFim:    string,
-  grupoIds?:  number[],
+  empresaIds:       number[],
+  dataIni:          string,
+  dataFim:          string,
+  grupoIds?:        number[],
+  breakdownEmpresa: boolean = false,
 ): Promise<{ produtos: VendaAnaliseProduto[]; temPrecoTabela: boolean }> {
   if (!empresaIds.length) return { produtos: [], temPrecoTabela: false }
+
+  // Detecta colunas opcionais defensivamente — `tipo` ('C' = combustível,
+  // 'M' = mercadoria…) e `subgrupo` (FK pra subgrupo_produto) podem não
+  // existir em todas as instâncias do AUTOSYSTEM.
+  const cols          = await colunasExistentes('produto', ['tipo', 'subgrupo'])
+  const tipoSel       = cols.has('tipo')     ? 'p.tipo::text'           : 'NULL::text'
+  const tipoGroup     = cols.has('tipo')     ? ', p.tipo'               : ''
+  const temSub        = cols.has('subgrupo')
+  const subgrupoSel   = temSub ? 'p.subgrupo::bigint' : 'NULL::bigint'
+  const subgrupoJoin  = temSub ? 'LEFT JOIN subgrupo_produto sgp ON sgp.grid = p.subgrupo' : ''
+  const subgrupoNome  = temSub ? 'sgp.nome::bytea'    : 'NULL::bytea'
+  const subgrupoGroup = temSub ? ', p.subgrupo, sgp.nome' : ''
+
+  // Breakdown por empresa — usado quando o consumidor (UI) quer quebrar a
+  // agregação produto×empresa em vez de somar entre todas as empresas
+  // selecionadas. Aumenta a cardinalidade das linhas, por isso o LIMIT é
+  // ampliado quando ligado.
+  const empresaSel   = breakdownEmpresa ? 'l.empresa::bigint' : 'NULL::bigint'
+  const empresaGroup = breakdownEmpresa ? ', l.empresa'       : ''
+  const rowLimit     = breakdownEmpresa ? 5000                : 500
+
   const params: unknown[] = [empresaIds, dataIni, dataFim]
   const grupoFlt = grupoIds && grupoIds.length > 0
     ? (params.push(grupoIds), `AND p.grupo = ANY($${params.length}::bigint[])`)
     : ''
 
   const rows = await query<{
-    produto:        number
-    nome_b:         Buffer | null
-    grupo:          number
-    qtd:            number
-    venda:          number
-    custo:          number
-    preco_medio:    number
-    custo_unitario: number
-    preco_tabela:   number | null
-    total_desconto: number
+    produto:         number
+    nome_b:          Buffer | null
+    tipo:            string | null
+    grupo:           number
+    grupo_nome_b:    Buffer | null
+    subgrupo:        number | null
+    subgrupo_nome_b: Buffer | null
+    empresa_id:      number | null
+    qtd:             number
+    venda:           number
+    custo:           number
+    preco_medio:     number
+    custo_unitario:  number
+    preco_tabela:    number | null
+    total_desconto:  number
   }>(
     `SELECT
        l.produto::bigint AS produto,
        p.nome::bytea     AS nome_b,
+       ${tipoSel}        AS tipo,
        p.grupo::bigint   AS grupo,
+       gp.nome::bytea    AS grupo_nome_b,
+       ${subgrupoSel}    AS subgrupo,
+       ${subgrupoNome}   AS subgrupo_nome_b,
+       ${empresaSel}     AS empresa_id,
        SUM(l.quantidade)::float                                                         AS qtd,
        SUM(l.valor)::float                                                              AS venda,
        SUM(ABS(el.custo_medio * el.movimento))::float                                   AS custo,
@@ -1850,13 +2034,15 @@ export async function buscarAnaliseVendasPorProduto(
      FROM lancto l
        LEFT JOIN estoque_lancto el ON el.lancto = l.grid
        LEFT JOIN produto p         ON l.produto = p.grid
+       LEFT JOIN grupo_produto gp  ON gp.grid = p.grupo
+       ${subgrupoJoin}
      WHERE l.empresa = ANY($1::bigint[])
        AND l.operacao = 'V'
        AND l.data BETWEEN $2::date AND $3::date
        ${grupoFlt}
-     GROUP BY l.produto, p.nome, p.grupo
+     GROUP BY l.produto, p.nome, p.grupo, gp.nome${tipoGroup}${subgrupoGroup}${empresaGroup}
      ORDER BY venda DESC
-     LIMIT 500`,
+     LIMIT ${rowLimit}`,
     params,
   )
 
@@ -1864,7 +2050,12 @@ export async function buscarAnaliseVendasPorProduto(
     produtos: rows.map(r => ({
       produto:        Number(r.produto),
       produto_nome:   decodeBytea(r.nome_b).trim(),
+      tipo:           r.tipo ? r.tipo.trim() : null,
       grupo:          Number(r.grupo),
+      grupo_nome:     decodeBytea(r.grupo_nome_b).trim() || null,
+      subgrupo:       r.subgrupo != null ? Number(r.subgrupo) : null,
+      subgrupo_nome:  decodeBytea(r.subgrupo_nome_b).trim() || null,
+      empresa_id:     r.empresa_id != null ? Number(r.empresa_id) : null,
       qtd:            Number(r.qtd),
       venda:          Number(r.venda),
       custo:          Number(r.custo),
@@ -1901,6 +2092,58 @@ export async function buscarAnaliseVendasPorMes(
        AND l.operacao = 'V'
        AND l.data BETWEEN $2::date AND $3::date
        ${grupoFlt}
+     GROUP BY to_char(l.data, 'YYYY-MM')
+     ORDER BY mes ASC`,
+    params,
+  )
+}
+
+// Histórico mensal de combustíveis (`produto.tipo = 'C'`) — usado pelo
+// gráfico de evolução na aba Combustíveis. Retorna por mês: litros vendidos
+// (sum quantidade), venda em R$ e custo. Quando `produtoId` é informado,
+// restringe a um único combustível; senão agrega todos os 'C'.
+export interface VendaCombustivelMes extends Record<string, unknown> {
+  mes:    string  // YYYY-MM
+  litros: number
+  venda:  number
+  custo:  number
+}
+
+export async function buscarVendasCombustiveisPorMes(
+  empresaIds: number[],
+  dataIni:    string,
+  dataFim:    string,
+  produtoId?: number,
+): Promise<VendaCombustivelMes[]> {
+  if (!empresaIds.length) return []
+
+  // Defensivo: a coluna `tipo` pode não existir em todas as instâncias.
+  // Se não existir, retornamos vazio — a aba Combustíveis só faz sentido
+  // quando há a tipagem do AUTOSYSTEM.
+  const cols = await colunasExistentes('produto', ['tipo'])
+  if (!cols.has('tipo')) return []
+
+  const params: unknown[] = [empresaIds, dataIni, dataFim]
+  let prodFlt = ''
+  if (produtoId && produtoId > 0) {
+    params.push(produtoId)
+    prodFlt = `AND l.produto = $${params.length}::bigint`
+  }
+
+  return query<VendaCombustivelMes>(
+    `SELECT
+       to_char(l.data, 'YYYY-MM')                       AS mes,
+       SUM(l.quantidade)::float                         AS litros,
+       SUM(l.valor)::float                              AS venda,
+       SUM(ABS(el.custo_medio * el.movimento))::float   AS custo
+     FROM lancto l
+       LEFT JOIN estoque_lancto el ON el.lancto = l.grid
+       LEFT JOIN produto p         ON l.produto = p.grid
+     WHERE l.empresa = ANY($1::bigint[])
+       AND l.operacao = 'V'
+       AND l.data BETWEEN $2::date AND $3::date
+       AND p.tipo = 'C'
+       ${prodFlt}
      GROUP BY to_char(l.data, 'YYYY-MM')
      ORDER BY mes ASC`,
     params,

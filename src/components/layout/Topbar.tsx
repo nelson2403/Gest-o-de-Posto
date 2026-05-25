@@ -13,6 +13,7 @@ import {
   ArrowLeftRight, Eye, EyeOff, X, ChevronDown,
   PackageSearch, Truck, CalendarDays, ShoppingCart, Menu,
   Bell, Sun, Moon, CheckCheck, Scale, Banknote, Hash,
+  Target, Calculator,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { useAuthContext } from '@/contexts/AuthContext'
@@ -110,6 +111,17 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Tarefas',
     items: [
       { href: '/tarefas/avulsas', label: 'Gestão de Tarefas', icon: ClipboardList, permission: 'tarefas.view' as Permission },
+    ],
+  },
+  {
+    label: 'Comissionamento',
+    items: [
+      { href: '/comissionamento',            label: 'Dashboard',  icon: LayoutDashboard, permission: null },
+      { href: '/comissionamento/membros',    label: 'Membros',    icon: Users,           permission: null },
+      { href: '/comissionamento/metas',      label: 'Metas',      icon: Target,          permission: null },
+      { href: '/comissionamento/esquemas',   label: 'Esquemas',   icon: ClipboardList,   permission: null },
+      { href: '/comissionamento/simulacao',  label: 'Simulação',  icon: Calculator,      permission: null },
+      { href: '/comissionamento/relatorios', label: 'Relatórios', icon: FileText,        permission: null },
     ],
   },
   {
