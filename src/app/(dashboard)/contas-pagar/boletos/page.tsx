@@ -6,8 +6,9 @@ import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils/cn'
 import {
   Inbox, Loader2, CheckCircle2, RefreshCw, Eye, CheckCheck,
-  XCircle, AlertCircle, IndentIcon,
+  XCircle, AlertCircle, Paperclip, Trash2,
 } from 'lucide-react'
+import { useAuthContext } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -91,6 +92,9 @@ const FILTROS_SETOR = [
 // ── Componente principal ───────────────────────────────────────────────────────
 
 export default function BoletosPage() {
+  const { usuario }     = useAuthContext()
+  const isMaster        = usuario?.role === 'master'
+
   const [solicitacoes,  setSolicitacoes]  = useState<Solicitacao[]>([])
   const [loading,       setLoading]       = useState(true)
   const [filtroStatus,  setFiltroStatus]  = useState('pendente')
@@ -99,6 +103,7 @@ export default function BoletosPage() {
   const [atualizando,   setAtualizando]   = useState<string | null>(null)
   const [idRejeitar,    setIdRejeitar]    = useState<string | null>(null)
   const [motivoRej,     setMotivoRej]     = useState('')
+  const [excluindo,     setExcluindo]     = useState<string | null>(null)
 
   async function carregar() {
     setLoading(true)
@@ -129,6 +134,20 @@ export default function BoletosPage() {
     setAtualizando(null)
     setIdRejeitar(null)
     setMotivoRej('')
+  }
+
+  async function excluir(id: string) {
+    if (!confirm('Excluir esta solicitação permanentemente?')) return
+    setExcluindo(id)
+    const r = await fetch(`/api/solicitacoes-pagamento?id=${id}`, { method: 'DELETE' })
+    if (r.ok) {
+      toast({ title: 'Solicitação excluída' })
+      carregar()
+    } else {
+      const json = await r.json()
+      toast({ variant: 'destructive', title: json.error ?? 'Erro ao excluir' })
+    }
+    setExcluindo(null)
   }
 
   const pendentes = solicitacoes.filter(s => s.status === 'pendente').length
@@ -255,6 +274,17 @@ export default function BoletosPage() {
 
                     {/* Ações */}
                     <div className="flex items-center gap-1 flex-shrink-0">
+                      {s.arquivo_url && (
+                        <a
+                          href={s.arquivo_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-orange-500 hover:text-orange-600 hover:bg-orange-50 transition-colors"
+                          title={s.arquivo_nome ?? 'Ver boleto'}
+                        >
+                          <Paperclip className="w-3.5 h-3.5" />
+                        </a>
+                      )}
                       <button
                         onClick={() => setDetalhes(isOpen ? null : s.id)}
                         className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
@@ -302,6 +332,20 @@ export default function BoletosPage() {
                           Marcar Pago
                         </button>
                       )}
+
+                      {isMaster && (
+                        <button
+                          onClick={() => excluir(s.id)}
+                          disabled={excluindo === s.id}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                          title="Excluir (master)"
+                        >
+                          {excluindo === s.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Trash2 className="w-3.5 h-3.5" />
+                          }
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -327,15 +371,15 @@ export default function BoletosPage() {
                       )}
                       {s.arquivo_url && (
                         <div>
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Arquivo</p>
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Boleto / Anexo</p>
                           <a
                             href={s.arquivo_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 text-[12px] text-blue-600 hover:underline"
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100 transition-colors text-[12px] font-medium"
                           >
-                            <IndentIcon className="w-3.5 h-3.5" />
-                            {s.arquivo_nome ?? 'Ver arquivo'}
+                            <Paperclip className="w-3.5 h-3.5" />
+                            {s.arquivo_nome ?? 'Ver boleto (PDF)'}
                           </a>
                         </div>
                       )}

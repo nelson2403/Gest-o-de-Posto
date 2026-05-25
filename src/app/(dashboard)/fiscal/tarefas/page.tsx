@@ -10,6 +10,19 @@ import {
 } from 'lucide-react'
 import { useAuthContext } from '@/contexts/AuthContext'
 import { toast } from '@/hooks/use-toast'
+import { createClient as createSupabaseClient } from '@/lib/supabase/client'
+
+// ─── Fornecedores de combustível ──────────────────────────────────────────────
+const FORNECEDORES_COMBUSTIVEL = ['raizen', 'ipiranga', 'vibra', 'nexta']
+const VALOR_MIN_COMBUSTIVEL    = 20_000
+
+function isFornecedorCombustivel(nome: string, valor?: number | null): boolean {
+  const n = (nome ?? '').toLowerCase()
+  if (FORNECEDORES_COMBUSTIVEL.some(f => n.includes(f))) return true
+  return (valor ?? 0) >= VALOR_MIN_COMBUSTIVEL
+}
+
+const TURNOS_CAIXA = ['1° Turno', '2° Turno', '3° Turno']
 
 // ─── Config de status ─────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -42,6 +55,7 @@ interface ItemRomaneio {
   qtd_unidades:    string
   codigo_interno:  string
   codigo_barras:   string
+  manual?:         boolean  // true = adicionado manualmente pelo gerente
 }
 
 // ─── Botão de foto / upload ────────────────────────────────────────────────────
@@ -143,15 +157,23 @@ function BoletoCard({
   async function handleFile(file: File) {
     setUploading(true)
     setErro('')
-    const fd = new FormData()
-    fd.append('arquivo', file)
-    fd.append('tipo', 'boleto')
-    const resp = await fetch(`/api/fiscal/tarefas/${tarefaId}/upload`, { method: 'POST', body: fd })
-    const json = await resp.json()
-    setUploading(false)
-    if (!resp.ok) { setErro(json.error ?? 'Erro no upload'); return }
-    onChange(idx, 'url',  json.url)
-    onChange(idx, 'nome', file.name)
+    try {
+      const supabase = createSupabaseClient()
+      const ext  = file.name.split('.').pop()?.toLowerCase() || 'pdf'
+      const path = `tarefas/${tarefaId}/boleto/${Date.now()}.${ext}`
+      const contentType = ext === 'pdf' ? 'application/pdf' : (file.type || 'application/octet-stream')
+      const { error } = await supabase.storage
+        .from('fiscal-docs')
+        .upload(path, file, { contentType, upsert: true })
+      if (error) { setErro(`Erro no upload: ${error.message}`); return }
+      const { data } = supabase.storage.from('fiscal-docs').getPublicUrl(path)
+      onChange(idx, 'url',  data.publicUrl)
+      onChange(idx, 'nome', file.name)
+    } catch (e: any) {
+      setErro(e?.message ?? 'Erro ao enviar o arquivo')
+    } finally {
+      setUploading(false)
+    }
   }
 
   return (
@@ -262,6 +284,21 @@ function DialogReconhecer({
   const [salvando,     setSalvando]     = useState(false)
   const [erro,         setErro]         = useState('')
 
+  // Formulário de descarregamento de combustível
+  const eCombustivel = isFornecedorCombustivel(tarefa.fornecedor_nome, tarefa.valor_as)
+  const [comb, setComb] = useState({
+    data_recebimento:     tarefa.dados_combustivel?.data_recebimento     ?? '',
+    motorista:            tarefa.dados_combustivel?.motorista            ?? '',
+    quem_recebeu:         tarefa.dados_combustivel?.quem_recebeu         ?? '',
+    hora:                 tarefa.dados_combustivel?.hora                 ?? '',
+    turno_caixa:          tarefa.dados_combustivel?.turno_caixa          ?? '',
+    litragem_descarregada: tarefa.dados_combustivel?.litragem_descarregada ?? '',
+    observacao:           tarefa.dados_combustivel?.observacao           ?? '',
+  })
+  function setCombField(field: keyof typeof comb, val: string) {
+    setComb(prev => ({ ...prev, [field]: val }))
+  }
+
   const nfInputRef      = useRef<HTMLInputElement>(null!)
   const itensCarregados = useRef(false)
 
@@ -287,15 +324,23 @@ function DialogReconhecer({
   async function uploadNf(file: File) {
     setNfUploading(true)
     setErro('')
-    const fd = new FormData()
-    fd.append('arquivo', file)
-    fd.append('tipo', 'nf')
-    const resp = await fetch(`/api/fiscal/tarefas/${tarefa.id}/upload`, { method: 'POST', body: fd })
-    const json = await resp.json()
-    setNfUploading(false)
-    if (!resp.ok) { setErro(json.error ?? 'Erro no upload'); return }
-    setNfUrl(json.url)
-    setNfNome(file.name)
+    try {
+      const supabase = createSupabaseClient()
+      const ext  = file.name.split('.').pop()?.toLowerCase() || 'pdf'
+      const path = `tarefas/${tarefa.id}/nf/${Date.now()}.${ext}`
+      const contentType = ext === 'pdf' ? 'application/pdf' : (file.type || 'application/octet-stream')
+      const { error } = await supabase.storage
+        .from('fiscal-docs')
+        .upload(path, file, { contentType, upsert: true })
+      if (error) { setErro(`Erro no upload: ${error.message}`); return }
+      const { data } = supabase.storage.from('fiscal-docs').getPublicUrl(path)
+      setNfUrl(data.publicUrl)
+      setNfNome(file.name)
+    } catch (e: any) {
+      setErro(e?.message ?? 'Erro ao enviar o arquivo')
+    } finally {
+      setNfUploading(false)
+    }
   }
 
   function updateBoleto(idx: number, field: keyof BoletoItem, val: string) {
@@ -310,17 +355,37 @@ function DialogReconhecer({
     setBoletos(prev => prev.filter((_, i) => i !== idx))
   }
 
+  const [buscandoBarras, setBuscandoBarras] = useState<Record<number, boolean>>({})
+
   function atualizarItem(idx: number, campo: keyof ItemRomaneio, valor: string) {
     setItens(prev => prev.map((item, i) =>
       i !== idx ? item : { ...item, [campo]: valor }
     ))
   }
 
+  async function buscarPorBarras(idx: number, codigo: string, isManual: boolean) {
+    if (!codigo.trim() || !tarefa.empresa_grid) return
+    setBuscandoBarras(prev => ({ ...prev, [idx]: true }))
+    try {
+      const r = await fetch(`/api/estoque/produto-por-barras?codigo=${encodeURIComponent(codigo.trim())}&empresaId=${tarefa.empresa_grid}`)
+      const json = await r.json()
+      const encontrado = !!(json.produto_codigo || json.produto_id)
+      const codigo_interno = encontrado ? String(json.produto_codigo ?? json.produto_id) : 'NOVO'
+      setItens(prev => prev.map((item, i) => {
+        if (i !== idx) return item
+        const updates: Partial<ItemRomaneio> = { codigo_interno }
+        if (isManual && encontrado && json.produto_nome) updates.descricao = json.produto_nome
+        return { ...item, ...updates }
+      }))
+    } catch {}
+    setBuscandoBarras(prev => ({ ...prev, [idx]: false }))
+  }
+
   function adicionarItem() {
     setItens(prev => [...prev, {
       numero: prev.length + 1, codigo_produto: '', descricao: '',
       quantidade: 0, unidade: 'UN', preco_unitario: 0, valor: 0,
-      qtd_unidades: '', codigo_interno: '', codigo_barras: '',
+      qtd_unidades: '', codigo_interno: '', codigo_barras: '', manual: true,
     }])
   }
 
@@ -332,6 +397,19 @@ function DialogReconhecer({
     if (!nfUrl.trim()) return setErro('Fotografe ou anexe o arquivo da NF')
     const valorNf = parseFloat(nfValor.replace(',', '.'))
     if (!valorNf) return setErro('Informe o valor da NF')
+
+    if (!eCombustivel && itens.length > 0) {
+      const itemInvalido = itens.find(it => !it.qtd_unidades?.toString().trim() || !it.codigo_barras?.trim())
+      if (itemInvalido) return setErro('Preencha a quantidade e o código de barras de todos os itens do romaneio')
+    }
+
+    if (eCombustivel) {
+      if (!comb.data_recebimento) return setErro('Informe a data do recebimento do combustível')
+      if (!comb.motorista.trim()) return setErro('Informe o nome do motorista')
+      if (!comb.quem_recebeu.trim()) return setErro('Informe quem recebeu o combustível')
+      if (!comb.hora.trim()) return setErro('Informe a hora do recebimento')
+      if (!comb.turno_caixa) return setErro('Selecione o turno do caixa no AUTOSYSTEM')
+    }
 
     setSalvando(true)
     setErro('')
@@ -353,6 +431,7 @@ function DialogReconhecer({
         nf_valor_informado: valorNf,
         boletos:            boletosEnvio,
         itens_romaneio:     itens.length ? itens : null,
+        dados_combustivel:  eCombustivel ? comb : null,
       }),
     })
     const json = await resp.json()
@@ -444,8 +523,8 @@ function DialogReconhecer({
             ))}
           </div>
 
-          {/* Itens do romaneio */}
-          <div className="space-y-2">
+          {/* Itens do romaneio — oculto para combustível */}
+          {!eCombustivel && <div className="space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-[13px] font-semibold text-gray-800">3. Itens do Romaneio</p>
               <div className="flex items-center gap-2">
@@ -479,7 +558,15 @@ function DialogReconhecer({
                     {itens.map((item, idx) => (
                       <tr key={idx} className="hover:bg-gray-50/50">
                         <td className="px-3 py-2 text-gray-800 font-medium leading-tight">
-                          {item.descricao || <span className="text-gray-400 italic">sem descrição</span>}
+                          {item.manual && item.codigo_interno === 'NOVO'
+                            ? <input
+                                placeholder="Nome do produto (novo)..."
+                                value={item.descricao}
+                                onChange={e => atualizarItem(idx, 'descricao', e.target.value)}
+                                className="w-full px-1.5 py-1 border border-orange-300 rounded text-[11px] text-gray-800 placeholder-orange-300 focus:outline-none focus:ring-1 focus:ring-orange-400/30"
+                              />
+                            : item.descricao || <span className="text-gray-400 italic">sem descrição</span>
+                          }
                         </td>
                         <td className="px-2 py-1.5">
                           <input
@@ -487,24 +574,31 @@ function DialogReconhecer({
                             placeholder="0"
                             value={item.qtd_unidades}
                             onChange={e => atualizarItem(idx, 'qtd_unidades', e.target.value)}
-                            className="w-full px-1.5 py-1 border border-gray-200 focus:border-indigo-400 rounded text-[11px] text-center text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-400/30"
+                            className={`w-full px-1.5 py-1 border rounded text-[11px] text-center text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-400/30 ${!item.qtd_unidades?.toString().trim() ? 'border-red-300 focus:border-red-400' : 'border-gray-200 focus:border-indigo-400'}`}
                           />
                         </td>
                         <td className="px-2 py-1.5">
                           <input
-                            placeholder="Ex: 1042"
+                            placeholder="Auto"
                             value={item.codigo_interno}
-                            onChange={e => atualizarItem(idx, 'codigo_interno', e.target.value)}
-                            className="w-full px-1.5 py-1 border border-gray-200 focus:border-indigo-400 rounded text-[11px] text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-400/30"
+                            readOnly
+                            tabIndex={-1}
+                            className={`w-full px-1.5 py-1 border rounded text-[11px] cursor-not-allowed select-none ${item.codigo_interno === 'NOVO' ? 'border-orange-300 bg-orange-50 text-orange-600 font-semibold' : 'border-gray-200 bg-gray-50 text-gray-500'}`}
                           />
                         </td>
                         <td className="px-2 py-1.5">
-                          <input
-                            placeholder="Ex: 7891234567890"
-                            value={item.codigo_barras}
-                            onChange={e => atualizarItem(idx, 'codigo_barras', e.target.value)}
-                            className="w-full px-1.5 py-1 border border-gray-200 focus:border-indigo-400 rounded text-[11px] text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-400/30"
-                          />
+                          <div className="relative">
+                            <input
+                              placeholder="Ex: 7891234567890"
+                              value={item.codigo_barras}
+                              onChange={e => atualizarItem(idx, 'codigo_barras', e.target.value)}
+                              onBlur={e => buscarPorBarras(idx, e.target.value, !!item.manual)}
+                              className={`w-full px-1.5 py-1 border rounded text-[11px] text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-400/30 ${!item.codigo_barras?.trim() ? 'border-red-300 focus:border-red-400' : 'border-gray-200 focus:border-indigo-400'} ${buscandoBarras[idx] ? 'pr-5' : ''}`}
+                            />
+                            {buscandoBarras[idx] && (
+                              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 border border-gray-400 border-t-transparent rounded-full animate-spin" />
+                            )}
+                          </div>
                         </td>
                         <td className="px-1 py-1.5 text-center">
                           <button onClick={() => removerItem(idx)} className="text-red-400 hover:text-red-600">
@@ -517,7 +611,131 @@ function DialogReconhecer({
                 </table>
               </div>
             )}
-          </div>
+          </div>}
+
+          {/* Descarregamento de Combustível */}
+          {eCombustivel && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="h-px flex-1 bg-amber-200" />
+                <p className="text-[12px] font-bold text-amber-700 uppercase tracking-wide shrink-0">
+                  3. Descarregamento de Combustível
+                </p>
+                <div className="h-px flex-1 bg-amber-200" />
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+                <p className="text-[11px] text-amber-700">
+                  Fornecedor de combustível identificado. Preencha os dados do descarregamento.
+                </p>
+
+                {/* Data + Hora */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-gray-600">
+                      Data do recebimento <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={comb.data_recebimento}
+                      onChange={e => setCombField('data_recebimento', e.target.value)}
+                      className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-gray-600">
+                      Hora <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="time"
+                      value={comb.hora}
+                      onChange={e => setCombField('hora', e.target.value)}
+                      className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+                    />
+                  </div>
+                </div>
+
+                {/* Motorista */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-gray-600">
+                    Motorista <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Nome do motorista"
+                    value={comb.motorista}
+                    onChange={e => setCombField('motorista', e.target.value)}
+                    className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+                  />
+                </div>
+
+                {/* Quem recebeu */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-gray-600">
+                    Quem recebeu <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Nome de quem recebeu no posto"
+                    value={comb.quem_recebeu}
+                    onChange={e => setCombField('quem_recebeu', e.target.value)}
+                    className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+                  />
+                </div>
+
+                {/* Turno caixa */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-gray-600">
+                    Turno do caixa (AUTOSYSTEM) <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex gap-2">
+                    {TURNOS_CAIXA.map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setCombField('turno_caixa', t)}
+                        className={`flex-1 py-2 rounded-lg border text-[12px] font-medium transition-colors ${
+                          comb.turno_caixa === t
+                            ? 'bg-amber-500 border-amber-500 text-white'
+                            : 'border-gray-200 text-gray-600 hover:border-amber-300 hover:bg-amber-50'
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Litragem + Observação */}
+                <div>
+                  <label className="text-[11px] font-semibold text-gray-600">
+                    Litragem descarregada (L)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="Ex: 15000"
+                    value={comb.litragem_descarregada}
+                    onChange={e => setCombField('litragem_descarregada', e.target.value)}
+                    className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-amber-400/30 mt-1"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-gray-600">
+                    Observações
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Alguma observação sobre o descarregamento..."
+                    value={comb.observacao}
+                    onChange={e => setCombField('observacao', e.target.value)}
+                    className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-amber-400/30 resize-none mt-1"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Erro */}
           {erro && (

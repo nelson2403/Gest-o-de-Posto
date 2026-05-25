@@ -49,27 +49,53 @@ function DialogEnviarCP({
 
   async function enviar() {
     setSalvando(true)
-    const resp = await fetch('/api/solicitacoes-pagamento', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        setor:           'fiscal',
-        titulo:          `Boleto — ${boleto.fornecedor}`,
-        fornecedor:      boleto.fornecedor,
-        valor:           parseFloat(valor.replace(',', '.')) || null,
-        data_vencimento: vencimento || null,
-        arquivo_url:     boleto.url   || null,
-        arquivo_nome:    boleto.nome  || null,
-        descricao:       `Boleto fiscal enviado pelo painel. Tarefa: ${boleto.tarefaId}`,
-      }),
-    })
-    setSalvando(false)
-    if (resp.ok) {
-      toast({ title: 'Boleto enviado para Contas a Pagar!' })
-      onSucesso()
-    } else {
-      const json = await resp.json()
-      toast({ variant: 'destructive', title: json.error ?? 'Erro ao enviar' })
+    try {
+      // Verifica se já existe uma solicitação para esta tarefa — atualiza em vez de criar duplicata
+      const busca = await fetch(`/api/solicitacoes-pagamento?tarefa_id=${boleto.tarefaId}&setor=fiscal`)
+      const { solicitacoes } = await busca.json()
+      const existente = (solicitacoes ?? []).find((s: any) =>
+        s.status !== 'rejeitado' && s.status !== 'pago'
+      )
+
+      let resp: Response
+      if (existente) {
+        resp = await fetch('/api/solicitacoes-pagamento', {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id:              existente.id,
+            valor:           parseFloat(valor.replace(',', '.')) || null,
+            data_vencimento: vencimento || null,
+            arquivo_url:     boleto.url  || null,
+            arquivo_nome:    boleto.nome || null,
+          }),
+        })
+      } else {
+        resp = await fetch('/api/solicitacoes-pagamento', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            setor:           'fiscal',
+            titulo:          `Boleto — ${boleto.fornecedor}`,
+            fornecedor:      boleto.fornecedor,
+            valor:           parseFloat(valor.replace(',', '.')) || null,
+            data_vencimento: vencimento || null,
+            arquivo_url:     boleto.url  || null,
+            arquivo_nome:    boleto.nome || null,
+            descricao:       `Boleto fiscal enviado pelo painel. Tarefa: ${boleto.tarefaId}`,
+          }),
+        })
+      }
+
+      if (resp.ok) {
+        toast({ title: existente ? 'Boleto atualizado no Contas a Pagar!' : 'Boleto enviado para Contas a Pagar!' })
+        onSucesso()
+      } else {
+        const json = await resp.json()
+        toast({ variant: 'destructive', title: json.error ?? 'Erro ao enviar' })
+      }
+    } finally {
+      setSalvando(false)
     }
   }
 
@@ -274,11 +300,14 @@ export default function FiscalPainelPage() {
     try {
       const r = await fetch('/api/fiscal/sync', { method: 'POST' })
       const result = await r.json()
-      if (result.concluidas > 0) {
-        alert(`${result.concluidas} tarefa(s) concluída(s) automaticamente!`)
+      const msgs: string[] = []
+      if (result.importadas > 0) msgs.push(`${result.importadas} novo(s) manifesto(s) importado(s)`)
+      if (result.concluidas > 0) msgs.push(`${result.concluidas} tarefa(s) concluída(s) automaticamente`)
+      if (msgs.length) {
+        alert(msgs.join('\n'))
         carregar()
       } else {
-        alert('Nenhuma nova NF lançada detectada no AUTOSYSTEM.')
+        alert('Nenhuma atualização encontrada no AUTOSYSTEM.')
       }
     } finally {
       setSyncing(false)

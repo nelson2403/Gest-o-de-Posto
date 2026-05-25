@@ -5,7 +5,8 @@ import { queryAS } from '@/lib/autosystem'
 export const dynamic = 'force-dynamic'
 
 // GET /api/estoque/produto-por-barras?codigo=XXXX&empresaId=YYY
-// Busca um produto pelo código de barras no AUTOSYSTEM
+// Coluna confirmada via debug: produto.codigo_barra (text)
+// Tabela adicional: produto_codigo_barra (produto FK, codigo_barra text)
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -19,39 +20,74 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Parâmetros ausentes' }, { status: 400 })
   }
 
-  // Tenta descobrir qual coluna de código de barras existe na tabela produto
-  const colunas = await queryAS(
-    `SELECT column_name FROM information_schema.columns
-     WHERE table_name = 'produto'
-       AND column_name IN ('cod_barras','ean','ean13','codigo_barras','barcode','cod_ean')
-     LIMIT 5`,
-    [],
-  )
-
-  if (!colunas.length) {
-    return NextResponse.json({ produto_id: null, mensagem: 'Tabela produto não possui coluna de código de barras' })
+  function decodeNome(b: any): string | null {
+    if (!b) return null
+    try { return Buffer.isBuffer(b) ? b.toString('latin1').trim() : String(b).trim() } catch { return null }
   }
 
-  const coluna = (colunas[0] as any).column_name as string
+  // 1. Coluna principal: produto.codigo_barra com filtro de empresa
+  try {
+    const rows = await queryAS(
+      `SELECT p.grid::bigint AS produto_id, p.codigo::text AS produto_codigo, p.nome::bytea AS nome_b
+       FROM produto p
+       JOIN estoque_produto ep ON ep.produto = p.grid AND ep.empresa = $1
+       WHERE p.codigo_barra::text = $2
+       LIMIT 1`,
+      [empresaId, codigo],
+    )
+    if (rows.length) {
+      const r = rows[0] as any
+      return NextResponse.json({ produto_id: Number(r.produto_id), produto_codigo: r.produto_codigo ?? null, produto_nome: decodeNome(r.nome_b) })
+    }
+  } catch {}
 
-  // Busca o produto pelo código de barras
-  const rows = await queryAS(
-    `SELECT p.grid::bigint AS produto_id,
-            p.nome::bytea  AS nome_b
-     FROM produto p
-     JOIN estoque_produto ep ON ep.produto = p.grid
-     WHERE ep.empresa = $1
-       AND p.${coluna}::text = $2
-     LIMIT 1`,
-    [empresaId, codigo],
-  )
+  // 2. Tabela de múltiplos códigos: produto_codigo_barra
+  try {
+    const rows = await queryAS(
+      `SELECT pcb.produto::bigint AS produto_id, p.codigo::text AS produto_codigo, p.nome::bytea AS nome_b
+       FROM produto_codigo_barra pcb
+       JOIN produto p ON p.grid = pcb.produto
+       JOIN estoque_produto ep ON ep.produto = pcb.produto AND ep.empresa = $1
+       WHERE pcb.codigo_barra::text = $2
+       LIMIT 1`,
+      [empresaId, codigo],
+    )
+    if (rows.length) {
+      const r = rows[0] as any
+      return NextResponse.json({ produto_id: Number(r.produto_id), produto_codigo: r.produto_codigo ?? null, produto_nome: decodeNome(r.nome_b) })
+    }
+  } catch {}
 
-  if (!rows.length) {
-    return NextResponse.json({ produto_id: null })
-  }
+  // 3. Fallback: produto.codigo_barra sem filtro de empresa
+  try {
+    const rows = await queryAS(
+      `SELECT grid::bigint AS produto_id, codigo::text AS produto_codigo, nome::bytea AS nome_b
+       FROM produto
+       WHERE codigo_barra::text = $1
+       LIMIT 1`,
+      [codigo],
+    )
+    if (rows.length) {
+      const r = rows[0] as any
+      return NextResponse.json({ produto_id: Number(r.produto_id), produto_codigo: r.produto_codigo ?? null, produto_nome: decodeNome(r.nome_b) })
+    }
+  } catch {}
 
-  const row = rows[0] as any
-  return NextResponse.json({
-    produto_id: Number(row.produto_id),
-  })
+  // 4. Fallback: produto_codigo_barra sem filtro de empresa
+  try {
+    const rows = await queryAS(
+      `SELECT pcb.produto::bigint AS produto_id, p.codigo::text AS produto_codigo, p.nome::bytea AS nome_b
+       FROM produto_codigo_barra pcb
+       JOIN produto p ON p.grid = pcb.produto
+       WHERE pcb.codigo_barra::text = $1
+       LIMIT 1`,
+      [codigo],
+    )
+    if (rows.length) {
+      const r = rows[0] as any
+      return NextResponse.json({ produto_id: Number(r.produto_id), produto_codigo: r.produto_codigo ?? null, produto_nome: decodeNome(r.nome_b) })
+    }
+  } catch {}
+
+  return NextResponse.json({ produto_id: null, produto_codigo: null, produto_nome: null })
 }

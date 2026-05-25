@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
 import { cn } from '@/lib/utils/cn'
 import { toast } from '@/hooks/use-toast'
@@ -9,7 +10,7 @@ import {
   Truck, Plus, RefreshCw, ChevronDown, X, Check, Pencil, Trash2,
   Calendar, MapPin, Package, User, Hash, Fuel, ChevronRight,
   AlertCircle, Clock, CheckCircle2, XCircle, Layers, Settings,
-  Phone, Save, ArrowRight, BarChart3, TrendingUp,
+  Phone, Save, ArrowRight, BarChart3, TrendingUp, Route,
 } from 'lucide-react'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -832,6 +833,10 @@ export default function TranspombalPage() {
             <button onClick={carregar} className="w-8 h-8 rounded-lg flex items-center justify-center border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-700 transition-colors">
               <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
             </button>
+            <Link href="/transpombal/sugestao-viagem"
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-orange-300 text-orange-600 dark:border-orange-500/50 dark:text-orange-400 text-[13px] font-semibold rounded-xl hover:bg-orange-50 dark:hover:bg-orange-500/10 transition-colors">
+              <Route className="w-4 h-4" /> Sugestão de Viagem
+            </Link>
             <button onClick={() => { setEditando(null); setModalAberto(true) }}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white text-[13px] font-semibold rounded-xl hover:bg-orange-600 transition-colors">
               <Plus className="w-4 h-4" /> Novo Carregamento

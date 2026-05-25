@@ -23,13 +23,13 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
   const body = await req.json()
-  const { nome, cnpj, categoria } = body
+  const { nome, cnpj, categoria, codigo_conta } = body
   if (!nome) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 })
 
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('cp_fornecedores')
-    .insert({ nome, cnpj: cnpj || null, categoria: categoria || null })
+    .insert({ nome, cnpj: cnpj || null, categoria: categoria || null, codigo_conta: codigo_conta || null })
     .select()
     .single()
 

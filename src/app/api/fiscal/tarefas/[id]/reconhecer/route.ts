@@ -22,6 +22,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       nf_valor_informado,
       boletos = [] as BoletoItem[],
       itens_romaneio,
+      dados_combustivel,
     } = body
 
     if (!nf_url || !nf_valor_informado) {
@@ -81,8 +82,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       boleto_valor:      primeiroBoleto?.valor ?? null,
       boleto_anexado_em: boletosValidos.length ? agora : null,
 
-      itens_romaneio: itens_romaneio?.length ? itens_romaneio : null,
-      atualizada_em:  agora,
+      itens_romaneio:    itens_romaneio?.length ? itens_romaneio : null,
+      dados_combustivel: dados_combustivel ?? null,
+      atualizada_em:     agora,
     }
 
     // Tenta salvar com a coluna boletos (nova); se ainda não existir cai no fallback

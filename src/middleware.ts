@@ -26,7 +26,8 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl
   const publicRoutes = ['/login', '/auth/callback', '/api/cron/']
-  const isPublic = publicRoutes.some((r) => pathname.startsWith(r))
+  const publicFiles  = ['/manifest.json', '/robots.txt', '/sitemap.xml']
+  const isPublic = publicRoutes.some((r) => pathname.startsWith(r)) || publicFiles.includes(pathname)
 
   // IMPORTANTE: usar `getUser()` (não `getSession()`) — ele valida o JWT com
   // o servidor do Supabase e, quando o access_token expirou, executa o
@@ -66,6 +67,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 }

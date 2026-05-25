@@ -99,9 +99,11 @@ export default function FixasPage() {
   const [comparando, setComparando] = useState(false)
   const [modoComparar, setModoComparar] = useState(false)
   const [marcandoId, setMarcandoId] = useState<string | null>(null)
+  const [cpFornecedores, setCpFornecedores] = useState<{ id: string; nome: string }[]>([])
 
   useEffect(() => {
     fetch('/api/postos').then(r => r.json()).then(d => setPostos(d.postos ?? []))
+    fetch('/api/contas-pagar/fornecedores').then(r => r.json()).then(d => setCpFornecedores(d.fornecedores ?? []))
   }, [])
 
   const postoAtual = selectedPosto === '__all__' ? null : selectedPosto
@@ -827,8 +829,20 @@ export default function FixasPage() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[12px] font-medium text-gray-600">Fornecedor</Label>
-              <Input value={formFixa.fornecedor_nome} onChange={e => setFormFixa(p => ({ ...p, fornecedor_nome: e.target.value }))} placeholder="Nome do fornecedor" />
+              <Label className="text-[12px] font-medium text-gray-600">Fornecedor / Empresa</Label>
+              {cpFornecedores.length > 0 ? (
+                <select
+                  value={formFixa.fornecedor_nome}
+                  onChange={e => setFormFixa(p => ({ ...p, fornecedor_nome: e.target.value }))}
+                  className="w-full h-9 px-3 py-2 text-[13px] rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-0">
+                  <option value="">— Selecionar empresa —</option>
+                  {cpFornecedores.map(f => (
+                    <option key={f.id} value={f.nome}>{f.nome}</option>
+                  ))}
+                </select>
+              ) : (
+                <Input value={formFixa.fornecedor_nome} onChange={e => setFormFixa(p => ({ ...p, fornecedor_nome: e.target.value }))} placeholder="Nome do fornecedor" />
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-const BUCKET        = 'fiscal-docs'
-const MAX_BYTES     = 20 * 1024 * 1024  // 20 MB
-const MIME_ALLOWED  = new Set(['application/pdf'])
+const BUCKET       = 'fiscal-docs'
+const MAX_BYTES    = 20 * 1024 * 1024  // 20 MB
+const MIME_ALLOWED = new Set([
+  'application/pdf',
+  'application/octet-stream', // alguns dispositivos enviam PDF assim
+  'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+])
 
 // POST /api/fiscal/tarefas/[id]/upload
 // FormData: arquivo (File), tipo ('nf' | 'boleto')
@@ -70,13 +74,14 @@ export async function POST(
   }).catch(() => {})
 
   // Faz o upload
-  const ext    = arquivo.name.split('.').pop()?.toLowerCase() || 'jpg'
-  const path   = `tarefas/${id}/${tipo}/${Date.now()}.${ext}`
-  const buffer = Buffer.from(await arquivo.arrayBuffer())
+  const ext         = arquivo.name.split('.').pop()?.toLowerCase() || 'pdf'
+  const path        = `tarefas/${id}/${tipo}/${Date.now()}.${ext}`
+  const buffer      = Buffer.from(await arquivo.arrayBuffer())
+  const contentType = ext === 'pdf' ? 'application/pdf' : mime
 
   const { error: uploadError } = await admin.storage
     .from(BUCKET)
-    .upload(path, buffer, { contentType: mime, upsert: true })
+    .upload(path, buffer, { contentType, upsert: true })
 
   if (uploadError) {
     return NextResponse.json({ error: `Erro no upload: ${uploadError.message}` }, { status: 500 })

@@ -12,36 +12,48 @@ export async function GET(req: NextRequest) {
   const postoNomeParam = searchParams.get('posto_nome')
   const data = searchParams.get('data') ?? new Date().toISOString().slice(0, 10)
 
-  // Descobre role do usuário para saber se deve filtrar por posto
   const { data: usuarioRow } = await admin.from('usuarios').select('role, posto_fechamento_id').eq('id', user.id).single()
   const userRole = usuarioRow?.role ?? ''
 
   let q = admin.from('tanques_postos').select('*').eq('ativo', true).order('posto_nome').order('ordem')
 
   if (postoNomeParam) {
-    // Admin/transpombal selecionou posto pelo nome
     q = q.ilike('posto_nome', postoNomeParam)
   } else if (['master', 'adm_transpombal'].includes(userRole)) {
-    // Vê todos os postos — sem filtro
+    // vê todos
   } else {
-    // Gerente: filtra pelo posto vinculado
     if (usuarioRow?.posto_fechamento_id) {
       const usr = usuarioRow
-      // Tenta primeiro por posto_id direto (após migration 055)
       const { data: porId } = await admin
-        .from('tanques_postos')
-        .select('*')
-        .eq('ativo', true)
-        .eq('posto_id', usr.posto_fechamento_id)
-        .order('ordem')
+        .from('tanques_postos').select('*').eq('ativo', true).eq('posto_id', usr.posto_fechamento_id).order('ordem')
 
       if (porId && porId.length > 0) {
-        // Encontrou por posto_id — usa esse resultado direto
         const ids = porId.map(t => t.id)
         const { data: medicoes } = await admin
-          .from('medicoes_tanques').select('tanque_id, medida_litros').in('tanque_id', ids).eq('data', data)
-        const medicaoMap = new Map((medicoes ?? []).map(m => [m.tanque_id, m.medida_litros]))
-        const result = porId.map(t => ({ ...t, medida_litros: medicaoMap.get(t.id) ?? null }))
+          .from('medicoes_tanques')
+          .select('tanque_id, medida_litros, criado_em, usuario_id')
+          .in('tanque_id', ids)
+          .eq('data', data)
+
+        const medicaoMap = new Map((medicoes ?? []).map(m => [m.tanque_id, m]))
+
+        // Busca nomes dos usuários que salvaram
+        const userIds = [...new Set((medicoes ?? []).map(m => m.usuario_id).filter(Boolean))]
+        const nomeMap: Record<string, string> = {}
+        if (userIds.length) {
+          const { data: users } = await admin.from('usuarios').select('id, nome').in('id', userIds)
+          for (const u of users ?? []) nomeMap[u.id] = u.nome
+        }
+
+        const result = porId.map(t => {
+          const med = medicaoMap.get(t.id)
+          return {
+            ...t,
+            medida_litros: med?.medida_litros ?? null,
+            criado_em:     med?.criado_em     ?? null,
+            salvo_por:     med?.usuario_id ? (nomeMap[med.usuario_id] ?? null) : null,
+          }
+        })
         const porPosto: Record<string, typeof result> = {}
         for (const t of result) {
           if (!porPosto[t.posto_nome]) porPosto[t.posto_nome] = []
@@ -50,17 +62,11 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ tanques: result, porPosto, data })
       }
 
-      // Fallback: tenta por nome (case-insensitive, com e sem prefixo "POSTO ")
-      const { data: posto } = await admin
-        .from('postos').select('nome').eq('id', usr.posto_fechamento_id).single()
-
+      const { data: posto } = await admin.from('postos').select('nome').eq('id', usr.posto_fechamento_id).single()
       if (posto?.nome) {
         const nome = posto.nome.trim()
         const nomeLimpo = nome.replace(/^posto\s+/i, '').trim()
-        // Busca onde posto_nome bate com o nome completo OU sem o prefixo
-        q = q.or(
-          `posto_nome.ilike.${nome},posto_nome.ilike.${nomeLimpo},posto_nome.ilike.%${nomeLimpo}%`
-        )
+        q = q.or(`posto_nome.ilike.${nome},posto_nome.ilike.${nomeLimpo},posto_nome.ilike.%${nomeLimpo}%`)
       }
     }
   }
@@ -70,15 +76,32 @@ export async function GET(req: NextRequest) {
 
   const ids = (tanques ?? []).map(t => t.id)
   const { data: medicoes } = ids.length
-    ? await admin.from('medicoes_tanques').select('tanque_id, medida_litros').in('tanque_id', ids).eq('data', data)
+    ? await admin
+        .from('medicoes_tanques')
+        .select('tanque_id, medida_litros, criado_em, usuario_id')
+        .in('tanque_id', ids)
+        .eq('data', data)
     : { data: [] }
 
-  const medicaoMap = new Map((medicoes ?? []).map(m => [m.tanque_id, m.medida_litros]))
+  const medicaoMap = new Map((medicoes ?? []).map(m => [m.tanque_id, m]))
 
-  const result = (tanques ?? []).map(t => ({
-    ...t,
-    medida_litros: medicaoMap.get(t.id) ?? null,
-  }))
+  // Busca nomes dos usuários
+  const userIds = [...new Set((medicoes ?? []).map(m => m.usuario_id).filter(Boolean))]
+  const nomeMap: Record<string, string> = {}
+  if (userIds.length) {
+    const { data: users } = await admin.from('usuarios').select('id, nome').in('id', userIds)
+    for (const u of users ?? []) nomeMap[u.id] = u.nome
+  }
+
+  const result = (tanques ?? []).map(t => {
+    const med = medicaoMap.get(t.id)
+    return {
+      ...t,
+      medida_litros: med?.medida_litros ?? null,
+      criado_em:     med?.criado_em     ?? null,
+      salvo_por:     med?.usuario_id ? (nomeMap[med.usuario_id] ?? null) : null,
+    }
+  })
 
   const porPosto: Record<string, typeof result> = {}
   for (const t of result) {
