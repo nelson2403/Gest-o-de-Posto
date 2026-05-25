@@ -3,7 +3,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 // PATCH — fiscal envia o(s) boleto(s) ao contas a pagar e conclui a tarefa
-export async function PATCH(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const supabase = await createServerClient()
@@ -19,6 +19,9 @@ export async function PATCH(_req: NextRequest, { params }: { params: Promise<{ i
     if (!usuario || !['master', 'adm_fiscal'].includes(usuario.role)) {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
     }
+
+    // skip_cp=1: só atualiza boleto_status, sem criar cp_lancamentos (usado pelo painel)
+    const skipCp = req.nextUrl.searchParams.get('skip_cp') === '1'
 
     const admin = createAdminClient()
     const agora = new Date().toISOString()
@@ -63,7 +66,7 @@ export async function PATCH(_req: NextRequest, { params }: { params: Promise<{ i
         criado_por:      user.id,
       }))
 
-    if (cpRegistros.length) {
+    if (!skipCp && cpRegistros.length) {
       const { error: errCp } = await admin.from('cp_lancamentos').insert(cpRegistros)
       if (errCp) throw errCp
     }

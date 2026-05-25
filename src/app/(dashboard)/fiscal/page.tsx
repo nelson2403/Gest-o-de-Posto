@@ -88,6 +88,8 @@ function DialogEnviarCP({
       }
 
       if (resp.ok) {
+        // Marca boleto_status=enviado_cp na tarefa fiscal (sem criar cp_lancamentos duplicado)
+        await fetch(`/api/fiscal/tarefas/${boleto.tarefaId}/enviar-boleto?skip_cp=1`, { method: 'PATCH' })
         toast({ title: existente ? 'Boleto atualizado no Contas a Pagar!' : 'Boleto enviado para Contas a Pagar!' })
         onSucesso()
       } else {
