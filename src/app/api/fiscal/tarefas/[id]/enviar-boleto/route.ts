@@ -31,7 +31,14 @@ export async function PATCH(_req: NextRequest, { params }: { params: Promise<{ i
       .single()
 
     if (errTarefa || !tarefa) return NextResponse.json({ error: 'Tarefa não encontrada' }, { status: 404 })
-    if (tarefa.boleto_status !== 'pendente') return NextResponse.json({ error: 'Tarefa não possui boleto pendente para envio' }, { status: 400 })
+
+    // Compatível com migration 088 (boleto_status) e estado legado (status=boleto_pendente)
+    const migrationRodada = tarefa.boleto_status !== undefined
+    const temBoletoLegado = tarefa.status === 'boleto_pendente'
+    const temBoletoNovo   = tarefa.boleto_status === 'pendente'
+    if (!temBoletoLegado && !temBoletoNovo) {
+      return NextResponse.json({ error: 'Tarefa não possui boleto pendente para envio' }, { status: 400 })
+    }
 
     // Monta registros de cp_lancamentos — um por boleto
     const boletos: { url?: string; vencimento?: string; valor?: string | number }[] =
@@ -61,15 +68,24 @@ export async function PATCH(_req: NextRequest, { params }: { params: Promise<{ i
       if (errCp) throw errCp
     }
 
+    // Monta payload compatível com a migration 088 ou estado legado
+    const updatePayload: Record<string, unknown> = {
+      concluida_por:      user.id,
+      boleto_enviado_em:  agora,
+      boleto_enviado_por: user.id,
+      atualizada_em:      agora,
+    }
+    if (migrationRodada) {
+      updatePayload.boleto_status = 'enviado_cp'
+    } else {
+      // Pré-migration: muda status de boleto_pendente para concluida
+      updatePayload.status      = 'concluida'
+      updatePayload.concluida_em = agora
+    }
+
     const { data, error } = await admin
       .from('fiscal_tarefas')
-      .update({
-        boleto_status:      'enviado_cp',
-        concluida_por:      user.id,
-        boleto_enviado_em:  agora,
-        boleto_enviado_por: user.id,
-        atualizada_em:      agora,
-      })
+      .update(updatePayload)
       .eq('id', id)
       .select()
       .single()
