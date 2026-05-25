@@ -67,7 +67,6 @@ export async function POST(_req: NextRequest) {
       .eq('status', 'aguardando_fiscal')
 
     let concluidasStep1 = 0
-    let boletosEnviados = 0
 
     if (tarefasAguardando?.length) {
       const gridsAguardando = tarefasAguardando
@@ -99,27 +98,23 @@ export async function POST(_req: NextRequest) {
       })
 
       if (concluir.length) {
-        await admin
-          .from('fiscal_tarefas')
-          .update({ status: 'concluida', lancado_em: agora, concluida_em: agora, concluida_por: user.id, atualizada_em: agora })
-          .in('id', concluir.map(t => t.id))
+        // Tarefas COM boleto → boleto_pendente (fiscal precisa enviar ao CP manualmente)
+        const comBoleto = concluir.filter(t => t.boleto_url)
+        // Tarefas SEM boleto → concluída direta
+        const semBoleto = concluir.filter(t => !t.boleto_url)
 
-        const boletoRegistros = concluir
-          .filter(t => t.boleto_url && t.posto_id)
-          .map(t => ({
-            posto_id:        t.posto_id,
-            data_lancamento: hoje,
-            descricao:       `Boleto NF Fiscal — ${t.fornecedor_nome}`,
-            valor:           Number(t.boleto_valor ?? t.nf_valor_informado ?? t.valor_as),
-            fornecedor_nome: t.fornecedor_nome,
-            documento:       t.nfe_resumo_grid?.toString() ?? null,
-            obs:             t.boleto_url ? `Boleto: ${t.boleto_url}` : null,
-            criado_por:      user.id,
-          }))
+        if (semBoleto.length) {
+          await admin
+            .from('fiscal_tarefas')
+            .update({ status: 'concluida', lancado_em: agora, concluida_em: agora, concluida_por: user.id, atualizada_em: agora })
+            .in('id', semBoleto.map(t => t.id))
+        }
 
-        if (boletoRegistros.length) {
-          await admin.from('cp_lancamentos').insert(boletoRegistros)
-          boletosEnviados = boletoRegistros.length
+        if (comBoleto.length) {
+          await admin
+            .from('fiscal_tarefas')
+            .update({ status: 'boleto_pendente', lancado_em: agora, atualizada_em: agora })
+            .in('id', comBoleto.map(t => t.id))
         }
 
         concluidasStep1 = concluir.length
@@ -174,7 +169,6 @@ export async function POST(_req: NextRequest) {
     return NextResponse.json({
       importadas,
       concluidas:         concluidasStep1 + concluidasStep2,
-      boletos_enviados:   boletosEnviados,
       concluidas_step1:   concluidasStep1,
       concluidas_step2:   concluidasStep2,
       desconhecidas_auto: desconhecidasAuto,

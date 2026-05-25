@@ -16,7 +16,7 @@ import {
   Plus, Pencil, Trash2, Loader2, ShieldCheck, Users, CheckCircle2,
   XCircle, Lock, LayoutDashboard, Building2, MapPin, ClipboardList,
   Globe, Monitor, Banknote, FileBarChart2, Megaphone, Search,
-  CreditCard, ChevronDown, ChevronUp, RotateCcw,
+  CreditCard, ChevronDown, ChevronUp, RotateCcw, Package,
 } from 'lucide-react'
 import type { PerfilPermissoes, Role } from '@/types/database.types'
 
@@ -182,6 +182,18 @@ const PERM_GRUPOS = [
       { label: 'Criar ações de Marketing',        key: 'marketing.create_acao' },
       { label: 'Conciliação de Marketing',        key: 'marketing.conciliacao' },
       { label: 'Configurações de Marketing',      key: 'marketing.config' },
+    ],
+  },
+  {
+    label: 'Estoque / Uso e Consumo',
+    icon: Package,
+    color: 'text-lime-600 bg-lime-50',
+    items: [
+      { label: 'Ver Estoque (Compras)',            key: 'estoque.view' },
+      { label: 'Fazer Contagem de Estoque',        key: 'estoque.contagem' },
+      { label: 'Ver Uso e Consumo',                key: 'uso_consumo.view' },
+      { label: 'Lançar movimentos (Uso e Consumo)', key: 'uso_consumo.lancar' },
+      { label: 'Gerenciar produtos (Uso e Consumo)', key: 'uso_consumo.produtos' },
     ],
   },
   {

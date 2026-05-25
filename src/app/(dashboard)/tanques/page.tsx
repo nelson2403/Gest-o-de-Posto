@@ -401,6 +401,7 @@ export default function TanquesPage() {
   const [medicoes,      setMedicoes]      = useState<Record<string, string>>({})
   const [loading,       setLoading]       = useState(true)
   const [saving,        setSaving]        = useState(false)
+  const [bloqueiosPend, setBloqueiosPend] = useState<string[]>([])
   const [viewMode,      setViewMode]      = useState<'geral' | 'detalhe' | 'historico' | 'admin'>(isGerente ? 'detalhe' : 'geral')
   const [filtroBaixo,   setFiltroBaixo]   = useState(false)
   const [historico,     setHistorico]     = useState<HistoricoData | null>(null)
@@ -547,69 +548,16 @@ export default function TanquesPage() {
       .finally(() => setLoadingVendas(false))
   }, [viewMode, postoFiltro, data])
 
-  async function salvar() {
+  async function executarSalvamento() {
     if (!postoFiltro) return
     const tanquesAtual = porPosto[postoFiltro] ?? []
-
-    // ── Validação de segurança ────────────────────────────────────────────────
-    {
-      const bloqueios: string[] = []
-
-      for (const t of tanquesAtual) {
-        const raw = medicoes[t.id]
-        if (!raw || raw === '') continue
-
-        const digitado   = parseInt(raw, 10)
-        const produtoKey = t.produto === 'E.T' ? 'ETANOL' : t.produto
-        const segDado    = vendasSeg?.medidasAnteriores.find(m => m.tanque_id === t.id)
-        const medAnt     = segDado?.medida_anterior ?? null
-
-        // Sem referência de ontem → não bloqueia (primeiro dia)
-        if (medAnt === null) continue
-
-        // Abastecimento: medida subiu → não bloqueia
-        if (digitado > medAnt + 200) continue
-
-        const litrosVend = vendasSeg?.vendas.find(v => v.produto === produtoKey)?.litros ?? null
-
-        if (litrosVend !== null) {
-          // Com dados AUTOSYSTEM: valida contra esperado real
-          const medEsperada = Math.max(0, medAnt - litrosVend)
-          const tolerancia  = Math.max(500, medEsperada * 0.10)
-          const desvio      = Math.abs(digitado - medEsperada)
-          if (desvio > tolerancia) {
-            bloqueios.push(
-              `${t.produto}: informado ${fmtL(digitado)}L, esperado ~${fmtL(Math.round(medEsperada))}L (desvio ${fmtL(Math.round(desvio))}L)`
-            )
-          }
-        } else {
-          // Sem dados AUTOSYSTEM: heurística — queda > 40% de ontem é suspeita
-          const queda        = medAnt - digitado
-          const quedaMaxima  = Math.max(medAnt * 0.40, 1000)
-          if (queda > quedaMaxima) {
-            bloqueios.push(
-              `${t.produto}: queda de ${fmtL(Math.round(queda))}L em relação a ontem (${fmtL(medAnt)}L → ${fmtL(digitado)}L)`
-            )
-          }
-        }
-      }
-
-      if (bloqueios.length > 0) {
-        toast({
-          variant: 'destructive',
-          title: `Salvamento bloqueado — ${bloqueios.length} desvio${bloqueios.length > 1 ? 's' : ''} detectado${bloqueios.length > 1 ? 's' : ''}`,
-          description: bloqueios.join(' | '),
-        })
-        return
-      }
-    }
-
     const payload = tanquesAtual.map(t => ({
       tanque_id:     t.id,
       posto_nome:    t.posto_nome,
       medida_litros: medicoes[t.id] !== undefined && medicoes[t.id] !== ''
         ? parseInt(medicoes[t.id], 10) : null,
     }))
+    setBloqueiosPend([])
     setSaving(true)
     try {
       const res = await fetch('/api/tanques/medicoes', {
@@ -627,6 +575,47 @@ export default function TanquesPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  async function salvar() {
+    if (!postoFiltro) return
+    const tanquesAtual = porPosto[postoFiltro] ?? []
+
+    // ── Validação de segurança ─────────────────────────────────────────────
+    const alertas: string[] = []
+    for (const t of tanquesAtual) {
+      const raw = medicoes[t.id]
+      if (!raw || raw === '') continue
+      const digitado   = parseInt(raw, 10)
+      const produtoKey = t.produto === 'E.T' ? 'ETANOL' : t.produto
+      const segDado    = vendasSeg?.medidasAnteriores.find(m => m.tanque_id === t.id)
+      const medAnt     = segDado?.medida_anterior ?? null
+      if (medAnt === null) continue
+      if (digitado > medAnt + 200) continue
+      const litrosVend = vendasSeg?.vendas.find(v => v.produto === produtoKey)?.litros ?? null
+      if (litrosVend !== null) {
+        const medEsperada = Math.max(0, medAnt - litrosVend)
+        const tolerancia  = Math.max(500, medEsperada * 0.10)
+        const desvio      = Math.abs(digitado - medEsperada)
+        if (desvio > tolerancia) {
+          alertas.push(`${t.produto}: informado ${fmtL(digitado)}L, esperado ~${fmtL(Math.round(medEsperada))}L (desvio ${fmtL(Math.round(desvio))}L)`)
+        }
+      } else {
+        const queda       = medAnt - digitado
+        const quedaMaxima = Math.max(medAnt * 0.40, 1000)
+        if (queda > quedaMaxima) {
+          alertas.push(`${t.produto}: queda de ${fmtL(Math.round(queda))}L em relação a ontem (${fmtL(medAnt)}L → ${fmtL(digitado)}L)`)
+        }
+      }
+    }
+
+    if (alertas.length > 0) {
+      // Mostra confirmação — gerente decide se salva mesmo assim
+      setBloqueiosPend(alertas)
+      return
+    }
+
+    await executarSalvamento()
   }
 
   function goToDay(posto: string, dia: string) {
@@ -1092,6 +1081,42 @@ export default function TanquesPage() {
               <div className="text-center py-12 text-gray-400 text-sm">Nenhum tanque cadastrado para este posto.</div>
             ) : (
               <>
+              {/* ── Modal de confirmação de desvio ──────────────────────── */}
+              {bloqueiosPend.length > 0 && (
+                <div className="border border-amber-300 bg-amber-50 rounded-xl p-4 space-y-3">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[13px] font-bold text-amber-800">Atenção — desvio{bloqueiosPend.length > 1 ? 's' : ''} detectado{bloqueiosPend.length > 1 ? 's' : ''}</p>
+                      <p className="text-[12px] text-amber-700 mt-0.5">Verifique os valores abaixo. Se estiver correto (ex: rodagem, manutenção, limpeza), confirme para salvar.</p>
+                    </div>
+                  </div>
+                  <ul className="space-y-1">
+                    {bloqueiosPend.map((msg, i) => (
+                      <li key={i} className="text-[12px] text-amber-900 bg-amber-100 rounded-lg px-3 py-1.5 font-medium">
+                        ⚠ {msg}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => setBloqueiosPend([])}
+                      className="flex-1 py-2 rounded-lg border border-amber-300 text-[13px] font-medium text-amber-800 hover:bg-amber-100 transition-colors"
+                    >
+                      Corrigir valores
+                    </button>
+                    <button
+                      onClick={executarSalvamento}
+                      disabled={saving}
+                      className="flex-1 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[13px] font-semibold disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      Confirmar e Salvar
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {loadingVendas && (
                 <div className="flex items-center gap-2 text-[11px] text-gray-400">
                   <Loader2 className="w-3 h-3 animate-spin" /> Carregando referência de segurança…

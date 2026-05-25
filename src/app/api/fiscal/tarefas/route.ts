@@ -27,6 +27,12 @@ export async function GET(req: NextRequest) {
 
     if (status === 'abertas') {
       query = query.not('status', 'in', '(concluida,desconhecida)')
+    } else if (status === 'nf_anexada') {
+      // NFs já enviadas pelo gerente mas ainda não concluídas do lado fiscal
+      query = query.in('status', ['aguardando_fiscal', 'boleto_pendente']).not('nf_url', 'is', null)
+    } else if (status === 'concluidas_com_nf') {
+      // Tarefas concluídas que possuem NF anexada pelo gerente
+      query = query.eq('status', 'concluida').not('nf_url', 'is', null)
     } else if (status) {
       query = query.eq('status', status)
     } else {
@@ -73,13 +79,27 @@ export async function POST(req: NextRequest) {
       status:           'pendente_gerente',
     }))
 
+    // Filtra grids já existentes para evitar duplicatas
+    const grids = registros.map(r => r.nfe_resumo_grid).filter(Boolean)
+    let gridsExistentes = new Set<string>()
+    if (grids.length) {
+      const { data: existentes } = await supabase
+        .from('fiscal_tarefas')
+        .select('nfe_resumo_grid')
+        .in('nfe_resumo_grid', grids)
+      gridsExistentes = new Set((existentes ?? []).map((t: any) => String(t.nfe_resumo_grid)))
+    }
+    const novos = registros.filter(r => !r.nfe_resumo_grid || !gridsExistentes.has(String(r.nfe_resumo_grid)))
+
+    if (!novos.length) return NextResponse.json({ criadas: 0, ignoradas: registros.length })
+
     const { data, error } = await supabase
       .from('fiscal_tarefas')
-      .insert(registros)
+      .insert(novos)
       .select()
 
     if (error) throw error
-    return NextResponse.json({ criadas: data?.length ?? 0 })
+    return NextResponse.json({ criadas: data?.length ?? 0, ignoradas: registros.length - (data?.length ?? 0) })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }

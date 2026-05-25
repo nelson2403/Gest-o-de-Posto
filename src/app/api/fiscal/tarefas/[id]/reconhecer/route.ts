@@ -31,16 +31,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const { data: tarefa, error: errTarefa } = await supabase
       .from('fiscal_tarefas')
-      .select('valor_as, status')
+      .select('valor_as, status, nf_url')
       .eq('id', id)
       .single()
 
     if (errTarefa || !tarefa) {
       return NextResponse.json({ error: 'Tarefa não encontrada' }, { status: 404 })
     }
-    if (tarefa.status === 'concluida' || tarefa.status === 'desconhecida') {
-      return NextResponse.json({ error: 'Tarefa já encerrada' }, { status: 400 })
+    if (tarefa.status === 'desconhecida') {
+      return NextResponse.json({ error: 'Tarefa já encerrada como desconhecida' }, { status: 400 })
     }
+    // Tarefa concluída COM NF já anexada: bloqueia para não sobrescrever
+    if (tarefa.status === 'concluida' && tarefa.nf_url) {
+      return NextResponse.json({ error: 'Tarefa já encerrada e documentos já anexados' }, { status: 400 })
+    }
+    // Tarefa concluída SEM NF: permite anexar os documentos mas mantém status concluida
+    const manterConcluida = tarefa.status === 'concluida'
 
     // Valida valor da NF vs AS com tolerância de R$ 0,10
     const diferenca = Math.abs(Number(nf_valor_informado) - Number(tarefa.valor_as))
@@ -66,7 +72,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const camposBase = {
       acao_gerente:         'reconhecida',
-      status:               'aguardando_fiscal',
+      // Se a tarefa já foi concluída pelo sync do AUTOSYSTEM, mantém o status — só salva os documentos
+      ...(manterConcluida ? {} : { status: 'aguardando_fiscal' }),
       gerente_respondeu_em: agora,
 
       nf_url,

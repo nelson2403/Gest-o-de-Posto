@@ -6,7 +6,7 @@ import {
   Building2, ChevronDown, ChevronUp,
   RefreshCw, Filter, ThumbsUp, ThumbsDown,
   Loader2, Paperclip, Eye, AlertCircle,
-  Package, Plus, Trash2,
+  Package, Plus, Trash2, Send,
 } from 'lucide-react'
 import { useAuthContext } from '@/contexts/AuthContext'
 import { toast } from '@/hooks/use-toast'
@@ -26,11 +26,12 @@ const TURNOS_CAIXA = ['1° Turno', '2° Turno', '3° Turno']
 
 // ─── Config de status ─────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  pendente_gerente:  { label: 'Pend. Gerente',  color: 'text-yellow-700', bg: 'bg-yellow-100' },
-  nf_rejeitada:      { label: 'NF Rejeitada',   color: 'text-red-700',    bg: 'bg-red-100'    },
-  aguardando_fiscal: { label: 'Aguard. Fiscal', color: 'text-blue-700',   bg: 'bg-blue-100'   },
-  desconhecida:      { label: 'Desconhecida',   color: 'text-orange-700', bg: 'bg-orange-100' },
-  concluida:         { label: 'Concluída',       color: 'text-green-700',  bg: 'bg-green-100'  },
+  pendente_gerente:  { label: 'Pend. Gerente',   color: 'text-yellow-700', bg: 'bg-yellow-100' },
+  nf_rejeitada:      { label: 'NF Rejeitada',    color: 'text-red-700',    bg: 'bg-red-100'    },
+  aguardando_fiscal: { label: 'Aguard. Fiscal',  color: 'text-blue-700',   bg: 'bg-blue-100'   },
+  boleto_pendente:   { label: 'Boleto Pendente', color: 'text-purple-700', bg: 'bg-purple-100' },
+  desconhecida:      { label: 'Desconhecida',    color: 'text-orange-700', bg: 'bg-orange-100' },
+  concluida:         { label: 'Concluída',        color: 'text-green-700',  bg: 'bg-green-100'  },
 }
 
 function fmt(v: number | null | undefined) {
@@ -833,6 +834,23 @@ function TarefaRow({
   const [aberto,            setAberto]            = useState(false)
   const [showReconhecer,    setShowReconhecer]    = useState(false)
   const [showDesconhecer,   setShowDesconhecer]   = useState(false)
+  const [enviandoBoleto,    setEnviandoBoleto]    = useState(false)
+
+  async function enviarBoletoAoCP() {
+    if (!confirm('Confirma o envio do(s) boleto(s) para o Contas a Pagar?')) return
+    setEnviandoBoleto(true)
+    try {
+      const res  = await fetch(`/api/fiscal/tarefas/${t.id}/enviar-boleto`, { method: 'PATCH' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      toast({ title: `Boleto enviado ao CP!`, description: `${json.boletos_enviados} boleto(s) registrado(s).` })
+      onAtualizar()
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Erro', description: e.message })
+    } finally {
+      setEnviandoBoleto(false)
+    }
+  }
 
   const cfg = STATUS_CONFIG[t.status] ?? STATUS_CONFIG.pendente_gerente
 
@@ -855,6 +873,11 @@ function TarefaRow({
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-sm font-mono font-bold text-gray-900 hidden xs:block">{fmt(t.valor_as)}</span>
+            {t.nf_url && !aberto && (
+              <span title="NF anexada pelo gerente" className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-100 text-indigo-600 text-[10px] font-semibold">
+                <Paperclip className="w-2.5 h-2.5" /> NF
+              </span>
+            )}
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.bg} ${cfg.color}`}>
               {cfg.label}
             </span>
@@ -875,26 +898,71 @@ function TarefaRow({
             </div>
 
             {/* Documentos anexados */}
-            {(t.nf_url || t.boleto_url) && (
-              <div className="flex flex-wrap gap-2">
-                {t.nf_url && (
-                  <a href={t.nf_url} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-medium hover:bg-indigo-100 transition-colors">
-                    <Paperclip className="w-3 h-3" /> NF
-                  </a>
-                )}
-                {t.boleto_url && (
-                  <a href={t.boleto_url} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-medium hover:bg-emerald-100 transition-colors">
-                    <Paperclip className="w-3 h-3" /> Boleto
-                  </a>
-                )}
-                {t.romaneio_url && (
-                  <a href={t.romaneio_url} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-50 border border-purple-200 text-purple-700 text-[11px] font-medium hover:bg-purple-100 transition-colors">
-                    <Paperclip className="w-3 h-3" /> Romaneio
-                  </a>
-                )}
+            {(() => {
+              const boletosArr: { url: string; vencimento?: string; valor?: number | null }[] =
+                t.boletos?.length
+                  ? t.boletos.filter((b: any) => b.url)
+                  : t.boleto_url
+                    ? [{ url: t.boleto_url, vencimento: t.boleto_vencimento, valor: t.boleto_valor }]
+                    : []
+              if (!t.nf_url && boletosArr.length === 0 && !t.romaneio_url) return null
+              return (
+                <div className="flex flex-wrap gap-2">
+                  {t.nf_url && (
+                    <a href={t.nf_url} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-medium hover:bg-indigo-100 transition-colors">
+                      <Paperclip className="w-3 h-3" /> NF
+                    </a>
+                  )}
+                  {boletosArr.map((b, i) => (
+                    <a key={i} href={b.url} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-medium hover:bg-emerald-100 transition-colors">
+                      <Paperclip className="w-3 h-3" />
+                      {boletosArr.length > 1 ? `Boleto ${i + 1}` : 'Boleto'}
+                    </a>
+                  ))}
+                  {t.romaneio_url && (
+                    <a href={t.romaneio_url} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-50 border border-purple-200 text-purple-700 text-[11px] font-medium hover:bg-purple-100 transition-colors">
+                      <Paperclip className="w-3 h-3" /> Romaneio
+                    </a>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Dados de descarregamento de combustível */}
+            {t.dados_combustivel && (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-semibold text-amber-700 flex items-center gap-1.5">
+                  Descarregamento de Combustível
+                </p>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-[12px]">
+                  {t.dados_combustivel.data_recebimento && (
+                    <div><p className="text-gray-400 text-[10px]">Data</p><p className="text-gray-800 font-medium">{fmtDate(t.dados_combustivel.data_recebimento)}</p></div>
+                  )}
+                  {t.dados_combustivel.hora && (
+                    <div><p className="text-gray-400 text-[10px]">Hora</p><p className="text-gray-800 font-medium">{t.dados_combustivel.hora}</p></div>
+                  )}
+                  {t.dados_combustivel.turno_caixa && (
+                    <div><p className="text-gray-400 text-[10px]">Turno</p><p className="text-gray-800 font-medium">{t.dados_combustivel.turno_caixa}</p></div>
+                  )}
+                  {t.dados_combustivel.motorista && (
+                    <div><p className="text-gray-400 text-[10px]">Motorista</p><p className="text-gray-800 font-medium">{t.dados_combustivel.motorista}</p></div>
+                  )}
+                  {t.dados_combustivel.quem_recebeu && (
+                    <div><p className="text-gray-400 text-[10px]">Recebido por</p><p className="text-gray-800 font-medium">{t.dados_combustivel.quem_recebeu}</p></div>
+                  )}
+                  {t.dados_combustivel.litragem_descarregada && (
+                    <div><p className="text-gray-400 text-[10px]">Litragem</p><p className="text-gray-800 font-medium">{Number(t.dados_combustivel.litragem_descarregada).toLocaleString('pt-BR')} L</p></div>
+                  )}
+                  {t.dados_combustivel.observacao && (
+                    <div className="col-span-2 sm:col-span-3">
+                      <p className="text-gray-400 text-[10px]">Observação</p>
+                      <p className="text-gray-800">{t.dados_combustivel.observacao}</p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -948,6 +1016,37 @@ function TarefaRow({
               <div className="flex items-center gap-2 text-[12px] text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <Clock className="w-4 h-4 shrink-0" />
                 Documentos enviados — aguardando lançamento no AUTOSYSTEM pelo Fiscal
+              </div>
+            )}
+
+            {t.status === 'boleto_pendente' && (
+              <div className="space-y-3">
+                <div className="flex items-start gap-2 text-[12px] text-purple-800 bg-purple-50 border border-purple-200 rounded-lg p-3">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-green-600 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">NF baixada no AUTOSYSTEM ✓</p>
+                    <p className="text-purple-700 mt-0.5">Boleto pendente de envio ao Contas a Pagar.</p>
+                    {t.boleto_vencimento && (
+                      <p className="mt-1 text-[11px] text-purple-600">
+                        Vencimento: <strong>{fmtDate(t.boleto_vencimento)}</strong>
+                        {t.boleto_valor ? <> · Valor: <strong>{fmt(t.boleto_valor)}</strong></> : null}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {canFiscal && (
+                  <button
+                    onClick={enviarBoletoAoCP}
+                    disabled={enviandoBoleto}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-[13px] font-semibold transition-colors"
+                  >
+                    {enviandoBoleto
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : <Send className="w-4 h-4" />
+                    }
+                    Enviar Boleto ao Contas a Pagar
+                  </button>
+                )}
               </div>
             )}
 
@@ -1088,11 +1187,14 @@ export default function FiscalTarefasPage() {
             ) : (
               <>
                 <option value="abertas">Em Aberto</option>
+                <option value="nf_anexada">NFs Anexadas pelos Gerentes</option>
+                <option value="boleto_pendente">Boleto Pendente (enviar ao CP)</option>
                 <option value="pendente_gerente">Pend. Gerente</option>
                 <option value="aguardando_fiscal">Aguardando Fiscal</option>
                 <option value="desconhecida">Desconhecidas</option>
                 <option value="nf_rejeitada">NF Rejeitada</option>
                 <option value="concluida">Concluídas</option>
+                <option value="concluidas_com_nf">Concluídas com NF Anexada</option>
                 <option value="">Todas</option>
               </>
             )}
