@@ -1,3 +1,5 @@
+'use client'
+
 import { LayoutDashboard } from 'lucide-react'
 import { PlaceholderPage } from './_components/PlaceholderPage'
 

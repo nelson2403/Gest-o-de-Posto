@@ -1,3 +1,5 @@
+'use client'
+
 import { FileText } from 'lucide-react'
 import { PlaceholderPage } from '../_components/PlaceholderPage'
 
