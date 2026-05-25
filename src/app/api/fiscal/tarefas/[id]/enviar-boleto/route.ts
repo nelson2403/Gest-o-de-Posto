@@ -70,17 +70,22 @@ export async function PATCH(_req: NextRequest, { params }: { params: Promise<{ i
 
     // Monta payload compatível com a migration 088 ou estado legado
     const updatePayload: Record<string, unknown> = {
-      concluida_por:      user.id,
-      boleto_enviado_em:  agora,
-      boleto_enviado_por: user.id,
-      atualizada_em:      agora,
+      concluida_por: user.id,
+      atualizada_em: agora,
     }
     if (migrationRodada) {
       updatePayload.boleto_status = 'enviado_cp'
     } else {
-      // Pré-migration: muda status de boleto_pendente para concluida
-      updatePayload.status      = 'concluida'
+      // Pré-migration 088: muda status de boleto_pendente para concluida
+      updatePayload.status       = 'concluida'
       updatePayload.concluida_em = agora
+    }
+
+    // Tenta adicionar campos de auditoria (existem após migration 089)
+    const { data: colCheck } = await admin.from('fiscal_tarefas').select('boleto_enviado_em').eq('id', id).single()
+    if (colCheck && 'boleto_enviado_em' in colCheck) {
+      updatePayload.boleto_enviado_em  = agora
+      updatePayload.boleto_enviado_por = user.id
     }
 
     const { data, error } = await admin
