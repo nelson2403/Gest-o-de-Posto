@@ -28,7 +28,7 @@ import type { Permission } from '@/lib/utils/permissions'
 
 type NavChild = { href: string; label: string; icon: React.ElementType; permission: Permission | null; hideForRoles?: Role[] }
 type NavItem  = { href?: string; label: string; icon: React.ElementType; permission: Permission | null; children?: NavChild[]; divider?: boolean; hideForRoles?: Role[] }
-type NavGroup = { label: string; items: NavItem[] }
+type NavGroup = { label: string; items: NavItem[]; onlyForRoles?: Role[] }
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
 
@@ -115,6 +115,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'Comissionamento',
+    onlyForRoles: ['master'],
     items: [
       { href: '/comissionamento',            label: 'Dashboard',  icon: LayoutDashboard, permission: null },
       { href: '/comissionamento/membros',    label: 'Membros',    icon: Users,           permission: null },
@@ -455,6 +456,7 @@ export function Topbar() {
         {/* Nav groups — desktop */}
         <nav ref={navRef} className="hidden md:flex items-center gap-0 flex-1 min-w-0">
           {NAV_GROUPS.map(group => {
+            if (group.onlyForRoles && (!role || !group.onlyForRoles.includes(role))) return null
             const visibleItems = group.items.filter(i => {
               const permOk = !i.permission || canUser(i.permission)
               const roleOk = !i.hideForRoles || !role || !i.hideForRoles.includes(role)
@@ -682,6 +684,7 @@ export function Topbar() {
                 </Link>
               )}
               {NAV_GROUPS.map(group => {
+                if (group.onlyForRoles && (!role || !group.onlyForRoles.includes(role))) return null
                 const visibleItems = group.items.filter(i =>
                   (!i.permission || canUser(i.permission)) &&
                   (!i.hideForRoles || !role || !i.hideForRoles.includes(role))
