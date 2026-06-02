@@ -38,6 +38,7 @@ export default function DivergenciasPage() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
   const [selecionada, setSelecionada] = useState<DivergenciaItem | null>(null)
+  const [filtroConciliador, setFiltroConciliador] = useState<string>('todos')
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -61,10 +62,23 @@ export default function DivergenciasPage() {
     carregar()
   }, [carregar])
 
-  const urgentes = divergencias.filter(d => d.prioridade === 'urgente')
-  const altas = divergencias.filter(d => d.prioridade === 'alta')
-  const medias = divergencias.filter(d => d.prioridade === 'media')
-  const resolvidas = divergencias.filter(d => d.extrato_status === 'ok')
+  // Obter lista única de conciliadores
+  const conciliadores = Array.from(
+    new Set(divergencias
+      .map(d => d.conciliador_responsavel)
+      .filter((c): c is string => c != null)
+    )
+  ).sort()
+
+  // Filtrar por conciliador selecionado
+  const divergenciasFiltradas = filtroConciliador === 'todos'
+    ? divergencias
+    : divergencias.filter(d => d.conciliador_responsavel === filtroConciliador)
+
+  const urgentes = divergenciasFiltradas.filter(d => d.prioridade === 'urgente')
+  const altas = divergenciasFiltradas.filter(d => d.prioridade === 'alta')
+  const medias = divergenciasFiltradas.filter(d => d.prioridade === 'media')
+  const resolvidas = divergenciasFiltradas.filter(d => d.extrato_status === 'ok')
 
   return (
     <div className="p-4 md:p-6 space-y-5">
@@ -77,18 +91,32 @@ export default function DivergenciasPage() {
           <div>
             <h1 className="text-[15px] md:text-[17px] font-bold text-gray-900">Divergências — Conciliação</h1>
             <p className="text-[11px] text-gray-400 mt-0.5">
-              {loading ? 'Carregando...' : `${divergencias.length} divergência${divergencias.length !== 1 ? 's' : ''}`}
+              {loading ? 'Carregando...' : `${divergenciasFiltradas.length} de ${divergencias.length} divergência${divergencias.length !== 1 ? 's' : ''}`}
             </p>
           </div>
         </div>
-        <button
-          onClick={carregar}
-          disabled={loading}
-          className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 rounded-lg text-[13px] text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          {conciliadores.length > 0 && (
+            <select
+              value={filtroConciliador}
+              onChange={(e) => setFiltroConciliador(e.target.value)}
+              className="h-9 px-3 border border-gray-200 rounded-lg text-[13px] text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="todos">Todos os conciliadores</option>
+              {conciliadores.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          )}
+          <button
+            onClick={carregar}
+            disabled={loading}
+            className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 rounded-lg text-[13px] text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </button>
+        </div>
       </div>
 
       {/* Erro */}
