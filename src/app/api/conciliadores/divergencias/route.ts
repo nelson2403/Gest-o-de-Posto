@@ -14,6 +14,7 @@ export interface DivergenciaItem {
   extrato_movimento:         number | null
   extrato_saldo_externo:     number | null
   usuario_atribuido:         string | null
+  conciliador_responsavel:   string | null
   prioridade:                string
   dias_pendente:             number
   extrato_status:            string
@@ -58,6 +59,19 @@ export async function GET(req: NextRequest) {
 
   try {
     const admin = createAdminClient()
+
+    // Busca mapa de posto_id -> conciliador (nome) para exibir responsáveis
+    const { data: atribuicoes } = await admin
+      .from('usuario_postos_fechamento')
+      .select('posto_id, usuario:usuarios(id, nome)')
+
+    const postoParaConciliador: Record<string, string> = {}
+    for (const attr of atribuicoes ?? []) {
+      const usuario = (attr as any).usuario
+      if (usuario?.nome) {
+        postoParaConciliador[attr.posto_id] = usuario.nome
+      }
+    }
 
     // Busca tarefas de conciliação com divergências
     // Prioridade: 1) Divergentes agora, 2) Resolvidas recentemente, 3) Pendentes há mais dias
@@ -115,6 +129,7 @@ export async function GET(req: NextRequest) {
               : 'alta'
             : 'media'
 
+        const postoId = t.posto_id as string
         return {
           id: t.id as string,
           titulo: t.titulo as string,
@@ -127,6 +142,7 @@ export async function GET(req: NextRequest) {
           extrato_movimento: t.extrato_movimento as number | null,
           extrato_saldo_externo: t.extrato_saldo_externo as number | null,
           usuario_atribuido: (t.usuario_atribuido as any)?.nome ?? null,
+          conciliador_responsavel: postoParaConciliador[postoId] ?? null,
           prioridade,
           dias_pendente: diasPendente,
           extrato_status: t.extrato_status as string,
