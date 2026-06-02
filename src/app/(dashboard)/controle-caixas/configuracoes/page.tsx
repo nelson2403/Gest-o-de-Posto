@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
 import { useAuthContext } from '@/contexts/AuthContext'
 import { can } from '@/lib/utils/permissions'
@@ -99,6 +100,20 @@ export default function ControleCaixasConfigPage() {
       <Header title="Configuração de Postos" description="Vincule cada posto ao banco externo" />
 
       <div className="p-3 md:p-6 space-y-5 max-w-3xl">
+
+        {/* Atalho para configuração de motivos */}
+        <Link
+          href="/controle-caixas/configuracoes/motivos"
+          className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-5 py-4 shadow-sm hover:border-orange-300 hover:bg-orange-50/30 transition-colors"
+        >
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-gray-800">Motivos de Pagamento</p>
+            <p className="text-xs text-gray-500 mt-0.5">Atribua cada forma de pagamento (PROFROTA, PIX, STONE...) ao grupo correto do fechamento de caixa</p>
+          </div>
+          <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </Link>
 
         {loading ? (
           <div className="space-y-3 animate-pulse">

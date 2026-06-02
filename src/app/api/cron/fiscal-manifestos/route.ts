@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buscarNfeManifestos } from '@/lib/autosystem'
 
-const CRON_SECRET = process.env.CRON_SECRET ?? 'cron-interno-gestao'
+const CRON_SECRET = process.env.CRON_SECRET
 
 // Busca NFs dos últimos N dias no AS e cria tarefas fiscais automaticamente
 export async function POST(req: NextRequest) {
+  if (!CRON_SECRET) return NextResponse.json({ error: 'CRON_SECRET não configurado' }, { status: 500 })
   const secret = req.headers.get('x-cron-secret')
   if (secret !== CRON_SECRET) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })

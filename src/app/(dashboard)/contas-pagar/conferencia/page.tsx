@@ -9,9 +9,9 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils/cn'
 import {
   Loader2, RefreshCw, AlertTriangle, Database, ChevronRight, ChevronDown,
-  Building2, CheckCircle2, Search, Printer,
+  Building2, CheckCircle2, Search, Printer, Paperclip,
 } from 'lucide-react'
-import type { TituloASEmpresa } from '@/app/api/contas-pagar/titulos-as-empresas/route'
+import type { TituloASEmpresa, BoletoFiscal } from '@/app/api/contas-pagar/titulos-as-empresas/route'
 
 function fmtBRL(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -25,6 +25,52 @@ const SITUACAO_CFG: Record<string, { label: string; cls: string }> = {
   a_vencer:  { label: 'A Vencer',  cls: 'bg-blue-100 text-blue-700 border-blue-200' },
   em_atraso: { label: 'Em Atraso', cls: 'bg-red-100 text-red-700 border-red-200' },
   pago:      { label: 'Pago',      cls: 'bg-green-100 text-green-700 border-green-200' },
+}
+
+const BOLETO_STATUS_CFG: Record<string, { label: string; cls: string }> = {
+  pendente:   { label: 'Pendente',    cls: 'bg-yellow-100 text-yellow-700' },
+  em_analise: { label: 'Em Análise',  cls: 'bg-blue-100 text-blue-700' },
+  aprovado:   { label: 'Aprovado',    cls: 'bg-emerald-100 text-emerald-700' },
+}
+
+function BoletosFiscaisSection({ boletos }: { boletos: BoletoFiscal[] }) {
+  if (!boletos.length) return null
+  return (
+    <div className="mt-3 pt-3 border-t border-indigo-100">
+      <p className="text-[10.5px] font-semibold uppercase tracking-wide text-indigo-600 mb-2 flex items-center gap-1.5">
+        <Paperclip className="w-3 h-3" /> Boletos Fiscais ({boletos.length})
+      </p>
+      <div className="space-y-1.5">
+        {boletos.map(b => {
+          const cfg = BOLETO_STATUS_CFG[b.status]
+          return (
+            <div key={b.id} className="flex items-center gap-2 flex-wrap bg-indigo-50/60 border border-indigo-100 rounded-lg px-3 py-1.5 text-[12px]">
+              <span className="flex-1 text-gray-700 min-w-0 truncate">{b.fornecedor ?? b.titulo}</span>
+              {b.valor != null && (
+                <span className="font-mono font-semibold text-gray-800 whitespace-nowrap">{fmtBRL(b.valor)}</span>
+              )}
+              {b.data_vencimento && (
+                <span className="text-gray-500 whitespace-nowrap">vence {fmtDate(b.data_vencimento)}</span>
+              )}
+              {cfg && (
+                <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap', cfg.cls)}>
+                  {cfg.label}
+                </span>
+              )}
+              {b.arquivo_url ? (
+                <a href={b.arquivo_url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-medium text-[11px] whitespace-nowrap">
+                  <Paperclip className="w-3 h-3" /> Ver PDF
+                </a>
+              ) : (
+                <span className="text-[11px] text-gray-300 whitespace-nowrap">Sem arquivo</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 export default function ConferenciaPage() {
@@ -413,6 +459,11 @@ export default function ConferenciaPage() {
                                     {e.qt_em_atraso} em atraso
                                   </Badge>
                                 )}
+                                {(e.boletos_fiscais?.length ?? 0) > 0 && (
+                                  <Badge variant="outline" className="ml-1 text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200 print:hidden flex items-center gap-0.5">
+                                    <Paperclip className="w-2.5 h-2.5" /> {e.boletos_fiscais.length} boleto{e.boletos_fiscais.length !== 1 ? 's' : ''}
+                                  </Badge>
+                                )}
                               </div>
                             </td>
                             <td className="px-3 py-2.5 text-right tabular-nums font-bold text-gray-800 print:px-2 print:py-1 whitespace-nowrap">
@@ -427,6 +478,11 @@ export default function ConferenciaPage() {
                             <tr>
                               <td colSpan={3} className="p-0 bg-gray-50/50 border-b border-gray-100 print:bg-transparent">
                                 <div className="px-4 py-3 print:px-0 print:py-1">
+                                  {(e.boletos_fiscais?.length ?? 0) > 0 && (
+                                    <div className="mb-3 print:hidden">
+                                      <BoletosFiscaisSection boletos={e.boletos_fiscais} />
+                                    </div>
+                                  )}
                                   <table className="w-full text-[12.5px] print:text-[8pt] print:table-fixed">
                                     <thead>
                                       <tr className="border-b border-gray-200 text-[10.5px] text-gray-400 uppercase tracking-wide print:text-[7.5pt] print:text-gray-600">

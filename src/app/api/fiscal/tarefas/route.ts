@@ -35,6 +35,9 @@ export async function GET(req: NextRequest) {
       query = query.eq('status', 'concluida').eq('boleto_status', 'pendente')
     } else if (status === 'concluidas_com_nf') {
       query = query.eq('status', 'concluida').not('nf_url', 'is', null)
+    } else if (status === 'pendente_gerente') {
+      // Inclui nf_rejeitada junto com pendente_gerente para o gerente ver tudo que precisa de ação
+      query = query.in('status', ['pendente_gerente', 'nf_rejeitada'])
     } else if (status) {
       query = query.eq('status', status)
     } else {
@@ -51,7 +54,22 @@ export async function GET(req: NextRequest) {
       if (posto_id) query = query.eq('posto_id', posto_id)
     }
 
-    const { data, error } = await query
+    let { data, error } = await query
+
+    // Se a coluna boleto_status ainda não existe (migration 088 não rodada),
+    // faz fallback para o status legado boleto_pendente
+    if (error && (error.message?.includes('boleto_status') || (error as any).code === '42703')) {
+      if (status === 'boleto_pendente') {
+        const { data: fallback, error: e2 } = await supabase
+          .from('fiscal_tarefas')
+          .select('*, postos(nome)')
+          .eq('status', 'boleto_pendente')
+          .order('criada_em', { ascending: false })
+        if (e2) throw e2
+        data  = fallback
+        error = null
+      }
+    }
     if (error) throw error
     return NextResponse.json(data)
   } catch (e: any) {

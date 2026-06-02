@@ -18,6 +18,12 @@ export interface DreRow {
 }
 
 export async function GET(req: NextRequest) {
+  // Auth guard
+  const { createClient } = await import('@/lib/supabase/server')
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+
   const { searchParams } = req.nextUrl
   const dataInicio = searchParams.get('dataInicio') ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)
   const dataFim    = searchParams.get('dataFim')    ?? new Date().toISOString().slice(0, 10)

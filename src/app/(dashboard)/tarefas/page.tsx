@@ -72,6 +72,34 @@ const EMPTY_FORM = {
 
 // ─── Helper ────────────────────────────────────────────────────────────────────
 
+const BANCO_BADGE: Record<string, string> = {
+  sicoob:    'bg-green-100 text-green-800 border-green-300',
+  stone:     'bg-cyan-100 text-cyan-800 border-cyan-300',
+  santander: 'bg-red-100 text-red-800 border-red-300',
+  banestes:  'bg-orange-100 text-orange-800 border-orange-300',
+  bradesco:  'bg-red-100 text-red-800 border-red-300',
+  itau:      'bg-orange-100 text-orange-800 border-orange-300',
+  caixa:     'bg-blue-100 text-blue-800 border-blue-300',
+  bb:        'bg-yellow-100 text-yellow-800 border-yellow-300',
+}
+
+function TituloConciliacao({ titulo }: { titulo: string }) {
+  const match = titulo.match(/^Conciliação (.+?) — (.+)$/)
+  if (!match) return <p className="font-semibold text-gray-800 text-[13px] leading-snug">{titulo}</p>
+  const banco = match[1]
+  const posto = match[2]
+  const key   = banco.toLowerCase().replace(/\s+/g, '')
+  const badge = BANCO_BADGE[key] ?? 'bg-gray-100 text-gray-700 border-gray-300'
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full border tracking-wide uppercase', badge)}>
+        {banco}
+      </span>
+      <span className="font-semibold text-gray-800 text-[13px] leading-snug">{posto}</span>
+    </div>
+  )
+}
+
 function isOverdue(tarefa: Tarefa): boolean {
   if (!tarefa.data_conclusao_prevista) return false
   if (tarefa.status === 'concluido' || tarefa.status === 'cancelado') return false
@@ -776,8 +804,13 @@ export default function TarefasPage() {
                                 <div className="flex items-start gap-2">
                                   {overdue && <span title="Tarefa atrasada"><AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" /></span>}
                                   <div className="min-w-0">
-                                    <p className="font-medium text-gray-800 leading-snug">{t.titulo}</p>
-                                    {t.descricao && <p className="text-[11px] text-gray-400 mt-0.5">{t.descricao}</p>}
+                                    {t.categoria === 'conciliacao_bancaria'
+                                      ? <TituloConciliacao titulo={t.titulo} />
+                                      : <p className="font-medium text-gray-800 leading-snug">{t.titulo}</p>
+                                    }
+                                    {t.descricao && t.categoria !== 'conciliacao_bancaria' && (
+                                      <p className="text-[11px] text-gray-400 mt-0.5">{t.descricao}</p>
+                                    )}
                                   </div>
                                 </div>
                               </td>

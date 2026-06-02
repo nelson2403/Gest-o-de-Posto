@@ -25,7 +25,22 @@ export async function middleware(request: NextRequest) {
   )
 
   const { pathname } = request.nextUrl
-  const publicRoutes = ['/login', '/auth/callback', '/api/cron/']
+  // Rotas públicas: apenas endpoints que PRECISAM funcionar sem sessão Supabase.
+  // /api/caixa/login e /api/caixa/setup-pin usam auth própria (PIN hash).
+  // Os demais endpoints /api/caixa/* têm validarSessao() interno, mas precisam
+  // do prefixo aqui porque o app de caixa não envia cookies Supabase.
+  const publicRoutes = [
+    '/login',
+    '/auth/callback',
+    '/api/cron/',
+    '/api/caixa/login',
+    '/api/caixa/setup-pin',
+    '/api/caixa/dados',
+    '/api/caixa/salvar',
+    '/api/caixa/config',
+    '/api/caixa/frentistas',
+    '/caixa',
+  ]
   const publicFiles  = ['/manifest.json', '/robots.txt', '/sitemap.xml']
   const isPublic = publicRoutes.some((r) => pathname.startsWith(r)) || publicFiles.includes(pathname)
 
@@ -36,9 +51,19 @@ export async function middleware(request: NextRequest) {
   // continua navegando, mas as APIs retornam 401.
   let user = null
   try {
-    const { data } = await supabase.auth.getUser()
+    const getUserWithTimeout = Promise.race([
+      supabase.auth.getUser(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
+    ])
+    const { data } = await getUserWithTimeout as Awaited<ReturnType<typeof supabase.auth.getUser>>
     user = data.user ?? null
   } catch {
+    // Supabase indisponível ou timeout
+    // Para APIs protegidas: retorna 503 para evitar exposição de dados
+    // Para páginas públicas: permite passar
+    if (pathname.startsWith('/api/') && !isPublic) {
+      return NextResponse.json({ error: 'Serviço indisponível' }, { status: 503 })
+    }
     return supabaseResponse
   }
 

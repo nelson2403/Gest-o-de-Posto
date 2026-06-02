@@ -13,7 +13,7 @@ import {
   ArrowLeftRight, Eye, EyeOff, X, ChevronDown,
   PackageSearch, Truck, CalendarDays, ShoppingCart, Menu,
   Bell, Sun, Moon, CheckCheck, Scale, Banknote, Hash,
-  Target, Calculator,
+  Target, Calculator, AlertTriangle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { useAuthContext } from '@/contexts/AuthContext'
@@ -57,6 +57,7 @@ const NAV_GROUPS: NavGroup[] = [
         children: [
           { href: '/perfis',                        label: 'Perfis de Acesso',         icon: ShieldCheck, permission: 'usuarios.edit' as Permission },
           { href: '/controle-caixas/configuracoes', label: 'Config. de Caixas',        icon: Settings,    permission: 'controle_caixas.configurar' as Permission },
+          { href: '/fechamento-frentista',           label: 'Fechamento Frentista',     icon: Banknote,    permission: 'controle_caixas.configurar' as Permission },
           { href: '/contas-receber/configuracao',   label: 'Config. Contas a Receber', icon: ReceiptText, permission: 'contas_receber.view' as Permission },
         ],
       },
@@ -78,10 +79,12 @@ const NAV_GROUPS: NavGroup[] = [
       {
         label: 'Conciliação Bancária', icon: ScanSearch, permission: 'relatorios.conciliacao' as Permission,
         children: [
-          { href: '/tarefas',                  label: 'Gestão de Tarefas',  icon: CheckSquare,   permission: 'tarefas.view' as Permission },
-          { href: '/relatorios/demonstrativo', label: 'Demonstrativo',      icon: FileText,      permission: 'contas_bancarias.view' as Permission },
-          { href: '/extrato-painel',           label: 'Extrato Bancário',   icon: ScanSearch,    permission: 'extrato_painel.view' as Permission },
-          { href: '/tarefas/conciliacao',      label: 'Geração de Tarefas', icon: ClipboardList, permission: 'contas_bancarias.view' as Permission },
+          { href: '/tarefas',                       label: 'Gestão de Tarefas',    icon: CheckSquare,   permission: 'tarefas.view' as Permission },
+          { href: '/conciliadores/divergencias',    label: '🔴 Divergências',      icon: AlertTriangle, permission: 'tarefas.view' as Permission },
+          { href: '/relatorios/demonstrativo',     label: 'Demonstrativo',        icon: FileText,      permission: 'contas_bancarias.view' as Permission },
+          { href: '/extrato-painel',                label: 'Extrato Bancário',     icon: ScanSearch,    permission: 'extrato_painel.view' as Permission },
+          { href: '/tarefas/conciliacao',          label: 'Geração de Tarefas',   icon: ClipboardList, permission: 'contas_bancarias.view' as Permission },
+          { href: '/conciliadores',                label: 'Conciliadores',        icon: Users,         permission: 'usuarios.edit' as Permission },
         ],
       },
       { href: '/controle-caixas',     label: 'Controle de Caixas',   icon: CheckSquare, permission: 'controle_caixas.view' as Permission },
@@ -131,11 +134,13 @@ const NAV_GROUPS: NavGroup[] = [
       {
         label: 'Máquinas', icon: Layers, permission: 'bobinas.view' as Permission,
         children: [
-          { href: '/bobinas/solicitacoes', label: 'Troca de Maquininhas', icon: Receipt, permission: 'bobinas.view' as Permission },
-          { href: '/bobinas/trocas',       label: 'Trocas',               icon: Archive, permission: 'bobinas.view' as Permission },
-          { href: '/bobinas/estoque',      label: 'Estoque de Bobinas',   icon: Archive, permission: 'bobinas.view' as Permission },
+          { href: '/controle-geral/maquininhas', label: 'Painel Maquininhas',   icon: Smartphone, permission: 'maquininhas.view' as Permission },
+          { href: '/bobinas/solicitacoes',        label: 'Troca de Maquininhas', icon: Receipt,    permission: 'bobinas.view' as Permission },
+          { href: '/bobinas/trocas',              label: 'Trocas',               icon: Archive,    permission: 'bobinas.view' as Permission },
+          { href: '/bobinas/estoque',             label: 'Estoque de Bobinas',   icon: Archive,    permission: 'bobinas.view' as Permission },
         ],
       },
+      { href: '/controle-geral/precos-frotas', label: 'Preços Frotas', icon: Fuel, permission: 'portais.view' as Permission },
       {
         label: 'Acessos', icon: KeyRound, permission: null,
         children: [

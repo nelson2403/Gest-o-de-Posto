@@ -1,0 +1,68 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { validarSessao, extrairToken } from '@/lib/caixa-auth'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+interface ItemFechamento {
+  tipo:             string
+  label:            string
+  valor_as:         number | null
+  valor_frentista:  number
+  diferenca:        number | null
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const sessao = await validarSessao(extrairToken(req))
+    if (!sessao) return NextResponse.json({ error: 'Sessão inválida ou expirada' }, { status: 401 })
+
+    const body = await req.json() as {
+      data:           string
+      turno?:         string
+      itens:          ItemFechamento[]
+      assinatura_img: string
+      observacao?:    string
+    }
+
+    if (!body.itens?.length || !body.assinatura_img) {
+      return NextResponse.json({ error: 'Itens e assinatura obrigatórios' }, { status: 400 })
+    }
+
+    const total_as        = body.itens.reduce((s, i) => s + (i.valor_as ?? 0), 0)
+    const total_frentista = body.itens.reduce((s, i) => s + i.valor_frentista, 0)
+    const total_diferenca = total_frentista - total_as
+
+    const admin = createAdminClient()
+
+    const { data: fechamento, error } = await admin
+      .from('frentista_fechamentos')
+      .insert({
+        posto_id:         sessao.posto_id,
+        frentista_id:     sessao.frentista_id,
+        frentista_nome:   sessao.nome,
+        data_fechamento:  body.data,
+        turno:            body.turno ?? null,
+        itens:            body.itens,
+        total_as:         parseFloat(total_as.toFixed(2)),
+        total_frentista:  parseFloat(total_frentista.toFixed(2)),
+        total_diferenca:  parseFloat(total_diferenca.toFixed(2)),
+        assinatura_img:   body.assinatura_img,
+        assinado_em:      new Date().toISOString(),
+        status:           'assinado',
+        observacao:       body.observacao ?? null,
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+
+    // Invalida a sessão após envio (uma sessão por fechamento)
+    await admin
+      .from('frentista_sessoes')
+      .delete()
+      .eq('frentista_id', sessao.frentista_id)
+
+    return NextResponse.json({ fechamento })
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
+}

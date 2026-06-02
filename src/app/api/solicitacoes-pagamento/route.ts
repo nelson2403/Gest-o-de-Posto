@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
       observacoes:     body.observacoes || null,
       arquivo_url:     body.arquivo_url  || null,
       arquivo_nome:    body.arquivo_nome || null,
+      posto_id:        body.posto_id     || null,
       criado_por_id:   usuario.id,
       criado_por_nome: usuario.nome,
       status:          'pendente',
@@ -75,6 +76,7 @@ export async function PATCH(req: NextRequest) {
 
   if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 })
 
+  const { posto_id } = body
   const campos: Record<string, unknown> = { atualizado_em: new Date().toISOString() }
   if (status          !== undefined) campos.status          = status
   if (motivo_rejeicao !== undefined) campos.motivo_rejeicao = motivo_rejeicao || null
@@ -82,7 +84,10 @@ export async function PATCH(req: NextRequest) {
   if (arquivo_nome    !== undefined) campos.arquivo_nome    = arquivo_nome    || null
   if (valor           !== undefined) campos.valor           = valor           ? Number(valor) : null
   if (data_vencimento !== undefined) campos.data_vencimento = data_vencimento || null
+  if (posto_id        !== undefined) campos.posto_id        = posto_id        || null
 
+  // O RLS garante que o usuário só pode atualizar registros da sua empresa.
+  // O filtro .eq('id', id) é suficiente — a política UPDATE do Supabase rejeita o resto.
   const { data, error } = await supabase
     .from('solicitacoes_pagamento')
     .update(campos)
@@ -91,6 +96,7 @@ export async function PATCH(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'Sem permissão ou registro não encontrado' }, { status: 403 })
   return NextResponse.json({ solicitacao: data })
 }
 

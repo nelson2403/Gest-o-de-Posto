@@ -22,14 +22,22 @@ export default function LoginPage() {
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
-    if (error) {
-      toast({ variant: 'destructive', title: 'Acesso negado', description: 'Email ou senha incorretos.' })
-    } else {
-      router.push('/')
-      router.refresh()
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: form.email.trim(),
+        password: form.password,
+      })
+      if (error) {
+        toast({ variant: 'destructive', title: 'Acesso negado', description: 'Email ou senha incorretos.' })
+      } else {
+        router.push('/')
+        router.refresh()
+      }
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro de conexão', description: 'Não foi possível conectar ao servidor. Tente novamente.' })
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   async function handleResetPassword(e: React.FormEvent<HTMLFormElement>) {

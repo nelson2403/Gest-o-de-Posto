@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   FileText, AlertCircle, Clock, CheckCircle2,
   Building2, RefreshCw, Send, Loader2, Scale, Filter,
@@ -38,6 +39,7 @@ interface BoletoParaCP {
   valor:      number | null
   fornecedor: string
   tarefaId:   string
+  postoId:    string | null
 }
 
 function DialogEnviarCP({
@@ -68,6 +70,7 @@ function DialogEnviarCP({
             data_vencimento: vencimento || null,
             arquivo_url:     boleto.url  || null,
             arquivo_nome:    boleto.nome || null,
+            posto_id:        boleto.postoId || null,
           }),
         })
       } else {
@@ -82,6 +85,7 @@ function DialogEnviarCP({
             data_vencimento: vencimento || null,
             arquivo_url:     boleto.url  || null,
             arquivo_nome:    boleto.nome || null,
+            posto_id:        boleto.postoId || null,
             descricao:       `Boleto fiscal enviado pelo painel. Tarefa: ${boleto.tarefaId}`,
           }),
         })
@@ -228,6 +232,7 @@ function BoletoTable({ rows }: { rows: any[] }) {
                         valor:      linha.valor      ?? linha._tarefa.valor_as ?? null,
                         fornecedor: linha._tarefa.fornecedor_nome,
                         tarefaId:   linha._tarefa.id,
+                        postoId:    linha._tarefa.posto_id ?? null,
                       })}
                       className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-lg text-[11px] font-medium transition-colors whitespace-nowrap"
                     >
@@ -266,6 +271,7 @@ interface PainelData {
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function FiscalPainelPage() {
   const { usuario } = useAuthContext()
+  const router = useRouter()
   const role = usuario?.role
   const isGerente      = role === 'gerente'
   const postoIdGerente = usuario?.posto_fechamento_id ?? null
@@ -297,24 +303,28 @@ export default function FiscalPainelPage() {
 
   useEffect(() => { carregar() }, [carregar])
 
-  async function syncAS() {
+  // Auto-sync removido — controle manual via botão para evitar re-abertura involuntária de tarefas
+
+  const syncAS = useCallback(async (silencioso = false) => {
     setSyncing(true)
     try {
       const r = await fetch('/api/fiscal/sync', { method: 'POST' })
       const result = await r.json()
       const msgs: string[] = []
       if (result.importadas > 0) msgs.push(`${result.importadas} novo(s) manifesto(s) importado(s)`)
+      if (result.reabertas  > 0) msgs.push(`${result.reabertas} tarefa(s) reaberta(s)`)
       if (result.concluidas > 0) msgs.push(`${result.concluidas} tarefa(s) concluída(s) automaticamente`)
-      if (msgs.length) {
-        alert(msgs.join('\n'))
-        carregar()
-      } else {
-        alert('Nenhuma atualização encontrada no AUTOSYSTEM.')
+      if (msgs.length && !silencioso) {
+        toast({ title: 'Sincronização concluída', description: msgs.join(' · ') })
       }
+      // Sempre recarrega após sync para mostrar a lista atualizada
+      await carregar()
+    } catch {
+      if (!silencioso) toast({ title: 'Erro ao sincronizar', variant: 'destructive' })
     } finally {
       setSyncing(false)
     }
-  }
+  }, [carregar])
 
   if (loading) return (
     <div className="flex items-center justify-center h-64 text-gray-400">Carregando painel fiscal...</div>
@@ -352,12 +362,12 @@ export default function FiscalPainelPage() {
               </select>
             </div>
             <button
-              onClick={syncAS}
+              onClick={() => syncAS(false)}
               disabled={syncing}
-              className="h-9 flex items-center gap-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[13px] font-medium transition-colors disabled:opacity-50 shadow-sm"
+              className="flex items-center gap-1.5 h-9 px-3 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-[13px] font-medium transition-colors disabled:opacity-60"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
-              Sincronizar com AS
+              {syncing ? 'Sincronizando...' : 'Sincronizar'}
             </button>
           </div>
         )}
@@ -420,7 +430,12 @@ export default function FiscalPainelPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {(data?.pendentes_gerente ?? []).map((row: any) => (
-                  <tr key={row.id} className="hover:bg-gray-50/50">
+                  <tr
+                    key={row.id}
+                    onClick={() => router.push('/fiscal/tarefas')}
+                    className="hover:bg-indigo-50/50 cursor-pointer transition-colors"
+                    title="Clique para abrir e anexar documentos"
+                  >
                     <td className="py-2.5 px-4">
                       <div className="flex items-center gap-2">
                         <Building2 className="w-3.5 h-3.5 text-gray-400" />

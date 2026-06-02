@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 interface BoletoItem {
   url:        string
@@ -23,20 +24,44 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       boletos = [] as BoletoItem[],
       itens_romaneio,
       dados_combustivel,
+      is_uso_consumo = false,
     } = body
 
     if (!nf_url || !nf_valor_informado) {
       return NextResponse.json({ error: 'Foto/arquivo da NF e valor são obrigatórios' }, { status: 400 })
     }
 
+    // Busca tarefa + posto para verificar propriedade
     const { data: tarefa, error: errTarefa } = await supabase
       .from('fiscal_tarefas')
-      .select('valor_as, status, nf_url')
+      .select('valor_as, status, nf_url, posto_id')
       .eq('id', id)
       .single()
 
     if (errTarefa || !tarefa) {
       return NextResponse.json({ error: 'Tarefa não encontrada' }, { status: 404 })
+    }
+
+    // Verifica se o usuário tem permissão sobre este posto
+    // Master e adm_fiscal têm acesso irrestrito; gerentes só podem acessar seu próprio posto
+    const { data: usuarioData } = await supabase
+      .from('usuarios')
+      .select('role, empresa_id')
+      .eq('id', user.id)
+      .single()
+
+    const rolePermitida = ['master', 'adm_fiscal', 'adm_financeiro'].includes(usuarioData?.role ?? '')
+    if (!rolePermitida) {
+      // Gerente: verifica se o posto da tarefa pertence à sua empresa
+      const { data: postoCheck } = await supabase
+        .from('postos')
+        .select('id')
+        .eq('id', tarefa.posto_id)
+        .eq('empresa_id', usuarioData?.empresa_id ?? '')
+        .single()
+      if (!postoCheck) {
+        return NextResponse.json({ error: 'Sem permissão para esta tarefa' }, { status: 403 })
+      }
     }
     if (tarefa.status === 'desconhecida') {
       return NextResponse.json({ error: 'Tarefa já encerrada como desconhecida' }, { status: 400 })
@@ -91,31 +116,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       itens_romaneio:    itens_romaneio?.length ? itens_romaneio : null,
       dados_combustivel: dados_combustivel ?? null,
+      is_uso_consumo,
       atualizada_em:     agora,
     }
 
-    // Tenta salvar com a coluna boletos (nova); se ainda não existir cai no fallback
-    let updateResult = await supabase
+    const admin = createAdminClient()
+
+    const { data, error } = await admin
       .from('fiscal_tarefas')
       .update({ ...camposBase, boletos: boletosValidos })
       .eq('id', id)
       .select()
       .single()
 
-    if (updateResult.error?.message?.includes('boletos')) {
-      // Coluna ainda não existe — aguarda migration; salva sem ela
-      updateResult = await supabase
-        .from('fiscal_tarefas')
-        .update(camposBase)
-        .eq('id', id)
-        .select()
-        .single()
+    if (error) {
+      console.error('[reconhecer] erro ao salvar tarefa', id, error.message)
+      throw error
     }
-
-    const { data, error } = updateResult
-    if (error) throw error
     return NextResponse.json({ tarefa: data })
   } catch (e: any) {
+    console.error('[reconhecer] erro:', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }

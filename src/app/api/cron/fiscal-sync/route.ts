@@ -6,12 +6,13 @@ import {
   buscarNfeManifestos,
 } from '@/lib/autosystem'
 
-const CRON_SECRET = process.env.CRON_SECRET ?? 'cron-interno-gestao'
+const CRON_SECRET = process.env.CRON_SECRET
 
 // POST — roda o sync fiscal completo sem exigir sessão de usuário.
 // Chamado automaticamente pelo autosystem.ts ou por um cron externo.
 export async function POST(req: NextRequest) {
   const secret = req.headers.get('x-cron-secret')
+  if (!CRON_SECRET) return NextResponse.json({ error: 'CRON_SECRET não configurado' }, { status: 500 })
   if (secret !== CRON_SECRET) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest) {
 
     // ── Passo 0: importar novos manifestos ────────────────────────────────────
     let importadas = 0
+    let reabertas  = 0
     try {
       const { data: postos } = await admin
         .from('postos')
@@ -31,20 +33,63 @@ export async function POST(req: NextRequest) {
       if (postos?.length) {
         const empresaGrids = postos.map((p: any) => Number(p.codigo_empresa_externo))
         const manifestos   = await buscarNfeManifestos(empresaGrids)
+        console.log(`[cron-fiscal-sync] AS retornou ${manifestos.length} manifesto(s) pendente(s) para ${postos.length} posto(s)`)
 
         if (manifestos.length) {
-          const { data: existentes } = await admin
-            .from('fiscal_tarefas')
-            .select('nfe_resumo_grid')
+          // Tarefas ativas (não concluídas/desconhecidas) — não duplicar
+          // Consulta apenas os grids que o AS retornou — evita limite de 1000 linhas
+          // e trata NULL corretamente (NULL NOT IN = desconhecido em SQL)
+          const manifestoGrids = manifestos.map((m: any) => Number(m.grid))
 
-          const gridsExistentes = new Set((existentes ?? []).map((t: any) => String(t.nfe_resumo_grid)))
-          const postoMap = Object.fromEntries(postos.map((p: any) => [Number(p.codigo_empresa_externo), p]))
-          const novos = manifestos.filter((m: any) => !gridsExistentes.has(String(m.grid)))
+          const [{ data: ativasParaGrids }, { data: nullParaGrids }, { data: encerradas }] = await Promise.all([
+            admin.from('fiscal_tarefas')
+              .select('nfe_resumo_grid')
+              .in('nfe_resumo_grid', manifestoGrids)
+              .not('status', 'in', '(concluida,desconhecida)')
+              .not('status', 'is', null),
+            admin.from('fiscal_tarefas')
+              .select('nfe_resumo_grid')
+              .in('nfe_resumo_grid', manifestoGrids)
+              .is('status', null),
+            // Só reabre desconhecida — concluida é estado final, não reabre mesmo que NF
+            // ainda apareça na lista (sem 210200). Reabertura de concluida causava loop infinito.
+            admin.from('fiscal_tarefas')
+              .select('id, nfe_resumo_grid, posto_id')
+              .in('nfe_resumo_grid', manifestoGrids)
+              .in('status', ['desconhecida']),
+          ])
 
-          if (novos.length) {
-            const { data: criadas } = await admin
+          const gridsAtivos = new Set([
+            ...(ativasParaGrids ?? []).map((t: any) => String(t.nfe_resumo_grid)),
+            ...(nullParaGrids   ?? []).map((t: any) => String(t.nfe_resumo_grid)),
+          ])
+          const encerradasMap = new Map((encerradas ?? []).map((t: any) => [String(t.nfe_resumo_grid), { id: t.id as string, posto_id: t.posto_id as string | null }]))
+          const postoMap      = Object.fromEntries(postos.map((p: any) => [Number(p.codigo_empresa_externo), p]))
+
+          const pendentes    = manifestos.filter((m: any) => !gridsAtivos.has(String(m.grid)))
+          const paraReabrir  = pendentes.filter((m: any) =>  encerradasMap.has(String(m.grid)))
+          const paraInserir  = pendentes.filter((m: any) => !encerradasMap.has(String(m.grid)))
+
+          if (paraReabrir.length) {
+            // Reabre cada tarefa e corrige posto_id se estava null (posto não mapeado na importação original)
+            await Promise.all(paraReabrir.map((m: any) => {
+              const entrada  = encerradasMap.get(String(m.grid))!
+              const postoId  = postoMap[m.empresa]?.id ?? null
+              const upd: Record<string, unknown> = { status: 'pendente_gerente', atualizada_em: agora }
+              if (postoId && !entrada.posto_id) upd.posto_id = postoId
+              return admin.from('fiscal_tarefas').update(upd).eq('id', entrada.id)
+            }))
+            reabertas = paraReabrir.length
+          }
+
+          if (paraInserir.length) {
+            const semPosto = paraInserir.filter((m: any) => !postoMap[m.empresa])
+            if (semPosto.length) {
+              console.warn(`[cron-fiscal-sync] ${semPosto.length} manifesto(s) sem posto mapeado (empresa grids: ${semPosto.map((m: any) => m.empresa).join(', ')})`)
+            }
+            const { data: criadas, error: errInsert } = await admin
               .from('fiscal_tarefas')
-              .insert(novos.map((m: any) => ({
+              .insert(paraInserir.map((m: any) => ({
                 nfe_resumo_grid: m.grid,
                 empresa_grid:    m.empresa,
                 fornecedor_nome: m.emitente_nome,
@@ -55,11 +100,14 @@ export async function POST(req: NextRequest) {
                 status:          'pendente_gerente',
               })))
               .select('id')
+            if (errInsert) console.error('[cron-fiscal-sync] erro INSERT fiscal_tarefas:', errInsert.message, errInsert.details)
             importadas = criadas?.length ?? 0
           }
         }
       }
-    } catch {}
+    } catch (e: any) {
+      console.error('[cron-fiscal-sync] erro ao importar manifestos do AUTOSYSTEM:', e.message)
+    }
 
     // ── Passo 1: aguardando_fiscal → concluída / boleto_pendente ─────────────
     const { data: tarefasAguardando, count: totalAguardando } = await admin
@@ -79,7 +127,8 @@ export async function POST(req: NextRequest) {
         .map(t => t.nfe_resumo_grid)
         .filter(Boolean) as number[]
 
-      // (a) SEFAZ evento 210200
+      // (a) Apenas 210200 fecha aguardando_fiscal — Ciência (210210) não basta,
+      //     o fiscal precisa revisar antes de concluir
       const manifestadas = gridsAguardando.length
         ? await verificarManifestacaoExterna(gridsAguardando)
         : []
@@ -131,29 +180,33 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Passo 2: pendente_gerente/nf_rejeitada → SEFAZ ───────────────────────
+    // ── Passo 2: pendente_gerente/nf_rejeitada → fecha se confirmada no SEFAZ ──
+    // ── Passo 2b: pendente_gerente já reconhecida → avança para aguardando_fiscal ─
     const { data: tarefasPendentes } = await admin
       .from('fiscal_tarefas')
-      .select('id, nfe_resumo_grid')
+      .select('id, nfe_resumo_grid, status, acao_gerente, nf_url')
       .in('status', ['pendente_gerente', 'nf_rejeitada'])
       .not('nfe_resumo_grid', 'is', null)
 
     let concluidasStep2   = 0
     let desconhecidasAuto = 0
+    let avancadasFiscal   = 0
 
     if (tarefasPendentes?.length) {
       const grids = tarefasPendentes.map(t => t.nfe_resumo_grid).filter(Boolean) as number[]
       const manifestadas   = await verificarManifestacaoExterna(grids)
       const eventosPorGrid = new Map(manifestadas.map(m => [m.grid, m.nfe_evento]))
 
-      const confirmar:   string[] = []
-      const desconhecer: string[] = []
+      const confirmar:     string[] = []
+      const desconhecer:   string[] = []
+      const avancarFiscal: string[] = []
 
       for (const t of tarefasPendentes) {
         const evento = eventosPorGrid.get(String(t.nfe_resumo_grid))
-        if (!evento) continue
-        if (evento === 210200) confirmar.push(t.id)
-        else desconhecer.push(t.id)
+        if (evento === 210200 && t.status === 'pendente_gerente') { confirmar.push(t.id); continue }
+        if (evento === 210220 || evento === 210240) { desconhecer.push(t.id); continue }
+        // Gerente já reconheceu mas tarefa voltou para pendente_gerente → avança para fiscal revisar
+        if (t.status === 'pendente_gerente' && t.acao_gerente === 'reconhecida') avancarFiscal.push(t.id)
       }
 
       if (confirmar.length) {
@@ -170,9 +223,16 @@ export async function POST(req: NextRequest) {
           .in('id', desconhecer)
         desconhecidasAuto = desconhecer.length
       }
+      if (avancarFiscal.length) {
+        await admin
+          .from('fiscal_tarefas')
+          .update({ status: 'aguardando_fiscal', atualizada_em: agora })
+          .in('id', avancarFiscal)
+        avancadasFiscal = avancarFiscal.length
+      }
     }
 
-    console.log(`[cron-fiscal-sync] ${agora} — importadas=${importadas} concluidas=${concluidasStep1 + concluidasStep2} desconhecidas=${desconhecidasAuto}`)
+    console.log(`[cron-fiscal-sync] ${agora} — importadas=${importadas} reabertas=${reabertas} concluidas=${concluidasStep1 + concluidasStep2} desconhecidas=${desconhecidasAuto} avancadas_fiscal=${avancadasFiscal}`)
 
     return NextResponse.json({
       importadas,

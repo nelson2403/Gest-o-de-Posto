@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buscarEstoqueByGrupos, buscarVendasProdutos } from '@/lib/autosystem'
+import { buscarEstoqueByGrupos, buscarVendasProdutos, buscarSubgrupos } from '@/lib/autosystem'
 
 const GRUPO_COMBUSTIVEL  = 45481
 const GRUPO_CONVENIENCIA = 9896787
@@ -36,10 +36,14 @@ export async function GET(req: NextRequest) {
   const dataFim = hoje.toISOString().slice(0, 10)
   const dataIni = new Date(hoje.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
-  const [estoque, vendas] = await Promise.all([
+  const [estoque, vendas, subgruposAS] = await Promise.all([
     buscarEstoqueByGrupos(empresaIds, grupos),
     buscarVendasProdutos(empresaIds, grupos, dataIni, dataFim),
+    buscarSubgrupos(),
   ])
+
+  const subgrupoNomeMap: Record<number, string> = {}
+  for (const sg of subgruposAS) subgrupoNomeMap[sg.grid] = sg.nome
 
   // Fornecedores vinculados aos postos
   const postoIds = Object.values(postoMap).map(p => p.id)
@@ -69,7 +73,9 @@ export async function GET(req: NextRequest) {
   }
 
   // Mapa vendas 15 dias
-  const vendasMap: Record<string, { total: number; nome: string; unid: string; subgrupo: number | null }> = {}
+  const vendasMap: Record<string, {
+    total: number; nome: string; unid: string; subgrupo: number | null; codigo: string | null
+  }> = {}
   for (const v of vendas as any[]) {
     const key = `${v.empresa}|${v.produto}`
     vendasMap[key] = {
@@ -77,6 +83,7 @@ export async function GET(req: NextRequest) {
       nome:     v.produto_nome,
       unid:     v.unid_med ?? 'UN',
       subgrupo: v.subgrupo ?? null,
+      codigo:   v.produto_codigo ?? null,
     }
   }
 
@@ -107,20 +114,26 @@ export async function GET(req: NextRequest) {
 
     sugestoesPorEmpresa[empresa].produtos.push({
       produto,
-      produto_nome:   venda.nome,
-      unid_med:       venda.unid,
-      subgrupo:       venda.subgrupo,
-      estoque_atual:  parseFloat(estoqueAtual.toFixed(2)),
-      vendas_15dias:  parseFloat(venda.total.toFixed(2)),
-      media_diaria:   parseFloat(mediadiaria.toFixed(2)),
-      estoque_15dias: estoque15dias,
+      produto_codigo:  venda.codigo,
+      produto_nome:    venda.nome,
+      unid_med:        venda.unid,
+      subgrupo:        venda.subgrupo,
+      subgrupo_nome:   venda.subgrupo ? (subgrupoNomeMap[venda.subgrupo] ?? null) : null,
+      estoque_atual:   parseFloat(estoqueAtual.toFixed(2)),
+      vendas_15dias:   parseFloat(venda.total.toFixed(2)),
+      media_diaria:    parseFloat(mediadiaria.toFixed(2)),
+      estoque_15dias:  estoque15dias,
       sugerido,
     })
   }
 
   const sugestoes = Object.values(sugestoesPorEmpresa).map(s => ({
     ...s,
-    produtos: s.produtos.sort((a: any, b: any) => b.sugerido - a.sugerido),
+    produtos: s.produtos.sort((a: any, b: any) => {
+      const sg = (a.subgrupo_nome ?? 'zzz').localeCompare(b.subgrupo_nome ?? 'zzz')
+      if (sg !== 0) return sg
+      return b.sugerido - a.sugerido
+    }),
   })).sort((a: any, b: any) => a.posto_nome.localeCompare(b.posto_nome))
 
   return NextResponse.json({ sugestoes, dataIni, dataFim })

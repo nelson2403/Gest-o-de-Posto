@@ -14,15 +14,28 @@ import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 
 // ─── Fornecedores de combustível ──────────────────────────────────────────────
 const FORNECEDORES_COMBUSTIVEL = ['raizen', 'ipiranga', 'vibra', 'nexta']
-const VALOR_MIN_COMBUSTIVEL    = 20_000
 
-function isFornecedorCombustivel(nome: string, valor?: number | null): boolean {
+function isFornecedorCombustivel(nome: string): boolean {
   const n = (nome ?? '').toLowerCase()
-  if (FORNECEDORES_COMBUSTIVEL.some(f => n.includes(f))) return true
-  return (valor ?? 0) >= VALOR_MIN_COMBUSTIVEL
+  return FORNECEDORES_COMBUSTIVEL.some(f => n.includes(f))
 }
 
 const TURNOS_CAIXA = ['1° Turno', '2° Turno', '3° Turno']
+
+// ─── Leitor automático de boleto PDF (server-side via API) ───────────────────
+async function parseBoleto(publicUrl: string): Promise<{ vencimento: string; valor: string }> {
+  try {
+    const r = await fetch('/api/fiscal/parse-boleto', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ url: publicUrl }),
+    })
+    if (!r.ok) return { vencimento: '', valor: '' }
+    return await r.json()
+  } catch {
+    return { vencimento: '', valor: '' }
+  }
+}
 
 // ─── Config de status ─────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -122,7 +135,7 @@ function BotaoAnexo({
       <input
         ref={inputRef}
         type="file"
-        accept="application/pdf"
+        accept="image/*,application/pdf"
         className="hidden"
         onChange={e => {
           const file = e.target.files?.[0]
@@ -136,28 +149,33 @@ function BotaoAnexo({
 
 // ─── Card de boleto individual ────────────────────────────────────────────────
 interface BoletoItem {
-  url:       string
-  nome:      string
+  url:        string
+  nome:       string
   vencimento: string
-  valor:     string
+  valor:      string
+  auto:       boolean  // true = lido automaticamente do PDF
 }
 
 function BoletoCard({
-  boleto, idx, tarefaId, onChange, onRemove,
+  boleto, idx, tarefaId, onChange, onRemove, onAutoFill, onResetAuto,
 }: {
-  boleto:   BoletoItem
-  idx:      number
-  tarefaId: string
-  onChange: (idx: number, field: keyof BoletoItem, val: string) => void
-  onRemove: (idx: number) => void
+  boleto:       BoletoItem
+  idx:          number
+  tarefaId:     string
+  onChange:     (idx: number, field: keyof BoletoItem, val: string) => void
+  onRemove:     (idx: number) => void
+  onAutoFill:   (idx: number, vencimento: string, valor: string) => void
+  onResetAuto:  (idx: number) => void
 }) {
-  const inputRef   = useRef<HTMLInputElement>(null)
+  const inputRef              = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [parsing,   setParsing]   = useState(false)
   const [erro,      setErro]      = useState('')
 
   async function handleFile(file: File) {
     setUploading(true)
     setErro('')
+    let publicUrl = ''
     try {
       const supabase = createSupabaseClient()
       const ext  = file.name.split('.').pop()?.toLowerCase() || 'pdf'
@@ -168,12 +186,24 @@ function BoletoCard({
         .upload(path, file, { contentType, upsert: true })
       if (error) { setErro(`Erro no upload: ${error.message}`); return }
       const { data } = supabase.storage.from('fiscal-docs').getPublicUrl(path)
-      onChange(idx, 'url',  data.publicUrl)
+      publicUrl = data.publicUrl
+      onChange(idx, 'url',  publicUrl)
       onChange(idx, 'nome', file.name)
     } catch (e: any) {
       setErro(e?.message ?? 'Erro ao enviar o arquivo')
+      return
     } finally {
       setUploading(false)
+    }
+    // Lê os dados do boleto no servidor após upload concluir
+    setParsing(true)
+    try {
+      const { vencimento, valor } = await parseBoleto(publicUrl)
+      if (vencimento || valor) {
+        onAutoFill(idx, vencimento, valor)
+      }
+    } finally {
+      setParsing(false)
     }
   }
 
@@ -190,12 +220,12 @@ function BoletoCard({
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
-        disabled={uploading}
+        disabled={uploading || parsing}
         className={`w-full flex items-center gap-3 px-3 py-2.5 border-2 border-dashed rounded-xl transition-colors
           ${boleto.url ? 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100' : 'border-indigo-200 bg-white hover:bg-indigo-50/50'}
           disabled:opacity-60 disabled:cursor-not-allowed`}
       >
-        {uploading ? (
+        {uploading || parsing ? (
           <Loader2 className="w-5 h-5 text-indigo-400 animate-spin shrink-0" />
         ) : boleto.url ? (
           <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
@@ -205,6 +235,8 @@ function BoletoCard({
         <div className="flex-1 text-left min-w-0">
           {uploading ? (
             <p className="text-[13px] text-indigo-600 font-medium">Enviando...</p>
+          ) : parsing ? (
+            <p className="text-[13px] text-indigo-600 font-medium">Lendo dados do boleto...</p>
           ) : boleto.url ? (
             <>
               <p className="text-[13px] text-emerald-700 font-semibold truncate">{boleto.nome || 'Arquivo enviado'}</p>
@@ -213,11 +245,11 @@ function BoletoCard({
           ) : (
             <>
               <p className="text-[13px] text-gray-700 font-medium">Anexar PDF do Boleto</p>
-              <p className="text-[11px] text-gray-400">Somente PDF</p>
+              <p className="text-[11px] text-gray-400">Data e valor serão lidos automaticamente</p>
             </>
           )}
         </div>
-        {boleto.url && !uploading && (
+        {boleto.url && !uploading && !parsing && (
           <a href={boleto.url} target="_blank" rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
             className="text-[11px] text-indigo-600 font-semibold border border-indigo-200 rounded-md px-2 py-0.5 hover:bg-indigo-100 shrink-0"
@@ -226,26 +258,63 @@ function BoletoCard({
           </a>
         )}
       </button>
-      <input ref={inputRef} type="file" accept="application/pdf" className="hidden"
+      <input ref={inputRef} type="file" accept="image/*,application/pdf" className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }} />
 
       {erro && <p className="text-[11px] text-red-600">{erro}</p>}
 
       {/* Vencimento + Valor */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <p className="text-[10px] text-gray-400 mb-1">Vencimento</p>
-          <input type="date" value={boleto.vencimento}
-            onChange={e => onChange(idx, 'vencimento', e.target.value)}
-            className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-[12px] focus:outline-none focus:ring-2 focus:ring-indigo-400/30" />
+      {boleto.auto ? (
+        /* Campos lidos automaticamente do PDF — somente leitura */
+        <div className="space-y-1.5">
+          <div className="flex items-center">
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-0.5">
+              <CheckCircle2 className="w-2.5 h-2.5" /> Lido automaticamente do PDF
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <p className="text-[10px] text-gray-400 mb-1">Vencimento</p>
+              <p className="px-2.5 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-[12px] font-semibold text-emerald-800">
+                {boleto.vencimento
+                  ? new Date(boleto.vencimento + 'T12:00:00').toLocaleDateString('pt-BR')
+                  : '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-400 mb-1">Valor</p>
+              <p className="px-2.5 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-[12px] font-mono font-semibold text-emerald-800">
+                {boleto.valor
+                  ? Number(boleto.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                  : '—'}
+              </p>
+            </div>
+          </div>
         </div>
-        <div>
-          <p className="text-[10px] text-gray-400 mb-1">Valor (R$)</p>
-          <input placeholder="0,00" inputMode="decimal" value={boleto.valor}
-            onChange={e => onChange(idx, 'valor', e.target.value)}
-            className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400/30" />
+      ) : (
+        /* Preenchimento manual */
+        <div className="space-y-1.5">
+          {boleto.url && !boleto.auto && (
+            <p className="text-[10px] text-orange-600 flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" /> Não foi possível ler os dados automaticamente — preencha manualmente
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <p className="text-[10px] text-gray-400 mb-1">Vencimento</p>
+              <input type="date" value={boleto.vencimento}
+                onChange={e => onChange(idx, 'vencimento', e.target.value)}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-[12px] focus:outline-none focus:ring-2 focus:ring-indigo-400/30" />
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-400 mb-1">Valor (R$)</p>
+              <input placeholder="0,00" inputMode="decimal" value={boleto.valor}
+                onChange={e => onChange(idx, 'valor', e.target.value)}
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400/30" />
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -267,6 +336,7 @@ function DialogReconhecer({
         nome:       b.nome       ?? 'Arquivo enviado',
         vencimento: b.vencimento ?? '',
         valor:      b.valor != null ? String(b.valor) : '',
+        auto:       false,
       }))
     }
     if (tarefa.boleto_url) {
@@ -275,6 +345,7 @@ function DialogReconhecer({
         nome:       'Arquivo enviado',
         vencimento: tarefa.boleto_vencimento ?? '',
         valor:      tarefa.boleto_valor != null ? String(tarefa.boleto_valor) : '',
+        auto:       false,
       }]
     }
     return []
@@ -284,9 +355,10 @@ function DialogReconhecer({
   const [loadingItens, setLoadingItens] = useState(false)
   const [salvando,     setSalvando]     = useState(false)
   const [erro,         setErro]         = useState('')
+  const [isUsoConsumo, setIsUsoConsumo] = useState(tarefa.is_uso_consumo ?? false)
 
   // Formulário de descarregamento de combustível
-  const eCombustivel = isFornecedorCombustivel(tarefa.fornecedor_nome, tarefa.valor_as)
+  const eCombustivel = isFornecedorCombustivel(tarefa.fornecedor_nome)
   const [comb, setComb] = useState({
     data_recebimento:     tarefa.dados_combustivel?.data_recebimento     ?? '',
     motorista:            tarefa.dados_combustivel?.motorista            ?? '',
@@ -348,8 +420,16 @@ function DialogReconhecer({
     setBoletos(prev => prev.map((b, i) => i !== idx ? b : { ...b, [field]: val }))
   }
 
+  function autoBoleto(idx: number, vencimento: string, valor: string) {
+    setBoletos(prev => prev.map((b, i) => i !== idx ? b : { ...b, vencimento, valor, auto: true }))
+  }
+
+  function resetAutoBoleto(idx: number) {
+    setBoletos(prev => prev.map((b, i) => i !== idx ? b : { ...b, auto: false }))
+  }
+
   function addBoleto() {
-    setBoletos(prev => [...prev, { url: '', nome: '', vencimento: '', valor: '' }])
+    setBoletos(prev => [...prev, { url: '', nome: '', vencimento: '', valor: '', auto: false }])
   }
 
   function removeBoleto(idx: number) {
@@ -433,6 +513,7 @@ function DialogReconhecer({
         boletos:            boletosEnvio,
         itens_romaneio:     itens.length ? itens : null,
         dados_combustivel:  eCombustivel ? comb : null,
+        is_uso_consumo:     isUsoConsumo,
       }),
     })
     const json = await resp.json()
@@ -520,6 +601,8 @@ function DialogReconhecer({
                 tarefaId={tarefa.id}
                 onChange={updateBoleto}
                 onRemove={removeBoleto}
+                onAutoFill={autoBoleto}
+                onResetAuto={resetAutoBoleto}
               />
             ))}
           </div>
@@ -559,12 +642,12 @@ function DialogReconhecer({
                     {itens.map((item, idx) => (
                       <tr key={idx} className="hover:bg-gray-50/50">
                         <td className="px-3 py-2 text-gray-800 font-medium leading-tight">
-                          {item.manual && item.codigo_interno === 'NOVO'
+                          {item.manual
                             ? <input
-                                placeholder="Nome do produto (novo)..."
+                                placeholder="Nome do produto..."
                                 value={item.descricao}
                                 onChange={e => atualizarItem(idx, 'descricao', e.target.value)}
-                                className="w-full px-1.5 py-1 border border-orange-300 rounded text-[11px] text-gray-800 placeholder-orange-300 focus:outline-none focus:ring-1 focus:ring-orange-400/30"
+                                className={`w-full px-1.5 py-1 border rounded text-[11px] text-gray-800 focus:outline-none focus:ring-1 ${item.codigo_interno === 'NOVO' ? 'border-orange-300 placeholder-orange-300 focus:ring-orange-400/30' : 'border-gray-200 placeholder-gray-300 focus:ring-indigo-400/30'}`}
                               />
                             : item.descricao || <span className="text-gray-400 italic">sem descrição</span>
                           }
@@ -738,6 +821,23 @@ function DialogReconhecer({
             </div>
           )}
 
+          {/* Uso e Consumo */}
+          <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <input
+              type="checkbox"
+              id="uso-consumo"
+              checked={isUsoConsumo}
+              onChange={(e) => setIsUsoConsumo(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer mt-0.5"
+            />
+            <label htmlFor="uso-consumo" className="flex-1 cursor-pointer">
+              <p className="text-[13px] font-semibold text-blue-900">Marcar como Uso e Consumo</p>
+              <p className="text-[11px] text-blue-700 mt-0.5">
+                Marque esta opção se a despesa é para uso e consumo (será rastreada no dashboard master)
+              </p>
+            </label>
+          </div>
+
           {/* Erro */}
           {erro && (
             <div className="flex items-start gap-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
@@ -827,6 +927,85 @@ function DialogDesconhecer({
   )
 }
 
+// ─── Dialog Recusar NF (fiscal → gerente) ─────────────────────────────────────
+function DialogRejeitarNF({
+  tarefa, onClose, onSucesso,
+}: { tarefa: any; onClose: () => void; onSucesso: () => void }) {
+  const [motivo,   setMotivo]   = useState('')
+  const [salvando, setSalvando] = useState(false)
+
+  async function confirmar() {
+    if (!motivo.trim()) {
+      toast({ title: 'Informe o motivo da recusa', variant: 'destructive' })
+      return
+    }
+    setSalvando(true)
+    const resp = await fetch(`/api/fiscal/tarefas/${tarefa.id}/rejeitar-nf`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ motivo }),
+    })
+    setSalvando(false)
+    if (!resp.ok) {
+      const json = await resp.json()
+      toast({ title: json.error ?? 'Erro', variant: 'destructive' })
+      return
+    }
+    toast({ title: 'NF recusada — gerente será notificado para corrigir' })
+    onSucesso()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
+            <XCircle className="w-5 h-5 text-red-600" />
+          </div>
+          <div>
+            <p className="text-[15px] font-bold text-gray-900">Recusar NF</p>
+            <p className="text-[12px] text-gray-500">{tarefa.fornecedor_nome}</p>
+          </div>
+        </div>
+
+        <p className="text-[13px] text-gray-600 bg-red-50 border border-red-200 rounded-xl p-3">
+          A tarefa voltará para o gerente com o motivo informado abaixo para que ele corrija e reenvie.
+        </p>
+
+        <div>
+          <label className="text-[11px] font-semibold text-gray-500 block mb-1.5">
+            Motivo da recusa *
+          </label>
+          <textarea
+            value={motivo}
+            onChange={e => setMotivo(e.target.value)}
+            placeholder="Ex: Valor da NF não confere, foto ilegível, boleto inválido..."
+            rows={3}
+            className="w-full px-3 py-2 border border-gray-200 rounded-xl text-[13px] focus:outline-none focus:ring-2 focus:ring-red-400/30 resize-none"
+          />
+        </div>
+
+        <div className="flex justify-end gap-3 pt-1">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg border border-gray-200 text-[13px] text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={confirmar}
+            disabled={salvando || !motivo.trim()}
+            className="px-5 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[13px] font-medium disabled:opacity-50 transition-colors flex items-center gap-2"
+          >
+            {salvando && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Recusar e devolver ao gerente
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── TarefaRow ────────────────────────────────────────────────────────────────
 function TarefaRow({
   t, isGerente, canFiscal, onAtualizar,
@@ -834,6 +1013,8 @@ function TarefaRow({
   const [aberto,            setAberto]            = useState(false)
   const [showReconhecer,    setShowReconhecer]    = useState(false)
   const [showDesconhecer,   setShowDesconhecer]   = useState(false)
+  const [showRejeitarNF,    setShowRejeitarNF]    = useState(false)
+  const [reabrindo,         setReabrindo]         = useState(false)
   const [enviandoBoleto,    setEnviandoBoleto]    = useState(false)
 
   async function enviarBoletoAoCP() {
@@ -1064,6 +1245,17 @@ function TarefaRow({
               </div>
             )}
 
+            {/* Banner de NF rejeitada pelo fiscal — mostra motivo ao gerente */}
+            {t.status === 'nf_rejeitada' && t.motivo_rejeicao_fiscal && (
+              <div className="flex items-start gap-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold">NF recusada pelo Fiscal:</span>{' '}
+                  {t.motivo_rejeicao_fiscal}
+                </div>
+              </div>
+            )}
+
             {/* Ações do gerente */}
             {podeAgir && (
               <div className="flex flex-col sm:flex-row gap-2 pt-1">
@@ -1094,10 +1286,19 @@ function TarefaRow({
               </button>
             )}
 
-            {/* Ações adm_fiscal — apenas informativas */}
+            {/* Ações adm_fiscal — informativas + botão recusar NF */}
             {canFiscal && t.status === 'aguardando_fiscal' && (
-              <div className="text-[12px] text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                Lance a NF no AUTOSYSTEM para concluir automaticamente.
+              <div className="flex items-center justify-between gap-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <p className="text-[12px] text-gray-500">
+                  Lance a NF no AUTOSYSTEM para concluir automaticamente.
+                </p>
+                <button
+                  onClick={() => setShowRejeitarNF(true)}
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-[12px] font-medium transition-colors"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  Recusar NF
+                </button>
               </div>
             )}
 
@@ -1105,6 +1306,30 @@ function TarefaRow({
               <div className="text-[12px] text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-3">
                 Registre o <strong>Desconhecimento</strong> desta NF no AUTOSYSTEM.
               </div>
+            )}
+
+            {/* Reabrir tarefa concluída/desconhecida indevidamente */}
+            {canFiscal && (t.status === 'concluida' || t.status === 'desconhecida') && (
+              <button
+                onClick={async () => {
+                  if (!confirm('Reabrir esta tarefa para o gerente corrigir os documentos?')) return
+                  setReabrindo(true)
+                  const r = await fetch(`/api/fiscal/tarefas/${t.id}/reabrir`, { method: 'PATCH' })
+                  setReabrindo(false)
+                  if (!r.ok) {
+                    const j = await r.json()
+                    toast({ title: j.error ?? 'Erro ao reabrir', variant: 'destructive' })
+                    return
+                  }
+                  toast({ title: 'Tarefa reaberta — gerente pode corrigir os documentos' })
+                  onAtualizar()
+                }}
+                disabled={reabrindo}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 text-[12px] font-medium transition-colors disabled:opacity-50"
+              >
+                {reabrindo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                Reabrir para Gerente
+              </button>
             )}
           </div>
         )}
@@ -1124,7 +1349,52 @@ function TarefaRow({
           onSucesso={() => { setShowDesconhecer(false); onAtualizar() }}
         />
       )}
+      {showRejeitarNF && (
+        <DialogRejeitarNF
+          tarefa={t}
+          onClose={() => setShowRejeitarNF(false)}
+          onSucesso={() => { setShowRejeitarNF(false); onAtualizar() }}
+        />
+      )}
     </>
+  )
+}
+
+// ─── Botão reprocessar boletos em massa ──────────────────────────────────────
+function BotaoReprocessarBoletos() {
+  const [estado, setEstado] = useState<'idle' | 'loading' | 'done'>('idle')
+  const [resultado, setResultado] = useState<{ atualizados: number; semDados: number } | null>(null)
+
+  async function reprocessar() {
+    if (!confirm('Isso vai reler todos os PDFs de boleto e corrigir datas e valores. Pode demorar alguns minutos. Continuar?')) return
+    setEstado('loading')
+    setResultado(null)
+    try {
+      const res  = await fetch('/api/fiscal/reprocessar-boletos', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      setResultado({ atualizados: json.atualizados, semDados: json.semDados })
+      setEstado('done')
+      toast({ title: `${json.atualizados} boleto(s) corrigido(s)`, description: json.semDados ? `${json.semDados} não puderam ser lidos.` : undefined })
+    } catch (e: any) {
+      setEstado('idle')
+      toast({ variant: 'destructive', title: 'Erro', description: e.message })
+    }
+  }
+
+  return (
+    <button
+      onClick={reprocessar}
+      disabled={estado === 'loading'}
+      className="h-8 px-3 flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 text-[12px] font-medium transition-colors shadow-sm disabled:opacity-60"
+    >
+      {estado === 'loading'
+        ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Relendo boletos...</>
+        : estado === 'done' && resultado
+        ? <><CheckCircle2 className="w-3.5 h-3.5" /> {resultado.atualizados} corrigido(s)</>
+        : <><RefreshCw className="w-3.5 h-3.5" /> Corrigir datas/valores boletos</>
+      }
+    </button>
   )
 }
 
@@ -1233,6 +1503,8 @@ export default function FiscalTarefasPage() {
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
           </button>
+
+          {canFiscal && <BotaoReprocessarBoletos />}
         </div>
       </div>
 

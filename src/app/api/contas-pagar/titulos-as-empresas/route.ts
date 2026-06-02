@@ -16,6 +16,17 @@ export interface TituloASLinha {
   situacao:    'a_vencer' | 'em_atraso' | 'pago'
 }
 
+export interface BoletoFiscal {
+  id:              string
+  titulo:          string
+  fornecedor:      string | null
+  valor:           number | null
+  data_vencimento: string | null
+  arquivo_url:     string | null
+  arquivo_nome:    string | null
+  status:          string
+}
+
 export interface TituloASEmpresa {
   posto_id:        string
   posto_nome:      string
@@ -29,6 +40,7 @@ export interface TituloASEmpresa {
   qt_em_atraso:    number
   qt_pago:         number
   titulos:         TituloASLinha[]
+  boletos_fiscais: BoletoFiscal[]
 }
 
 export async function GET(req: NextRequest) {
@@ -66,6 +78,70 @@ export async function GET(req: NextRequest) {
   }
 
   if (!empresaIds.length) return NextResponse.json({ empresas: [] })
+
+  // Busca boletos fiscais pendentes com data_vencimento ≤ fim
+  // Tenta selecionar posto_id (migration 090); se a coluna não existir, faz fallback
+  let rawBoletos: any[] = []
+  {
+    const { data, error } = await admin
+      .from('solicitacoes_pagamento')
+      .select('id, titulo, fornecedor, valor, data_vencimento, arquivo_url, arquivo_nome, status, posto_id, descricao')
+      .eq('setor', 'fiscal')
+      .lte('data_vencimento', fim)
+      .not('status', 'in', '(pago,rejeitado)')
+      .not('data_vencimento', 'is', null)
+
+    if (!error) {
+      rawBoletos = data ?? []
+    } else {
+      // Coluna posto_id ainda não existe (migration 090 não rodada) — busca sem ela
+      const { data: d2 } = await admin
+        .from('solicitacoes_pagamento')
+        .select('id, titulo, fornecedor, valor, data_vencimento, arquivo_url, arquivo_nome, status, descricao')
+        .eq('setor', 'fiscal')
+        .lte('data_vencimento', fim)
+        .not('status', 'in', '(pago,rejeitado)')
+        .not('data_vencimento', 'is', null)
+      rawBoletos = (d2 ?? []).map((b: any) => ({ ...b, posto_id: null }))
+    }
+  }
+
+  // Para boletos sem posto_id, resolve via "Tarefa: <uuid>" na descrição → fiscal_tarefas
+  const semPosto = rawBoletos.filter((b: any) => !b.posto_id && b.descricao)
+  if (semPosto.length) {
+    const pairs = semPosto
+      .map((b: any) => {
+        const m = (b.descricao as string).match(/Tarefa:\s*([0-9a-f-]{36})/i)
+        return m ? { id: b.id, tarefaId: m[1] } : null
+      })
+      .filter(Boolean) as { id: string; tarefaId: string }[]
+
+    if (pairs.length) {
+      const { data: tarefas } = await admin
+        .from('fiscal_tarefas')
+        .select('id, posto_id')
+        .in('id', pairs.map(p => p.tarefaId))
+
+      const tarefaMap = new Map<string, string>(
+        (tarefas ?? []).filter((t: any) => t.posto_id).map((t: any) => [t.id, t.posto_id]),
+      )
+      for (const p of pairs) {
+        const postoId = tarefaMap.get(p.tarefaId)
+        if (postoId) {
+          const boleto = rawBoletos.find((b: any) => b.id === p.id)
+          if (boleto) boleto.posto_id = postoId
+        }
+      }
+    }
+  }
+
+  // Agrupa boletos por posto_id
+  const boletosByPosto = new Map<string, BoletoFiscal[]>()
+  for (const b of rawBoletos) {
+    if (!b.posto_id) continue
+    if (!boletosByPosto.has(b.posto_id)) boletosByPosto.set(b.posto_id, [])
+    boletosByPosto.get(b.posto_id)!.push(b as BoletoFiscal)
+  }
 
   const movtos = await buscarTitulosPagarMulti(empresaIds, ini, fim, situacao)
 
@@ -127,6 +203,7 @@ export async function GET(req: NextRequest) {
       qt_em_atraso:    cnt(t => t.situacao === 'em_atraso'),
       qt_pago:         cnt(t => t.situacao === 'pago'),
       titulos,
+      boletos_fiscais: boletosByPosto.get(posto.id) ?? [],
     })
   }
 

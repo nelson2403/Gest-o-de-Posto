@@ -34,6 +34,16 @@ function parseDataExcel(raw: unknown): string | null {
   return null
 }
 
+// ─── Converte "DD/MM/YYYY HH:MM" (Stone) para ISO ────────────────────────────
+function parseDataStone(raw: unknown): string | null {
+  const [datePart] = String(raw ?? '').trim().split(' ')
+  const parts = (datePart ?? '').split('/')
+  if (parts.length !== 3) return null
+  const [d, m, y] = parts
+  if (!d || !m || !y || y.length !== 4) return null
+  return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+}
+
 // ─── POST /api/tarefas/[id]/extrato ──────────────────────────────────────────
 export async function POST(
   req: NextRequest,
@@ -52,7 +62,7 @@ export async function POST(
       id, status, categoria, posto_id, tarefa_recorrente_id,
       data_conclusao_prevista,
       posto:postos(id, nome, codigo_empresa_externo),
-      recorrente:tarefas_recorrentes(posto_id, posto:postos(id, nome, codigo_empresa_externo))
+      recorrente:tarefas_recorrentes(posto_id, conta_bancaria_id, posto:postos(id, nome, codigo_empresa_externo))
     `)
     .eq('id', id)
     .single()
@@ -62,7 +72,11 @@ export async function POST(
     return NextResponse.json({ error: 'Esta tarefa não é de conciliação bancária' }, { status: 400 })
 
   type PostoInfo = { id: string; nome: string; codigo_empresa_externo: string | null }
-  const recorrente = tarefa.recorrente as unknown as { posto_id: string | null; posto: PostoInfo | null } | null
+  const recorrente = tarefa.recorrente as unknown as {
+    posto_id: string | null
+    conta_bancaria_id: string | null
+    posto: PostoInfo | null
+  } | null
   const postoResolvido: PostoInfo | null =
     (tarefa.posto as unknown as PostoInfo | null) ??
     recorrente?.posto ??
@@ -74,10 +88,12 @@ export async function POST(
     postoResolvido?.id ??
     null
 
+  const contaBancariaId: string | null = recorrente?.conta_bancaria_id ?? null
+
   // Data esperada da tarefa (YYYY-MM-DD)
   const dataEsperada: string | null = (tarefa.data_conclusao_prevista as string | null)?.slice(0, 10) ?? null
 
-  // ── Lê o arquivo Excel ────────────────────────────────────────────────────
+  // ── Lê o arquivo (Excel ou CSV) ───────────────────────────────────────────
   const formData = await req.formData()
   const file = formData.get('file') as File | null
   if (!file) return NextResponse.json({ error: 'Arquivo não enviado' }, { status: 400 })
@@ -87,68 +103,112 @@ export async function POST(
   const ws     = wb.Sheets[wb.SheetNames[0]]
   const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
 
-  // Coleta todos os saldos do dia + saldo anterior inicial do arquivo
-  const saldosDia: Array<{ data: string; valor: number }> = []
-  let saldoAnteriorArquivo: number | null = null
+  // ── Detecta formato: Stone (CSV) ou Sicoob (Excel) ────────────────────────
+  const isStone = rows.some(row => /^(Débito|Crédito)$/i.test(String(row[0] ?? '').trim()))
 
-  for (const row of rows) {
-    const colC = String(row[2] ?? '').trim().toUpperCase()
-    if (colC === 'SALDO DO DIA') {
-      const d = parseDataExcel(row[0])
-      if (d) saldosDia.push({ data: d, valor: parseValorBRSigned(row[3]) })
+  let extratoData = ''
+  let saldoDia    = 0
+  let saldoAnterior = 0
+  let movimentoExtrato = 0
+  let datasAS: string[] = []
+
+  if (isStone) {
+    // ── Parser Stone CSV ──────────────────────────────────────────────────
+    // Colunas: Tipo | Categoria | Valor | Saldo Devedor | Saldo Credor | Tarifa | Data/Hora | Status | ...
+    const dataRows = rows.filter(row => /^(Débito|Crédito)$/i.test(String(row[0] ?? '').trim()))
+    const datasNoArquivo = [...new Set(
+      dataRows.map(r => parseDataStone(r[6])).filter((d): d is string => d !== null)
+    )]
+
+    let targetDate: string
+    if (dataEsperada) {
+      if (!datasNoArquivo.includes(dataEsperada)) {
+        const lista = datasNoArquivo.map(s => s.split('-').reverse().join('/')).join(', ')
+        return NextResponse.json({
+          error: `O extrato Stone não contém a data ${dataEsperada.split('-').reverse().join('/')} (data desta tarefa). Datas encontradas: ${lista || 'nenhuma'}.`,
+        }, { status: 422 })
+      }
+      targetDate = dataEsperada
+    } else {
+      const sorted = datasNoArquivo.slice().sort()
+      targetDate = sorted[sorted.length - 1] ?? ''
+      if (!targetDate) return NextResponse.json({ error: 'Extrato Stone vazio ou inválido.' }, { status: 422 })
     }
-    if (colC === 'SALDO ANTERIOR' && saldoAnteriorArquivo === null) {
-      saldoAnteriorArquivo = parseValorBRSigned(row[3])
+
+    const rowsForDate = dataRows.filter(r => parseDataStone(r[6]) === targetDate)
+
+    movimentoExtrato = parseFloat(
+      rowsForDate.reduce((sum, r) => sum + parseValorBRSigned(r[2]), 0).toFixed(2)
+    )
+
+    const lastRow   = rowsForDate[rowsForDate.length - 1]
+    const credorFim  = parseValorBRSigned(lastRow[4])
+    const devedorFim = parseValorBRSigned(lastRow[3])
+    saldoDia      = parseFloat((credorFim - devedorFim).toFixed(2))
+    saldoAnterior = parseFloat((saldoDia - movimentoExtrato).toFixed(2))
+    extratoData   = targetDate
+    datasAS       = [targetDate]
+
+  } else {
+    // ── Parser Sicoob Excel ───────────────────────────────────────────────
+    const saldosDia: Array<{ data: string; valor: number }> = []
+    let saldoAnteriorArquivo: number | null = null
+
+    for (const row of rows) {
+      const colC = String(row[2] ?? '').trim().toUpperCase()
+      if (colC === 'SALDO DO DIA') {
+        const d = parseDataExcel(row[0])
+        if (d) saldosDia.push({ data: d, valor: parseValorBRSigned(row[3]) })
+      }
+      if (colC === 'SALDO ANTERIOR' && saldoAnteriorArquivo === null) {
+        saldoAnteriorArquivo = parseValorBRSigned(row[3])
+      }
     }
-  }
 
-  if (saldosDia.length === 0 || saldoAnteriorArquivo === null) {
-    return NextResponse.json({
-      error: 'Não foram encontradas as linhas "SALDO DO DIA" e "SALDO ANTERIOR". Verifique se o arquivo é o extrato correto.',
-    }, { status: 422 })
-  }
-
-  saldosDia.sort((a, b) => a.data.localeCompare(b.data))
-
-  // ── Valida e localiza a data da tarefa no extrato ─────────────────────────
-  let extratoData: string
-  let saldoDia: number
-  let saldoAnterior: number
-  let datasAS: string[]  // datas para consultar no AUTOSYSTEM
-
-  if (dataEsperada) {
-    const idx = saldosDia.findIndex(s => s.data === dataEsperada)
-
-    if (idx === -1) {
-      const datas = saldosDia.map(s => {
-        const [y, m, d] = s.data.split('-')
-        return `${d}/${m}/${y}`
-      }).join(', ')
+    if (saldosDia.length === 0 || saldoAnteriorArquivo === null) {
       return NextResponse.json({
-        error: `O extrato não contém a data ${dataEsperada.split('-').reverse().join('/')} (data desta tarefa). Datas encontradas no arquivo: ${datas}. Verifique se está enviando o extrato correto.`,
+        error: 'Não foram encontradas as linhas "SALDO DO DIA" e "SALDO ANTERIOR". Verifique se o arquivo é o extrato correto.',
       }, { status: 422 })
     }
 
-    extratoData  = dataEsperada
-    saldoDia     = saldosDia[idx].valor
-    // saldo anterior do dia = saldo do dia anterior (ou saldo anterior do arquivo se for o 1º dia)
-    saldoAnterior = idx > 0 ? saldosDia[idx - 1].valor : saldoAnteriorArquivo
-    datasAS       = [dataEsperada]  // AUTOSYSTEM só para o dia da tarefa
-  } else {
-    // Sem data esperada: usa o último dia do arquivo (fallback)
-    const last    = saldosDia[saldosDia.length - 1]
-    extratoData   = last.data
-    saldoDia      = last.valor
-    saldoAnterior = saldosDia.length > 1 ? saldosDia[saldosDia.length - 2].valor : saldoAnteriorArquivo
-    datasAS       = [extratoData]
+    saldosDia.sort((a, b) => a.data.localeCompare(b.data))
+
+    if (dataEsperada) {
+      const idx = saldosDia.findIndex(s => s.data === dataEsperada)
+      if (idx === -1) {
+        const datas = saldosDia.map(s => s.data.split('-').reverse().join('/')).join(', ')
+        return NextResponse.json({
+          error: `O extrato não contém a data ${dataEsperada.split('-').reverse().join('/')} (data desta tarefa). Datas encontradas: ${datas}. Verifique se está enviando o extrato correto.`,
+        }, { status: 422 })
+      }
+      extratoData   = dataEsperada
+      saldoDia      = saldosDia[idx].valor
+      saldoAnterior = idx > 0 ? saldosDia[idx - 1].valor : saldoAnteriorArquivo
+      datasAS       = [dataEsperada]
+    } else {
+      const last    = saldosDia[saldosDia.length - 1]
+      extratoData   = last.data
+      saldoDia      = last.valor
+      saldoAnterior = saldosDia.length > 1 ? saldosDia[saldosDia.length - 2].valor : saldoAnteriorArquivo
+      datasAS       = [extratoData]
+    }
+
+    movimentoExtrato = parseFloat((saldoDia - saldoAnterior).toFixed(2))
   }
 
-  const movimentoExtrato = parseFloat((saldoDia - saldoAnterior).toFixed(2))
-
-  // ── Busca conta bancária mapeada ──────────────────────────────────────────
+  // ── Busca código da conta no AUTOSYSTEM ───────────────────────────────────
   const admin = createAdminClient()
   let contaCodigo: string | null = null
-  if (postoId) {
+  if (contaBancariaId) {
+    // Conta bancária específica da tarefa (multi-banco)
+    const { data: cb } = await admin
+      .from('contas_bancarias')
+      .select('codigo_conta_externo')
+      .eq('id', contaBancariaId)
+      .single()
+    contaCodigo = (cb as any)?.codigo_conta_externo ?? null
+  } else if (postoId) {
+    // Legado: pega o primeiro banco do posto
     const { data: contas } = await admin
       .from('contas_bancarias')
       .select('codigo_conta_externo')

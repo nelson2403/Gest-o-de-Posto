@@ -71,73 +71,82 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     async function loadUser() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        setUsuario(null)
-        setPermissoesEfetivas(null)
-        setLoading(false)
-        return
-      }
+      try {
+        const getUserResult = await Promise.race([
+          supabase.auth.getUser(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+        ]) as Awaited<ReturnType<typeof supabase.auth.getUser>>
+        const user = getUserResult.data.user
 
-      const { data, error } = await supabase
-        .from('usuarios')
-        .select('*, empresa:empresas(*), perfil:perfis_permissoes(id, nome, permissoes)')
-        .eq('id', user.id)
-        .single()
+        if (!user) {
+          setUsuario(null)
+          setPermissoesEfetivas(null)
+          setLoading(false)
+          return
+        }
 
-      if (data) {
-        setUsuario(data as Usuario)
-        await loadPermissions(data.role, data.perfil_id ?? null)
-        setLoading(false)
-        return
-      }
+        const { data, error } = await supabase
+          .from('usuarios')
+          .select('*, empresa:empresas(*), perfil:perfis_permissoes(id, nome, permissoes)')
+          .eq('id', user.id)
+          .single()
 
-      if (error) {
-        const { data: { session } } = await supabase.auth.getSession()
-        const claims = session?.access_token
-          ? JSON.parse(atob(session.access_token.split('.')[1]))
-          : null
+        if (data) {
+          setUsuario(data as Usuario)
+          await loadPermissions(data.role, data.perfil_id ?? null)
+          setLoading(false)
+          return
+        }
 
-        const roleFromClaim = claims?.user_role as Role | undefined
-        const empresaIdFromClaim = claims?.user_empresa_id as string | undefined
+        if (error) {
+          const { data: { session } } = await supabase.auth.getSession()
+          const claims = session?.access_token
+            ? JSON.parse(atob(session.access_token.split('.')[1]))
+            : null
 
-        if (roleFromClaim) {
-          const usuarioFallback: Usuario = {
+          const roleFromClaim = claims?.user_role as Role | undefined
+          const empresaIdFromClaim = claims?.user_empresa_id as string | undefined
+
+          if (roleFromClaim) {
+            const usuarioFallback: Usuario = {
+              id:           user.id,
+              nome:         user.user_metadata?.nome ?? user.email?.split('@')[0] ?? 'Usuário',
+              email:        user.email ?? '',
+              empresa_id:   empresaIdFromClaim ?? null,
+              role:         roleFromClaim,
+              perfil_id:    null,
+              posto_fechamento_id: null,
+              ativo:        true,
+              criado_em:    user.created_at ?? new Date().toISOString(),
+              atualizado_em: new Date().toISOString(),
+            }
+            setUsuario(usuarioFallback)
+            await loadPermissions(roleFromClaim, null)
+            setLoading(false)
+            return
+          }
+
+          console.warn('[AuthContext] Usuário autenticado sem registro em public.usuarios.')
+          const usuarioMinimo: Usuario = {
             id:           user.id,
             nome:         user.user_metadata?.nome ?? user.email?.split('@')[0] ?? 'Usuário',
             email:        user.email ?? '',
-            empresa_id:   empresaIdFromClaim ?? null,
-            role:         roleFromClaim,
+            empresa_id:   null,
+            role:         'master',
             perfil_id:    null,
             posto_fechamento_id: null,
             ativo:        true,
             criado_em:    user.created_at ?? new Date().toISOString(),
             atualizado_em: new Date().toISOString(),
           }
-          setUsuario(usuarioFallback)
-          await loadPermissions(roleFromClaim, null)
-          setLoading(false)
-          return
+          setUsuario(usuarioMinimo)
+          setPermissoesEfetivas(null)
         }
-
-        console.warn('[AuthContext] Usuário autenticado sem registro em public.usuarios.')
-        const usuarioMinimo: Usuario = {
-          id:           user.id,
-          nome:         user.user_metadata?.nome ?? user.email?.split('@')[0] ?? 'Usuário',
-          email:        user.email ?? '',
-          empresa_id:   null,
-          role:         'master',
-          perfil_id:    null,
-          posto_fechamento_id: null,
-          ativo:        true,
-          criado_em:    user.created_at ?? new Date().toISOString(),
-          atualizado_em: new Date().toISOString(),
-        }
-        setUsuario(usuarioMinimo)
-        setPermissoesEfetivas(null)
+      } catch {
+        // Supabase inacessível — mantém loading=false sem crashar
+      } finally {
+        setLoading(false)
       }
-
-      setLoading(false)
     }
 
     loadUser()
