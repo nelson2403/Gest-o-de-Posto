@@ -132,6 +132,12 @@ export default function UsuariosPage() {
   const [loadingPostos,   setLoadingPostos]   = useState(false)
   const [savingPostos,    setSavingPostos]    = useState(false)
 
+  // Bancos por posto (de contas_bancarias) e quais estão ativos por (posto, banco)
+  type ContaBancariaSimples = { id: string; banco: string }
+  const [contasPorPosto, setContasPorPosto] = useState<Record<string, ContaBancariaSimples[]>>({})
+  // Chave: `${posto_id}:${conta_bancaria_id}` — banco ativo para aquele posto
+  const [bancosAtivos, setBancosAtivos] = useState<Set<string>>(new Set())
+
   // Modal posto do gerente (seleção única)
   const [openPostoGerente,    setOpenPostoGerente]    = useState(false)
   const [postosGerente,       setPostosGerente]       = useState<Pick<Posto, 'id' | 'nome'>[]>([])
@@ -258,22 +264,41 @@ export default function UsuariosPage() {
     setSelected(u)
     setLoadingPostos(true)
     setOpenPostos(true)
+    setBancosAtivos(new Set())
+    setContasPorPosto({})
 
-    const { data: postos } = await supabase
-      .from('postos')
-      .select('id, nome')
-      .eq('empresa_id', u.empresa_id)
-      .order('nome')
+    const [{ data: postos }, { data: recorrentes }, { data: contas }] = await Promise.all([
+      supabase.from('postos').select('id, nome').eq('empresa_id', u.empresa_id).order('nome'),
+      supabase.from('tarefas_recorrentes')
+        .select('posto_id, conta_bancaria_id, banco')
+        .eq('usuario_id', u.id).eq('ativo', true).not('posto_id', 'is', null),
+      supabase.from('contas_bancarias')
+        .select('id, posto_id, banco')
+        .eq('empresa_id', u.empresa_id).not('banco', 'is', null).order('banco'),
+    ])
 
-    const { data: recorrentes } = await supabase
-      .from('tarefas_recorrentes')
-      .select('posto_id')
-      .eq('usuario_id', u.id)
-      .eq('ativo', true)
-      .not('posto_id', 'is', null)
+    // Agrupa contas bancárias por posto
+    const porPosto: Record<string, ContaBancariaSimples[]> = {}
+    for (const c of contas ?? []) {
+      if (!c.posto_id) continue
+      if (!porPosto[c.posto_id]) porPosto[c.posto_id] = []
+      porPosto[c.posto_id].push({ id: c.id, banco: c.banco })
+    }
+
+    // Quais postos e bancos estão ativos
+    const postosSet = new Set<string>()
+    const bancosSet = new Set<string>()
+    for (const r of recorrentes ?? []) {
+      if (r.posto_id) {
+        postosSet.add(r.posto_id)
+        if (r.conta_bancaria_id) bancosSet.add(`${r.posto_id}:${r.conta_bancaria_id}`)
+      }
+    }
 
     setPostosEmpresa((postos ?? []) as Pick<Posto, 'id' | 'nome'>[])
-    setPostosAtivos(new Set((recorrentes ?? []).map(r => r.posto_id as string)))
+    setContasPorPosto(porPosto)
+    setPostosAtivos(postosSet)
+    setBancosAtivos(bancosSet)
     setLoadingPostos(false)
   }
 
@@ -312,54 +337,98 @@ export default function UsuariosPage() {
     if (!selected) return
     setSavingPostos(true)
 
+    // Salva postos atribuídos em usuario_postos_fechamento
+    const postosParaSalvar = Array.from(postosAtivos)
+
+    // Remove postos antigos
     await supabase
-      .from('tarefas_recorrentes')
-      .update({ ativo: false })
+      .from('usuario_postos_fechamento')
+      .delete()
       .eq('usuario_id', selected.id)
-      .is('posto_id', null)
+
+    // Insere novos postos
+    if (postosParaSalvar.length > 0) {
+      const novosRegistros = postosParaSalvar.map(postoId => ({
+        usuario_id: selected.id,
+        posto_id: postoId,
+      }))
+      await supabase
+        .from('usuario_postos_fechamento')
+        .insert(novosRegistros)
+    }
+
+    // Desativa recorrentes sem posto_id (legado)
+    await supabase.from('tarefas_recorrentes').update({ ativo: false })
+      .eq('usuario_id', selected.id).is('posto_id', null)
 
     const { data: existentes } = await supabase
       .from('tarefas_recorrentes')
-      .select('id, posto_id, ativo')
+      .select('id, posto_id, conta_bancaria_id, ativo')
       .eq('usuario_id', selected.id)
       .not('posto_id', 'is', null)
 
+    // Chave: `${posto_id}:${conta_bancaria_id ?? 'null'}`
     const existentesMap = new Map<string, { id: string; ativo: boolean }>(
-      (existentes ?? []).map(r => [r.posto_id as string, { id: r.id, ativo: r.ativo }])
+      (existentes ?? []).map(r => [
+        `${r.posto_id}:${r.conta_bancaria_id ?? 'null'}`,
+        { id: r.id, ativo: r.ativo },
+      ])
     )
 
-    const ops: Promise<unknown>[] = [] // eslint-disable-line @typescript-eslint/no-explicit-any
+    const ops: Promise<unknown>[] = []
 
     for (const posto of postosEmpresa) {
-      const existe = existentesMap.get(posto.id)
-      const marcado = postosAtivos.has(posto.id)
+      const postoMarcado = postosAtivos.has(posto.id)
+      const contas = contasPorPosto[posto.id] ?? []
 
-      if (marcado && !existe) {
-        ops.push(
-          (supabase.from('tarefas_recorrentes').insert({
-            empresa_id:     selected.empresa_id,
-            usuario_id:     selected.id,
-            posto_id:       posto.id,
-            titulo:         `Conciliação Bancária — ${posto.nome}`,
-            descricao:      `Conciliar os lançamentos bancários do posto ${posto.nome}.`,
-            categoria:      'conciliacao_bancaria',
-            prioridade:     'alta',
-            carencia_dias:  4,
-            tolerancia_dias: 1,
-            ativo:          true,
-          }) as unknown) as Promise<unknown>
-        )
-      } else if (marcado && existe && !existe.ativo) {
-        ops.push((supabase.from('tarefas_recorrentes').update({ ativo: true }).eq('id', existe.id) as unknown) as Promise<unknown>)
-      } else if (!marcado && existe && existe.ativo) {
-        ops.push((supabase.from('tarefas_recorrentes').update({ ativo: false }).eq('id', existe.id) as unknown) as Promise<unknown>)
+      if (contas.length === 0) {
+        // Sem bancos configurados: comportamento legado — uma tarefa por posto sem banco
+        const key = `${posto.id}:null`
+        const existe = existentesMap.get(key)
+        if (postoMarcado && !existe) {
+          ops.push(supabase.from('tarefas_recorrentes').insert({
+            empresa_id: selected.empresa_id, usuario_id: selected.id,
+            posto_id: posto.id,
+            titulo: `Conciliação Bancária — ${posto.nome}`,
+            descricao: `Conciliar os lançamentos bancários do posto ${posto.nome}.`,
+            categoria: 'conciliacao_bancaria', prioridade: 'alta',
+            carencia_dias: 4, tolerancia_dias: 1, ativo: true,
+          }) as unknown as Promise<unknown>)
+        } else if (postoMarcado && existe && !existe.ativo) {
+          ops.push(supabase.from('tarefas_recorrentes').update({ ativo: true }).eq('id', existe.id) as unknown as Promise<unknown>)
+        } else if (!postoMarcado && existe?.ativo) {
+          ops.push(supabase.from('tarefas_recorrentes').update({ ativo: false }).eq('id', existe.id) as unknown as Promise<unknown>)
+        }
+      } else {
+        // Com bancos: uma tarefa por banco do posto
+        for (const conta of contas) {
+          const bancoKey = `${posto.id}:${conta.id}`
+          const bancoMarcado = postoMarcado && bancosAtivos.has(bancoKey)
+          const key = `${posto.id}:${conta.id}`
+          const existe = existentesMap.get(key)
+          if (bancoMarcado && !existe) {
+            ops.push(supabase.from('tarefas_recorrentes').insert({
+              empresa_id: selected.empresa_id, usuario_id: selected.id,
+              posto_id: posto.id, conta_bancaria_id: conta.id, banco: conta.banco,
+              titulo: `Conciliação ${conta.banco} — ${posto.nome}`,
+              descricao: `Conciliar o extrato ${conta.banco} do posto ${posto.nome}.`,
+              categoria: 'conciliacao_bancaria', prioridade: 'alta',
+              carencia_dias: 4, tolerancia_dias: 1, ativo: true,
+            }) as unknown as Promise<unknown>)
+          } else if (bancoMarcado && existe && !existe.ativo) {
+            ops.push(supabase.from('tarefas_recorrentes').update({ ativo: true }).eq('id', existe.id) as unknown as Promise<unknown>)
+          } else if (!bancoMarcado && existe?.ativo) {
+            ops.push(supabase.from('tarefas_recorrentes').update({ ativo: false }).eq('id', existe.id) as unknown as Promise<unknown>)
+          }
+        }
       }
     }
 
     await Promise.all(ops)
     await supabase.rpc('fix_tarefas_apos_troca_posto')
 
-    toast({ title: 'Postos atualizados!', description: `${postosAtivos.size} posto(s) ativo(s) para ${selected.nome}.` })
+    const totalAtivos = bancosAtivos.size || postosAtivos.size
+    toast({ title: 'Postos atualizados!', description: `${totalAtivos} tarefa(s) recorrente(s) ativa(s) para ${selected.nome}.` })
     setSavingPostos(false)
     setOpenPostos(false)
   }
@@ -1098,35 +1167,75 @@ export default function UsuariosPage() {
             ) : postosEmpresa.length === 0 ? (
               <p className="text-[13px] text-gray-400 text-center py-6">Nenhum posto cadastrado para esta empresa.</p>
             ) : (
-              <div className="space-y-1 max-h-64 overflow-y-auto">
+              <div className="space-y-1 max-h-72 overflow-y-auto">
                 {postosEmpresa.map(posto => {
                   const checked = postosAtivos.has(posto.id)
+                  const contas = contasPorPosto[posto.id] ?? []
                   return (
-                    <label
-                      key={posto.id}
-                      className={cn(
-                        'flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors',
-                        checked ? 'bg-cyan-50 border border-cyan-200' : 'hover:bg-gray-50 border border-transparent'
+                    <div key={posto.id}>
+                      {/* Linha do posto */}
+                      <label
+                        className={cn(
+                          'flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors',
+                          checked ? 'bg-cyan-50 border border-cyan-200' : 'hover:bg-gray-50 border border-transparent'
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={e => {
+                            const next = new Set(postosAtivos)
+                            if (e.target.checked) next.add(posto.id)
+                            else next.delete(posto.id)
+                            setPostosAtivos(next)
+                          }}
+                          className="w-4 h-4 rounded accent-cyan-600"
+                        />
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <MapPin className={cn('w-3.5 h-3.5 flex-shrink-0', checked ? 'text-cyan-600' : 'text-gray-400')} />
+                          <span className={cn('text-[13px] truncate', checked ? 'font-medium text-gray-800' : 'text-gray-600')}>
+                            {posto.nome}
+                          </span>
+                          {contas.length > 0 && (
+                            <span className="ml-auto text-[10px] text-gray-400 flex-shrink-0">{contas.length} banco{contas.length > 1 ? 's' : ''}</span>
+                          )}
+                        </div>
+                      </label>
+
+                      {/* Bancos disponíveis (aparece quando o posto está marcado e tem bancos) */}
+                      {checked && contas.length > 0 && (
+                        <div className="ml-8 mb-1 space-y-0.5">
+                          {contas.map(conta => {
+                            const bancoKey = `${posto.id}:${conta.id}`
+                            const bancoChecked = bancosAtivos.has(bancoKey)
+                            return (
+                              <label
+                                key={conta.id}
+                                className={cn(
+                                  'flex items-center gap-2.5 px-3 py-1.5 rounded-md cursor-pointer transition-colors text-[12px]',
+                                  bancoChecked ? 'bg-blue-50 text-blue-800 border border-blue-200' : 'hover:bg-gray-50 text-gray-500 border border-transparent'
+                                )}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={bancoChecked}
+                                  onChange={e => {
+                                    const next = new Set(bancosAtivos)
+                                    if (e.target.checked) next.add(bancoKey)
+                                    else next.delete(bancoKey)
+                                    setBancosAtivos(next)
+                                  }}
+                                  className="w-3.5 h-3.5 rounded accent-blue-600"
+                                />
+                                <span className={cn('font-medium', bancoChecked ? 'text-blue-800' : 'text-gray-500')}>
+                                  {conta.banco}
+                                </span>
+                              </label>
+                            )
+                          })}
+                        </div>
                       )}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={e => {
-                          const next = new Set(postosAtivos)
-                          if (e.target.checked) next.add(posto.id)
-                          else next.delete(posto.id)
-                          setPostosAtivos(next)
-                        }}
-                        className="w-4 h-4 rounded accent-cyan-600"
-                      />
-                      <div className="flex items-center gap-2 min-w-0">
-                        <MapPin className={cn('w-3.5 h-3.5 flex-shrink-0', checked ? 'text-cyan-600' : 'text-gray-400')} />
-                        <span className={cn('text-[13px] truncate', checked ? 'font-medium text-gray-800' : 'text-gray-600')}>
-                          {posto.nome}
-                        </span>
-                      </div>
-                    </label>
+                    </div>
                   )
                 })}
               </div>
@@ -1134,7 +1243,7 @@ export default function UsuariosPage() {
 
             {postosEmpresa.length > 0 && (
               <p className="text-[11px] text-gray-400 mt-3">
-                {postosAtivos.size} de {postosEmpresa.length} posto(s) selecionado(s)
+                {postosAtivos.size} posto(s) · {bancosAtivos.size} banco(s) selecionado(s)
               </p>
             )}
           </div>

@@ -6,6 +6,13 @@ import { Pool, PoolClient } from 'pg'
 declare global {
   // eslint-disable-next-line no-var
   var __autosystemPool: Pool | undefined
+  // eslint-disable-next-line no-var
+  var __asSchemaCache: Map<string, Set<string>> | undefined
+}
+
+function getSchemaCache(): Map<string, Set<string>> {
+  if (!global.__asSchemaCache) global.__asSchemaCache = new Map()
+  return global.__asSchemaCache
 }
 
 function getPool(): Pool {
@@ -1172,15 +1179,21 @@ export interface MovtoLancamento extends Record<string, unknown> {
 }
 
 // Helper: descobre quais colunas existem em uma tabela do AUTOSYSTEM.
-// Usado para construir queries resilientes quando o schema varia entre instâncias.
+// Carrega todas as colunas da tabela na primeira chamada e armazena em globalThis.
+// Chamadas seguintes (mesma tabela) apenas filtram localmente — sem round-trip ao DB.
 async function colunasExistentes(tabela: string, candidatas: string[]): Promise<Set<string>> {
   if (!candidatas.length) return new Set()
-  const rows = await query<{ column_name: string }>(
-    `SELECT column_name FROM information_schema.columns
-     WHERE table_schema = 'public' AND table_name = $1 AND column_name = ANY($2::text[])`,
-    [tabela, candidatas],
-  )
-  return new Set(rows.map(r => r.column_name))
+  const cache = getSchemaCache()
+  if (!cache.has(tabela)) {
+    const rows = await query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = $1`,
+      [tabela],
+    )
+    cache.set(tabela, new Set(rows.map(r => r.column_name)))
+  }
+  const todas = cache.get(tabela)!
+  return new Set(candidatas.filter(c => todas.has(c)))
 }
 
 export async function listarMovtoConta(
@@ -1607,6 +1620,7 @@ export async function buscarVendasProdutos(
 ): Promise<Record<string, unknown>[]> {
   return query(
     `SELECT el.empresa::bigint, el.produto::bigint,
+            p.codigo::text AS produto_codigo,
             p.nome::text AS produto_nome, p.unid_med::text, p.grupo::bigint, p.subgrupo::bigint,
             ABS(SUM(el.movimento))::float AS total_vendido,
             COUNT(DISTINCT el.data::date)::int AS dias_com_venda
@@ -1616,7 +1630,7 @@ export async function buscarVendasProdutos(
        AND p.grupo = ANY($2::bigint[])
        AND el.operacao = 'V'
        AND el.data >= $3::date AND el.data <= $4::date
-     GROUP BY el.empresa, el.produto, p.nome, p.unid_med, p.grupo, p.subgrupo`,
+     GROUP BY el.empresa, el.produto, p.codigo, p.nome, p.unid_med, p.grupo, p.subgrupo`,
     [empresaIds, grupos, dataIni, dataFim],
   )
 }
@@ -1855,8 +1869,8 @@ export async function buscarNfeManifestos(
          WHERE nm.nfe = nr.nfe
            AND nm.nfe_evento IN (210200, 210220, 210240)
        )
-     ORDER BY nr.data_emissao DESC
-     LIMIT 1000`,
+     ORDER BY nr.data_emissao ASC
+     LIMIT 5000`,
     [empresaGrids],
   )
 }
@@ -1889,13 +1903,15 @@ export interface ItemNfe {
 
 function parseItensNfe(xml: string): ItemNfe[] {
   const itens: ItemNfe[] = []
-  const detRegex = /<det[^>]*nItem="(\d+)"[^>]*>([\s\S]*?)<\/det>/g
+  // Aceita tanto <det ...> quanto <nfe:det ...> (NF-e com prefixo de namespace)
+  const detRegex = /<(?:\w+:)?det[^>]*nItem="(\d+)"[^>]*>([\s\S]*?)<\/(?:\w+:)?det>/g
   let match: RegExpExecArray | null
   while ((match = detRegex.exec(xml)) !== null) {
     const numero = parseInt(match[1])
     const det = match[2]
     const get = (tag: string) => {
-      const m = new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`).exec(det)
+      // Aceita <tag>, <ns:tag>, <tag attr=...>
+      const m = new RegExp(`<(?:\\w+:)?${tag}[^>]*>([^<]*)</(?:\\w+:)?${tag}>`).exec(det)
       return m ? m[1].trim() : ''
     }
     itens.push({
@@ -1913,7 +1929,7 @@ function parseItensNfe(xml: string): ItemNfe[] {
 
 // Busca os itens de uma NF pelo grid de nfe_resumo, lendo o XML do AS
 export async function buscarItensNfe(nfeGrid: number): Promise<ItemNfe[]> {
-  const rows = await query<{ fonte_xml: string }>(
+  const rows = await query<{ fonte_xml: Buffer | string | null }>(
     `SELECT nx.fonte_xml
      FROM nfe_xml nx
      JOIN nfe_resumo nr ON nr.nfe = nx.nfe
@@ -1921,12 +1937,28 @@ export async function buscarItensNfe(nfeGrid: number): Promise<ItemNfe[]> {
      LIMIT 1`,
     [nfeGrid],
   )
-  if (!rows.length || !rows[0].fonte_xml) return []
-  return parseItensNfe(rows[0].fonte_xml)
+  if (!rows.length) {
+    console.log(`[buscarItensNfe] grid=${nfeGrid} sem registro em nfe_xml`)
+    return []
+  }
+  const raw = rows[0].fonte_xml
+  if (!raw) {
+    console.log(`[buscarItensNfe] grid=${nfeGrid} fonte_xml vazio`)
+    return []
+  }
+  // fonte_xml pode vir como Buffer (coluna bytea) ou string (coluna text)
+  const xmlStr = Buffer.isBuffer(raw) ? decodeBytea(raw as Buffer) : (raw as string)
+  const itens = parseItensNfe(xmlStr)
+  console.log(`[buscarItensNfe] grid=${nfeGrid} xml=${xmlStr.length}chars itens=${itens.length}`)
+  return itens
 }
 
 // Verifica se NFs (por grid de nfe_resumo) já foram manifestadas externamente no SEFAZ.
-// Retorna para cada grid o último evento de manifestação (210200=confirmada, 210220=desconhecida, 210240=não realizada).
+// Retorna para cada grid o último evento de manifestação:
+//   210200 = Confirmação da Operação
+//   210210 = Ciência da Operação (intermediário — goods recebidos mas não confirmados formalmente)
+//   210220 = Desconhecimento da Operação
+//   210240 = Operação não Realizada
 export async function verificarManifestacaoExterna(
   grids: number[],
 ): Promise<{ grid: string; nfe_evento: number }[]> {
@@ -1938,7 +1970,7 @@ export async function verificarManifestacaoExterna(
        SELECT nfe_evento
        FROM nfe_manifestacao nm2
        WHERE nm2.nfe = nr.nfe
-         AND nm2.nfe_evento IN (210200, 210220, 210240)
+         AND nm2.nfe_evento IN (210200, 210210, 210220, 210240)
        ORDER BY nm2.grid DESC
        LIMIT 1
      ) nm_last ON true
@@ -1949,8 +1981,9 @@ export async function verificarManifestacaoExterna(
 
 // Detecta se NFs (por grid de nfe_resumo) já foram lançadas no estoque via lmc_entrada.
 //
-// O campo lmc_entrada.documento guarda o número da NF — não o grid de nfe_resumo.
-// A join correta é via FK nfe (se a coluna existir) ou via nr.numero = le.documento.
+// Caminhos tentados em ordem:
+//   1. lmc_entrada.nfe = nfe_resumo.nfe (FK direta — quando a coluna existe)
+//   2. lmc_entrada.documento = nfe.nota_fiscal (número da NF via tabela nfe)
 // Retorna os grids confirmados como strings para comparação com o Set no sync.
 export async function verificarLancamentoNfe(
   nfeResumoGrids: number[],
@@ -1970,14 +2003,20 @@ export async function verificarLancamentoNfe(
     )
   }
 
-  // Fallback: join pelo número da NF (nr.numero = le.documento)
-  return query<{ grid: string }>(
-    `SELECT DISTINCT nr.grid::text
-     FROM nfe_resumo nr
-     JOIN lmc_entrada le ON le.documento::text = nr.numero::text
-     WHERE nr.grid = ANY($1::bigint[])`,
-    [nfeResumoGrids],
-  )
+  // Fallback: join via nfe.nota_fiscal = lmc_entrada.documento
+  // (nfe_resumo não tem coluna numero; o número da NF fica em nfe.nota_fiscal)
+  try {
+    return await query<{ grid: string }>(
+      `SELECT DISTINCT nr.grid::text
+       FROM nfe_resumo nr
+       JOIN nfe n ON n.grid = nr.nfe
+       JOIN lmc_entrada le ON le.documento::text = n.nota_fiscal::text
+       WHERE nr.grid = ANY($1::bigint[])`,
+      [nfeResumoGrids],
+    )
+  } catch {
+    return []
+  }
 }
 
 // ── Análise de Vendas & Precificação ─────────────────────────────────────────
@@ -2319,6 +2358,453 @@ export async function buscarEstoquePorGrupo(
     custo_medio:  Number(r.custo_medio),
     valor_total:  Number(r.estoque) * Number(r.custo_medio),
   }))
+}
+
+// ── Fechamento de Caixa por Frentista ────────────────────────────────────────
+
+export interface DadosCaixaFrentista {
+  cartoes:            number
+  cartoes_frotas:     number
+  pix_tef:            number
+  pix_cnpj:           number
+  dinheiro:           number
+  a_prazo:            number
+  cheque:             number
+  notas_promissorias: number
+  lancto_por_conta:   Record<string, number>   // breakdown por conta AS (lancto)
+  lancto_por_motivo:  Record<number, number>   // breakdown por motivo_grid AS
+  movto_por_forma:    Record<string, number>   // conta.nome → total (formas de pagamento do movto)
+  caixas_encontrados: number
+  estrategia:         string
+}
+
+// Retorna motivos distintos usados em lanctos de venda (para tela de configuração)
+export async function buscarMotivosLanctoFrentista(
+  empresaGrids: number[],
+  dataIni = '2026-01-01',
+): Promise<{ grid: number; nome: string }[]> {
+  if (!empresaGrids.length) return []
+  // Verifica se lancto tem coluna motivo nesta instância do AUTOSYSTEM
+  const cols = await colunasExistentes('lancto', ['motivo'])
+  if (!cols.has('motivo')) return []
+  return query(
+    `SELECT DISTINCT mm.grid::bigint AS grid, mm.nome::text AS nome
+     FROM lancto l
+     JOIN motivo_movto mm ON mm.grid = l.motivo
+     WHERE l.empresa = ANY($1::bigint[])
+       AND l.data >= $2::date
+       AND l.operacao = 'V'
+       AND l.motivo IS NOT NULL
+     ORDER BY mm.nome
+     LIMIT 300`,
+    [empresaGrids, dataIni],
+  )
+}
+
+// Retorna as formas de pagamento distintas a partir de movto.conta_debitar → conta.nome
+// Esses são os nomes exatos que aparecem no AUTOSYSTEM (Financeiro > Saídas)
+// e servem como chave para o mapeamento admin → grupo do fechamento
+export async function buscarTefOperadorasDistinct(
+  empresaGrids: number[],
+  dataIni = '2026-01-01',
+): Promise<{ chave: string }[]> {
+  if (!empresaGrids.length) return []
+  try {
+    const rows = await query<{ nome_b: Buffer | null }>(
+      `SELECT DISTINCT c.nome::bytea AS nome_b
+       FROM movto m
+       LEFT JOIN conta c ON c.codigo = m.conta_debitar
+       WHERE m.empresa = ANY($1::bigint[])
+         AND m.data >= $2::date
+         AND m.conta_debitar NOT LIKE '4.%'
+         AND c.nome IS NOT NULL
+       ORDER BY 1
+       LIMIT 500`,
+      [empresaGrids, dataIni],
+    )
+    return rows
+      .map(r => decodeBytea(r.nome_b).trim())
+      .filter(c => c.length > 0)
+      .sort((a, b) => a.localeCompare(b))
+      .map(chave => ({ chave }))
+  } catch {
+    return []
+  }
+}
+
+// Constrói candidatos de login AUTOSYSTEM a partir do nome do funcionário.
+// O AUTOSYSTEM usa vários formatos: só primeiro nome, primeiro+último, nome completo sem espaço, etc.
+function nomeParaCandidatos(nome: string): string[] {
+  const partes = nome.trim().toUpperCase().replace(/\s+/g, ' ').split(' ')
+  const s = new Set<string>()
+  s.add(partes[0])                                                // só primeiro nome (BRUNA)
+  s.add(partes.join(''))                                          // tudo junto (BRUNADEARLRODRIGES)
+  if (partes.length >= 2) s.add(partes[0] + partes[partes.length - 1])  // primeiro + último
+  if (partes.length >= 3) s.add(partes[0] + partes[1])          // primeiro + segundo
+  if (partes.length >= 2) s.add(partes[0] + ' ' + partes[partes.length - 1])  // com espaço
+  return [...s].filter(c => c.length >= 2)
+}
+
+export async function buscarDadosCaixaFrentista(
+  empresaGrid:    number,
+  data:           string,     // YYYY-MM-DD
+  codigoOperador: string,     // funcionario.codigo do frentista
+  motivoGrupos:   Record<number, string> = {},  // motivo_grid → grupo
+  tefGrupos:      Record<string, string> = {},   // "PROFROTA" / "STONE - PIX" → grupo
+): Promise<DadosCaixaFrentista> {
+
+  // Pré-carrega schemas (colunasExistentes usa cache global)
+  await Promise.all([
+    colunasExistentes('lancto',  ['motivo', 'caixa']),
+    colunasExistentes('movto',   ['caixa', 'hora']),
+    colunasExistentes('exchange_linxpay_qr_transacao', [
+      'amount', 'valor', 'valor_transacao',
+      'payment_status', 'status', 'situacao',
+      'movto', 'data', 'data_transacao', 'hora',
+    ]),
+  ])
+
+  // ── 1. Resolve o login AUTOSYSTEM pelo código do funcionário ────────────
+  // Fluxo: funcionario.codigo → funcionario.nome → gera candidatos de login
+  //        → confirma qual candidato existe em caixa.usuario para empresa+data
+  let usuarioAS = ''
+  let funcNome  = ''
+
+  try {
+    const funcRows = await query<{ nome: string }>(
+      `SELECT nome::text FROM funcionario WHERE codigo::text = $1 LIMIT 1`,
+      [codigoOperador],
+    )
+    funcNome = funcRows[0] ? String(funcRows[0].nome ?? '').trim() : ''
+    console.log(`[caixa-frentista] codigo=${codigoOperador} → funcNome="${funcNome}"`)
+  } catch (e: any) { console.log(`[caixa-frentista] funcionario lookup erro: ${e.message}`) }
+
+  if (funcNome) {
+    const candidatos = nomeParaCandidatos(funcNome)
+    console.log(`[caixa-frentista] candidatos=${JSON.stringify(candidatos)}`)
+
+    // Confirma qual candidato existe como caixa.usuario para essa empresa+data
+    // Mais confiável que checar a tabela usuario (que pode não existir)
+    try {
+      const rows = await query<{ usuario: string }>(
+        `SELECT DISTINCT usuario::text FROM caixa
+         WHERE empresa = $1 AND data = $2::date
+           AND usuario = ANY($3::text[])
+         LIMIT 1`,
+        [empresaGrid, data, candidatos],
+      )
+      if (rows.length) usuarioAS = String(rows[0].usuario ?? '').trim()
+    } catch (e: any) { console.log(`[caixa-frentista] caixa usuario check erro: ${e.message}`) }
+
+    // Fallback: testa na tabela usuario (quando existe) para dias sem caixa aberto
+    if (!usuarioAS) {
+      for (const cand of candidatos) {
+        if (usuarioAS) break
+        try {
+          const rows = await query<{ nome: string }>(
+            `SELECT nome::text FROM usuario WHERE nome = $1 LIMIT 1`, [cand],
+          )
+          if (rows.length) usuarioAS = String(rows[0].nome ?? '').trim()
+        } catch { /* tabela pode não existir */ }
+      }
+    }
+    console.log(`[caixa-frentista] usuarioAS="${usuarioAS}"`)
+  }
+
+  const lancto_por_conta: Record<string, number>  = {}
+  const lancto_por_motivo: Record<number, number> = {}
+  const movto_por_forma: Record<string, number>   = {}
+  let caixaGrids: number[] = []
+  let estrategia = 'nenhuma'
+  let pdvContaCode: string | null = null
+
+  if (!usuarioAS) {
+    console.log(`[caixa-frentista] usuario AS não encontrado para codigo=${codigoOperador}`)
+    return {
+      cartoes: 0, cartoes_frotas: 0, pix_tef: 0, pix_cnpj: 0,
+      dinheiro: 0, a_prazo: 0, cheque: 0, notas_promissorias: 0,
+      lancto_por_conta, lancto_por_motivo, movto_por_forma,
+      caixas_encontrados: 0, estrategia,
+    }
+  }
+
+  // ── 2. Caixas do frentista pelo login ────────────────────────────────────
+  try {
+    const rows = await query<{ grid: number }>(
+      `SELECT grid::bigint FROM caixa WHERE empresa=$1 AND data=$2::date AND usuario=$3`,
+      [empresaGrid, data, usuarioAS],
+    )
+    caixaGrids = rows.map(r => Number(r.grid))
+    estrategia = `caixa.usuario(${usuarioAS})`
+    console.log(`[caixa-frentista] caixas=[${caixaGrids.join(',')}]`)
+  } catch (e: any) { console.log(`[caixa-frentista] caixa lookup erro: ${e.message}`) }
+
+  // ── 3. Formas de pagamento via movto (filtrado por usuario) ─────────────
+  // movto NÃO tem coluna caixa — filtra por empresa+data+usuario
+  try {
+    const formaRows = await query<{ conta_debitar: string; nome_b: Buffer | null; total: number }>(
+      `SELECT m.conta_debitar::text,
+              c.nome::bytea AS nome_b,
+              COALESCE(SUM(m.valor), 0)::float AS total
+       FROM movto m
+       LEFT JOIN conta c ON c.codigo = m.conta_debitar
+       WHERE m.empresa = $1 AND m.data = $2::date AND m.usuario = $3
+         AND m.conta_debitar NOT LIKE '4.%'
+       GROUP BY m.conta_debitar, c.nome
+       ORDER BY total DESC`,
+      [empresaGrid, data, usuarioAS],
+    )
+    console.log(`[caixa-frentista] movto usuario(${usuarioAS}) → ${formaRows.length} forma(s)`)
+    for (const r of formaRows) {
+      const nome = decodeBytea(r.nome_b).trim() || r.conta_debitar
+      movto_por_forma[nome] = (movto_por_forma[nome] ?? 0) + Number(r.total)
+    }
+    const pdvRow = formaRows.find(r => r.conta_debitar.startsWith('1.1.2.') || r.conta_debitar.startsWith('1.1.1.'))
+    pdvContaCode = pdvRow?.conta_debitar ?? null
+    console.log(`[caixa-frentista] formas=[${Object.keys(movto_por_forma).join('|')}] pdv=${pdvContaCode ?? 'null'}`)
+  } catch (e: any) { console.log(`[caixa-frentista] movto forma erro: ${e.message}`) }
+
+  // ── 4. Lançamentos por conta (lancto) filtrado por usuario ───────────────
+  // lancto NÃO tem coluna caixa nem motivo nesta instância — filtra por empresa+data+usuario
+  try {
+    const lancCols  = await colunasExistentes('lancto', ['motivo', 'caixa'])
+    const temMotivo = lancCols.has('motivo')
+    const temCaixa  = lancCols.has('caixa')
+
+    if (temCaixa && caixaGrids.length) {
+      // Instâncias com lancto.caixa: filtra pelo caixa (mais preciso)
+      const selectMotivo = temMotivo ? `COALESCE(motivo::bigint, 0) AS motivo_grid,` : `0 AS motivo_grid,`
+      const groupBy = temMotivo ? 'conta, motivo' : 'conta'
+      const rows = await query<{ motivo_grid: number | null; conta: string; total: number }>(
+        `SELECT ${selectMotivo} conta::text, COALESCE(SUM(valor), 0)::float AS total
+         FROM lancto WHERE caixa = ANY($1::bigint[]) AND operacao = 'V'
+         GROUP BY ${groupBy}`,
+        [caixaGrids],
+      )
+      console.log(`[caixa-frentista] lancto via caixa → ${rows.length} linha(s)`)
+      for (const r of rows) {
+        lancto_por_conta[r.conta] = (lancto_por_conta[r.conta] ?? 0) + Number(r.total)
+        const mg = Number(r.motivo_grid)
+        if (mg > 0) lancto_por_motivo[mg] = (lancto_por_motivo[mg] ?? 0) + Number(r.total)
+      }
+    } else {
+      // Sem lancto.caixa: filtra por empresa+data+usuario+operacao (padrão desta instância)
+      const selectMotivo = temMotivo ? `COALESCE(motivo::bigint, 0) AS motivo_grid,` : `0 AS motivo_grid,`
+      const groupBy = temMotivo ? 'conta, motivo' : 'conta'
+      const rows = await query<{ motivo_grid: number | null; conta: string; total: number }>(
+        `SELECT ${selectMotivo} conta::text, COALESCE(SUM(valor), 0)::float AS total
+         FROM lancto
+         WHERE empresa = $1 AND data = $2::date AND usuario = $3 AND operacao = 'V'
+         GROUP BY ${groupBy}`,
+        [empresaGrid, data, usuarioAS],
+      )
+      console.log(`[caixa-frentista] lancto via usuario(${usuarioAS}) → ${rows.length} linha(s)`)
+      for (const r of rows) {
+        lancto_por_conta[r.conta] = (lancto_por_conta[r.conta] ?? 0) + Number(r.total)
+        const mg = Number(r.motivo_grid)
+        if (mg > 0) lancto_por_motivo[mg] = (lancto_por_motivo[mg] ?? 0) + Number(r.total)
+      }
+    }
+  } catch (e: any) { console.log(`[caixa-frentista] lancto query erro: ${e.message}`) }
+
+  // ── 5. TEF automático via tef_transacao (filtrado pelos caixas) ──────────
+  if (caixaGrids.length) {
+    try {
+      const tefRows = await query<{ op_b: Buffer | null; bnd_b: Buffer | null; total: number }>(
+        `SELECT operadora_nome::bytea AS op_b, bandeira::bytea AS bnd_b,
+                COALESCE(SUM(valor), 0)::float AS total
+         FROM tef_transacao WHERE caixa = ANY($1::bigint[])
+         GROUP BY operadora_nome, bandeira ORDER BY total DESC`,
+        [caixaGrids],
+      )
+      console.log(`[caixa-frentista] tef_transacao → ${tefRows.length} linha(s)`)
+      for (const r of tefRows) {
+        const op = decodeBytea(r.op_b).trim(); const bnd = decodeBytea(r.bnd_b).trim()
+        if (!op) continue
+        const chave = bnd ? `${op} - ${bnd}` : op
+        const jaExiste = Object.keys(movto_por_forma).some(k => {
+          const kl = k.toLowerCase(); const cl = chave.toLowerCase()
+          return kl === cl || kl.startsWith(cl + ' ') || kl.startsWith(cl + '-')
+        })
+        if (!jaExiste) movto_por_forma[`TEF ${chave}`] = (movto_por_forma[`TEF ${chave}`] ?? 0) + Number(r.total)
+      }
+    } catch (e: any) { console.log(`[caixa-frentista] tef_transacao erro: ${e.message}`) }
+  }
+
+  // ── 6. QRLINX-PIX via exchange_linxpay_qr_transacao ─────────────────────
+  // Filtra pelos movtos do frentista (empresa+data+usuario) — movto.caixa não existe
+  try {
+    const qrCols = await colunasExistentes('exchange_linxpay_qr_transacao', [
+      'amount', 'valor', 'valor_transacao',
+      'payment_status', 'status', 'situacao',
+      'movto', 'data', 'data_transacao', 'hora',
+    ])
+    if (qrCols.size > 0) {
+      const colValor  = qrCols.has('amount')         ? 'amount'         : qrCols.has('valor')         ? 'valor'         : qrCols.has('valor_transacao') ? 'valor_transacao' : null
+      const colStatus = qrCols.has('payment_status') ? 'payment_status' : qrCols.has('status')        ? 'status'        : qrCols.has('situacao')        ? 'situacao'        : null
+      const colMovto  = qrCols.has('movto')          ? 'movto'          : null
+      const colData   = qrCols.has('data')           ? 'data'           : qrCols.has('data_transacao') ? 'data_transacao': null
+
+      if (colValor && colData && colMovto) {
+        const statusCond = colStatus
+          ? `AND UPPER(${colStatus}::text) IN ('5', 'APPROVED', 'PAID', 'APROVADO', 'PAGO', '1', 'OK', 'S')`
+          : ''
+
+        // Filtra pelos movtos do frentista (empresa+data+usuario)
+        const r1 = await query<{ total: number }>(
+          `SELECT COALESCE(SUM(qr.${colValor}::float), 0) AS total
+           FROM exchange_linxpay_qr_transacao qr
+           WHERE qr.${colData}::date = $2::date
+             ${statusCond}
+             AND qr.${colMovto} IN (
+               SELECT grid FROM movto
+               WHERE empresa = $1 AND data = $2::date AND usuario = $3
+             )`,
+          [empresaGrid, data, usuarioAS],
+        )
+        let qrTotal = Number(r1[0]?.total ?? 0)
+        console.log(`[qr-linxpay] via usuario(${usuarioAS}) total=${qrTotal}`)
+
+        // Verifica se QRLINX já está contabilizado no movto para evitar duplicação
+        if (qrTotal > 0) {
+          const chkRows = await query<{ cnt: number }>(
+            `SELECT COUNT(*)::int AS cnt
+             FROM exchange_linxpay_qr_transacao qr
+             JOIN movto m ON m.grid = qr.${colMovto}
+             WHERE qr.${colData}::date = $1::date ${statusCond}
+               AND m.empresa = $2 AND m.data = $1::date AND m.usuario = $3`,
+            [data, empresaGrid, usuarioAS],
+          ).catch(() => [{ cnt: 0 }])
+          if (Number(chkRows[0]?.cnt ?? 0) > 0) {
+            console.log(`[qr-linxpay] QRLINX já em movto — não duplica`)
+            qrTotal = 0
+          }
+        }
+
+        if (qrTotal > 0) movto_por_forma['QRLINX - PIX'] = qrTotal
+      }
+    }
+  } catch (e: any) { console.log(`[qr-linxpay] erro: ${e.message}`) }
+
+  // 6. Agrega totais por grupo usando movto_por_forma (principal) + config tefGrupos (nome → grupo)
+  let cartoes            = 0
+  let dinheiro           = 0
+  let cartoes_frotas     = 0
+  let pix_tef            = 0
+  let pix_cnpj           = 0
+  let a_prazo            = 0
+  let cheque             = 0
+  let notas_promissorias = 0
+
+  const temFormaGrupos  = Object.keys(tefGrupos).length > 0
+  const temMotivoGrupos = Object.keys(motivoGrupos).length > 0 && Object.keys(lancto_por_motivo).length > 0
+
+  // Resolve o grupo de uma forma: tenta match exato, depois substring (ignora variações de nome)
+  function resolverGrupo(nome: string): string | undefined {
+    if (tefGrupos[nome]) return tefGrupos[nome]
+    // Substring match: configKey ⊂ nome  ou  nome ⊂ configKey (mín. 4 chars)
+    const lower = nome.toLowerCase()
+    let bestLen = 3
+    let bestGrupo: string | undefined
+    for (const [configKey, grupo] of Object.entries(tefGrupos)) {
+      if (!grupo) continue
+      const lk = configKey.toLowerCase()
+      if (lk.length >= 4 && (lower.includes(lk) || lk.includes(lower))) {
+        if (configKey.length > bestLen) { bestLen = configKey.length; bestGrupo = grupo }
+      }
+    }
+    return bestGrupo
+  }
+
+  // Keyword fallback — usado para formas sem entrada na config (ex.: TEF automáticas)
+  // Regras: elo/mastercard/visa → CARTÕES; pix (não cnpj) → PIX; resto → FROTAS
+  const EXCLUIR_KW = ['pdv - ', 'cheques em transito', 'cheque pdv', 'juros pend', 'transferencia', 'deposito em transito']
+  function applyKeyword(nome: string, total: number): boolean {
+    const c = nome.toLowerCase()
+    if (EXCLUIR_KW.some(ex => c.startsWith(ex) || c.includes(ex))) return true // excluído
+    if (c.startsWith('caixa adm') || c === 'dinheiro' || c.startsWith('deposito em dinheiro')) {
+      dinheiro += total
+    } else if ((c.includes('pix') || c.includes('qrlinx')) && c.includes('cnpj')) {
+      pix_cnpj += total
+    } else if (c.includes('pix') || c.includes('qrlinx')) {
+      pix_tef += total
+    } else if ((c.includes('nota') && c.includes('prazo')) || c.includes('a prazo') || c.startsWith('prazo') || c.includes('promissor')) {
+      notas_promissorias += total
+    } else if (c.includes('cheque')) {
+      cheque += total
+    } else if (c.includes('elo') || c.includes('mastercard') || c.includes('visa')) {
+      cartoes += total  // só Elo, Mastercard e Visa entram em CARTÕES
+    } else {
+      cartoes_frotas += total  // todo o resto (Stone, Cielo, frotas, etc.) vai para FROTAS
+    }
+    return true
+  }
+
+  // Verifica se a config cobre pelo menos uma das formas encontradas (exato ou substring)
+  const configCoberta = temFormaGrupos &&
+    Object.keys(movto_por_forma).some(nome => resolverGrupo(nome) != null)
+
+  if (configCoberta) {
+    // Usa mapeamento conta.nome → grupo; formas sem config recebem keyword fallback
+    const mapeamentos: string[] = []
+    for (const [nome, total] of Object.entries(movto_por_forma)) {
+      const grupo = resolverGrupo(nome)
+      if (grupo) {
+        if (grupo === 'cartoes')            cartoes            += total
+        if (grupo === 'frotas')             cartoes_frotas     += total
+        if (grupo === 'pix')                pix_tef            += total
+        if (grupo === 'pix_cnpj')           pix_cnpj           += total
+        if (grupo === 'dinheiro')           dinheiro           += total
+        if (grupo === 'a_prazo')            notas_promissorias += total
+        if (grupo === 'cheque')             cheque             += total
+        if (grupo === 'notas_promissorias') notas_promissorias += total
+        mapeamentos.push(`${nome}→${grupo}(${total.toFixed(2)})`)
+      } else {
+        // Não está na config → keyword fallback (ex.: TEF automáticas recém-adicionadas)
+        const ok = applyKeyword(nome, total)
+        if (ok) mapeamentos.push(`${nome}→kw(${total.toFixed(2)})`)
+      }
+    }
+    console.log(`[caixa-frentista] mapeamento: ${mapeamentos.join(' | ')}`)
+  } else if (temMotivoGrupos) {
+    // Usa mapeamento motivo → grupo (instalações que têm lancto.motivo)
+    for (const [mgStr, total] of Object.entries(lancto_por_motivo)) {
+      const grupo = motivoGrupos[Number(mgStr)]
+      if (grupo === 'cartoes')  cartoes        += total
+      if (grupo === 'dinheiro') dinheiro       += total
+      if (grupo === 'frotas')   cartoes_frotas += total
+      if (grupo === 'pix')      pix_tef        += total
+    }
+  } else {
+    // Fallback puro: keyword matching sobre conta.nome
+    for (const [nome, total] of Object.entries(movto_por_forma)) {
+      applyKeyword(nome, total)
+    }
+    // Se dinheiro ainda não foi encontrado, tenta 1.1.1.x do lancto
+    if (dinheiro === 0) {
+      for (const [conta, total] of Object.entries(lancto_por_conta)) {
+        if (conta.startsWith('1.1.1.')) dinheiro += total
+      }
+    }
+  }
+
+  console.log(`[caixa-frentista] result cartoes=${cartoes.toFixed(2)} frotas=${cartoes_frotas.toFixed(2)} pix=${pix_tef.toFixed(2)} pix_cnpj=${pix_cnpj.toFixed(2)} din=${dinheiro.toFixed(2)} configCoberta=${configCoberta} formas=[${Object.keys(movto_por_forma).join('|')}]`)
+
+  return {
+    cartoes,
+    cartoes_frotas,
+    pix_tef,
+    pix_cnpj,
+    dinheiro,
+    a_prazo,
+    cheque,
+    notas_promissorias,
+    lancto_por_conta,
+    lancto_por_motivo,
+    movto_por_forma,
+    caixas_encontrados: caixaGrids.length,
+    estrategia,
+  }
 }
 
 // ── calcularMovimento ────────────────────────────────────────────────────────
