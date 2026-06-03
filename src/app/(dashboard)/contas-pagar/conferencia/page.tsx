@@ -474,11 +474,14 @@ export default function ConferenciaPage() {
                                     {e.qt_em_atraso} em atraso
                                   </Badge>
                                 )}
-                                {(e.boletos_fiscais?.length ?? 0) > 0 && (
-                                  <Badge variant="outline" className="ml-1 text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200 print:hidden flex items-center gap-0.5">
-                                    <Paperclip className="w-2.5 h-2.5" /> {e.boletos_fiscais.length} boleto{e.boletos_fiscais.length !== 1 ? 's' : ''}
-                                  </Badge>
-                                )}
+                                {(() => {
+                                  const boletosDoDia = (e.boletos_fiscais ?? []).filter(b => String(b.data_vencimento) === selectedData)
+                                  return boletosDoDia.length > 0 && (
+                                    <Badge variant="outline" className="ml-1 text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200 print:hidden flex items-center gap-0.5">
+                                      <Paperclip className="w-2.5 h-2.5" /> {boletosDoDia.length} boleto{boletosDoDia.length !== 1 ? 's' : ''}
+                                    </Badge>
+                                  )
+                                })()}
                               </div>
                             </td>
                             <td className="px-3 py-2.5 text-right tabular-nums font-bold text-gray-800 print:px-2 print:py-1 whitespace-nowrap">
