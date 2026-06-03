@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     .not('extrato_arquivo_path', 'is', null)
     .not('extrato_data', 'is', null)
 
-  if (!tarefas?.length) return NextResponse.json({ verificadas: 0, divergentes: 0, notificados: 0 })
+  if (!tarefas?.length) return NextResponse.json({ verificadas: 0, divergentes: 0 })
 
   // ── 2. Contas bancárias (fallback para postos com banco único) ─────────────
   const { data: contasBancarias } = await admin
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
 
   const masterAdminIds = (masterAdmins ?? []).map(u => u.id as string)
 
-  let verificadas = 0, divergentes = 0, notificados = 0
+  let verificadas = 0, divergentes = 0
 
   for (const t of tarefas) {
     const posto = (t.posto as any) ?? (t.recorrente as any)?.posto ?? null
@@ -176,21 +176,8 @@ export async function POST(req: NextRequest) {
 
     const destinos = [...new Set([...masterAdminIds, ...(responsavelId ? [responsavelId] : [])])]
 
-    // ── 8. Persiste notificações ───────────────────────────────────────────
-    const tipo = eResolvida ? 'divergencia_resolvida' : 'divergencia_extrato'
-    if (destinos.length) {
-      await admin.from('notificacoes').insert(
-        destinos.map(uid => ({
-          usuario_id: uid,
-          tipo,
-          titulo,
-          mensagem,
-          tarefa_id:  t.id,
-          posto_nome: postoNome,
-        }))
-      )
-      notificados++
-    }
+    // ── 8. Notificações desabilitadas ─────────────────────────────────────────
+    // As notificações de divergência foram removidas em favor do painel visual
 
     // ── 9. Atualiza tarefa com novo estado ─────────────────────────────────
     await admin.from('tarefas').update({
@@ -201,8 +188,8 @@ export async function POST(req: NextRequest) {
     }).eq('id', t.id)
   }
 
-  console.log(`[cron-extratos] ${new Date().toISOString()} — verificadas=${verificadas} divergentes=${divergentes} notificados=${notificados}`)
-  return NextResponse.json({ verificadas, divergentes, notificados })
+  console.log(`[cron-extratos] ${new Date().toISOString()} — verificadas=${verificadas} divergentes=${divergentes}`)
+  return NextResponse.json({ verificadas, divergentes })
 }
 
 function fmt(v: number): string {
