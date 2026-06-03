@@ -5,9 +5,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 export async function GET(req: NextRequest) {
   try {
     const admin = createAdminClient()
+    const { searchParams } = new URL(req.url)
+    const postoNome = searchParams.get('posto')
 
-    // Busca todas as notas com status pendente ou aguardando
-    const { data: notas } = await admin
+    // Busca todas as notas com status pendente ou aguardando (filtro opcional por posto)
+    let query = admin
       .from('fiscal_tarefas')
       .select(`
         id,
@@ -23,6 +25,12 @@ export async function GET(req: NextRequest) {
       `)
       .in('status', ['pendente_gerente', 'aguardando_fiscal', 'nf_rejeitada'])
       .order('data_emissao', { ascending: false })
+
+    if (postoNome) {
+      query = query.eq('postos.nome', postoNome)
+    }
+
+    const { data: notas } = await query
 
     // Separa notas com e sem nfe_resumo_grid
     const comGrid = (notas ?? []).filter(n => n.nfe_resumo_grid)
