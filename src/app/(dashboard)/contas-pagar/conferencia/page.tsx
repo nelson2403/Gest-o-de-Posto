@@ -493,11 +493,16 @@ export default function ConferenciaPage() {
                             <tr>
                               <td colSpan={3} className="p-0 bg-gray-50/50 border-b border-gray-100 print:bg-transparent">
                                 <div className="px-4 py-3 print:px-0 print:py-1">
-                                  {(e.boletos_fiscais?.length ?? 0) > 0 && (
-                                    <div className="mb-3 print:hidden">
-                                      <BoletosFiscaisSection boletos={e.boletos_fiscais} />
-                                    </div>
-                                  )}
+                                  {(() => {
+                                    const boletosDoDia = (e.boletos_fiscais ?? []).filter(b =>
+                                      String(b.data_vencimento) === selectedData
+                                    )
+                                    return boletosDoDia.length > 0 && (
+                                      <div className="mb-3 print:hidden">
+                                        <BoletosFiscaisSection boletos={boletosDoDia} />
+                                      </div>
+                                    )
+                                  })()}
                                   <table className="w-full text-[12.5px] print:text-[8pt] print:table-fixed">
                                     <thead>
                                       <tr className="border-b border-gray-200 text-[10.5px] text-gray-400 uppercase tracking-wide print:text-[7.5pt] print:text-gray-600">
