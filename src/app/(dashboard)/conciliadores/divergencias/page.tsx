@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, CheckCircle2, Clock, RefreshCw, Loader2, AlertCircle, X, Edit2 } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
@@ -35,11 +35,11 @@ function fmtData(d: string): string {
 
 export default function DivergenciasPage() {
   const [divergencias, setDivergencias] = useState<DivergenciaItem[]>([])
-  const [divergenciasAnteriores, setDivergenciasAnteriores] = useState<DivergenciaItem[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
   const [selecionada, setSelecionada] = useState<DivergenciaItem | null>(null)
   const [filtroConciliador, setFiltroConciliador] = useState<string>('todos')
+  const divergenciasAnterioresRef = useRef<DivergenciaItem[]>([])
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -54,33 +54,33 @@ export default function DivergenciasPage() {
 
       const novasDivergencias = d.divergencias ?? []
 
-      // Detectar divergências resolvidas (que eram divergente e agora estão ok)
-      const resolvidas = divergenciasAnteriores.filter(
+      // Detectar divergências resolvidas (que eram divergente e agora desapareceram)
+      const resolvidas = divergenciasAnterioresRef.current.filter(
         antiga => antiga.extrato_status === 'divergente' &&
-                  !novasDivergencias.some((nova: DivergenciaItem) =>
-                    nova.id === antiga.id && nova.extrato_status !== 'divergente'
-                  )
+                  !novasDivergencias.some((nova: DivergenciaItem) => nova.id === antiga.id)
       )
 
       // Marcar resolvidas como concluídas automaticamente
-      for (const div of resolvidas) {
-        try {
-          await fetch(`/api/conciliadores/divergencias/${div.id}/concluir`, {
-            method: 'PATCH',
-          })
-        } catch (e) {
-          console.error(`Erro ao concluir divergência ${div.id}:`, e)
+      if (resolvidas.length > 0) {
+        for (const div of resolvidas) {
+          try {
+            await fetch(`/api/conciliadores/divergencias/${div.id}/concluir`, {
+              method: 'PATCH',
+            })
+          } catch (e) {
+            console.error(`Erro ao concluir divergência ${div.id}:`, e)
+          }
         }
       }
 
-      setDivergenciasAnteriores(novasDivergencias)
+      divergenciasAnterioresRef.current = novasDivergencias
       setDivergencias(novasDivergencias)
     } catch (e: any) {
       setErro(e.message)
     } finally {
       setLoading(false)
     }
-  }, [divergenciasAnteriores])
+  }, [])
 
   useEffect(() => {
     carregar()
