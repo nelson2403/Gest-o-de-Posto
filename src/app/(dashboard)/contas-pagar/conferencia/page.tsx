@@ -33,18 +33,33 @@ const BOLETO_STATUS_CFG: Record<string, { label: string; cls: string }> = {
   aprovado:   { label: 'Aprovado',    cls: 'bg-emerald-100 text-emerald-700' },
 }
 
-function BoletosFiscaisSection({ boletos }: { boletos: BoletoFiscal[] }) {
-  if (!boletos.length) return null
+function BoletosFiscaisSection({ boletos, titulo }: { boletos: BoletoFiscal[]; titulo?: string }) {
+  // Filtra apenas boletos com valor (remove os que não têm boleto correspondente)
+  const boletosComValor = boletos.filter(b => b.valor != null)
+  if (!boletosComValor.length) return null
+
   return (
     <div className="mt-3 pt-3 border-t border-indigo-100">
       <p className="text-[10.5px] font-semibold uppercase tracking-wide text-indigo-600 mb-2 flex items-center gap-1.5">
-        <Paperclip className="w-3 h-3" /> Boletos Fiscais ({boletos.length})
+        <Paperclip className="w-3 h-3" /> Boletos Fiscais ({boletosComValor.length})
       </p>
       <div className="space-y-1.5">
-        {boletos.map(b => {
+        {boletosComValor.map(b => {
           const cfg = BOLETO_STATUS_CFG[b.status]
+          // Badge de conciliação: ✅ se tem valor, ❌ se não tem
+          const temBoleto = b.valor != null
           return (
             <div key={b.id} className="flex items-center gap-2 flex-wrap bg-indigo-50/60 border border-indigo-100 rounded-lg px-3 py-1.5 text-[12px]">
+              {/* Badge de conciliação */}
+              {temBoleto ? (
+                <span className="flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[10px] font-medium">
+                  <CheckCircle2 className="w-3 h-3" /> Conciliado
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 text-red-700 bg-red-50 px-2 py-0.5 rounded text-[10px] font-medium">
+                  ❌ Sem boleto
+                </span>
+              )}
               <span className="flex-1 text-gray-700 min-w-0 truncate">{b.fornecedor ?? b.titulo}</span>
               {b.valor != null && (
                 <span className="font-mono font-semibold text-gray-800 whitespace-nowrap">{fmtBRL(b.valor)}</span>
