@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
             .update({
               extrato_status: novoStatus,
               extrato_diferenca: diferenca,
-              atualizada_em: new Date().toISOString(),
+              atualizado_em: new Date().toISOString(),
             })
             .eq('id', t.id)
             .select()
