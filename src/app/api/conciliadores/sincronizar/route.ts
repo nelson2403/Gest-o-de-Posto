@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
     let sincronizadas = 0
     let divergentes = 0
     let resolvidas = 0
+    const atualizadas: string[] = []
 
     // 4. Recalcular divergências
     for (const t of tarefas) {
@@ -120,16 +121,21 @@ export async function POST(req: NextRequest) {
 
       sincronizadas++
 
-      const movExtrato = t.extrato_movimento as number
+      const movExtrato = (t.extrato_movimento as number) ?? 0
       const diferenca = parseFloat((movExtrato - movAtual).toFixed(2))
       const isDivergente = Math.abs(diferenca) > 0.02
 
       // Atualizar tarefa no banco
       const novoStatus = isDivergente ? 'divergente' : 'ok'
-      const statusMudou = novoStatus !== t.extrato_status
+      const statusAnterior = t.extrato_status as string
+      const statusMudou = novoStatus !== statusAnterior
+
+      console.log(`[sync-calc] ${t.id}: movimento=${movExtrato}, autosystem=${movAtual}, diferenca=${diferenca}, isDivergente=${isDivergente}, statusAnterior=${statusAnterior}, novoStatus=${novoStatus}, mudou=${statusMudou}`)
 
       if (statusMudou || Math.abs(diferenca - (t.extrato_diferenca ?? 0)) > 0.01) {
-        await admin
+        console.log(`[sync-update] ${t.id}: ${t.extrato_status} → ${novoStatus}, diferenca: ${diferenca}`)
+
+        const { data: updated, error: updateError } = await admin
           .from('tarefas')
           .update({
             extrato_status: novoStatus,
@@ -137,6 +143,14 @@ export async function POST(req: NextRequest) {
             atualizada_em: new Date().toISOString(),
           })
           .eq('id', t.id)
+          .select()
+
+        if (updateError) {
+          console.error(`[sync-error] ${t.id}: ${updateError.message}`)
+        } else {
+          atualizadas.push(`${t.id}: ${t.extrato_status} → ${novoStatus} (diff: ${diferenca})`)
+          console.log(`[sync-ok] ${t.id}: salva com sucesso`)
+        }
 
         if (statusMudou && !isDivergente) {
           resolvidas++
@@ -145,13 +159,26 @@ export async function POST(req: NextRequest) {
         }
       } else if (isDivergente) {
         divergentes++
+        console.log(`[sync-divergente-nao-atualizada] ${t.id}: diferença não mudou o suficiente (${Math.abs(diferenca - (t.extrato_diferenca ?? 0))})`)
       }
+    }
+
+    console.log(`[sincronizar] Resultado final: ${atualizadas.length} atualizadas, ${sincronizadas} sincronizadas, ${resolvidas} resolvidas`)
+
+    if (atualizadas.length === 0 && tarefas.length > 0) {
+      console.warn('[sincronizar] ⚠️  AVISO: Nenhuma tarefa foi atualizada apesar de ter achado ${tarefas.length} tarefas!')
     }
 
     return NextResponse.json({
       sincronizadas,
       divergentes,
       resolvidas,
+      atualizadas: atualizadas.length,
+      debug: {
+        totalTarefas: tarefas.length,
+        atualizadasCount: atualizadas.length,
+        exemplos: atualizadas.slice(0, 3),
+      },
     })
   } catch (e: any) {
     console.error('[sincronizar] erro:', e.message)
