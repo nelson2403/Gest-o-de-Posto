@@ -183,6 +183,14 @@ export default function DivergenciasPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* BOTÃO DE TESTE */}
+          <button
+            onClick={() => alert('TESTE: Botão funcionando!')}
+            className="h-9 px-2 bg-yellow-500 text-white rounded text-xs font-bold"
+          >
+            TESTE
+          </button>
+
           {conciliadores.length > 0 && userRole !== 'operador_conciliador' && (
             <select
               value={filtroConciliador}
