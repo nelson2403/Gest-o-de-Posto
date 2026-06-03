@@ -77,23 +77,30 @@ export default function DivergenciasPage() {
                   !novasDivergencias.some((nova: DivergenciaItem) => nova.id === antiga.id)
       )
 
-      console.log('Divergências anteriores:', divergenciasAnterioresRef.current.length)
-      console.log('Novas divergências:', novasDivergencias.length)
-      console.log('Resolvidas detectadas:', resolvidas.map(d => ({ id: d.id, titulo: d.titulo })))
-
       // Marcar resolvidas como concluídas automaticamente
       if (resolvidas.length > 0) {
+        toast({
+          title: '✅ Detectadas divergências resolvidas!',
+          description: `${resolvidas.length} sendo concluída(s)...`
+        })
         for (const div of resolvidas) {
           try {
-            const respConcluir = await fetch(`/api/conciliadores/divergencias/${div.id}/concluir`, {
+            await fetch(`/api/conciliadores/divergencias/${div.id}/concluir`, {
               method: 'PATCH',
             })
-            console.log(`Concluir ${div.id}:`, respConcluir.ok ? 'sucesso' : respConcluir.status)
           } catch (e) {
             console.error(`Erro ao concluir divergência ${div.id}:`, e)
           }
         }
-        toast({ title: `${resolvidas.length} divergência(s) concluída(s) automaticamente!` })
+        toast({
+          title: '✅ Concluído!',
+          description: `${resolvidas.length} divergência(s) marcada(s) como resolvida(s)`
+        })
+      } else if (divergenciasAnterioresRef.current.length > 0) {
+        toast({
+          title: 'ℹ️ Nenhuma divergência foi resolvida',
+          description: 'As divergências ainda estão pendentes'
+        })
       }
 
       divergenciasAnterioresRef.current = novasDivergencias
