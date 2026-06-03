@@ -140,7 +140,7 @@ const NAV_GROUPS: NavGroup[] = [
           { href: '/bobinas/estoque',             label: 'Estoque de Bobinas',   icon: Archive,    permission: 'bobinas.view' as Permission },
         ],
       },
-      { href: '/controle-geral/precos-frotas', label: 'Preços Frotas', icon: Fuel, permission: 'portais.view' as Permission },
+      { href: '/controle-geral/precos-frotas', label: 'Preços Frotas', icon: Fuel, permission: 'portais.view' as Permission, hideForRoles: ['adm_financeiro', 'adm_fiscal', 'adm_marketing', 'adm_transpombal', 'adm_contas_pagar', 'operador_caixa', 'operador_conciliador', 'gerente'] },
       { href: '/controle-geral/uso-consumo', label: 'Uso e Consumo', icon: ShoppingCart, permission: null, hideForRoles: ['operador_caixa', 'operador_conciliador'] },
       {
         label: 'Acessos', icon: KeyRound, permission: null,
