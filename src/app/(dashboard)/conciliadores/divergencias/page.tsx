@@ -60,16 +60,10 @@ export default function DivergenciasPage() {
 
   const sincronizar = useCallback(async () => {
     try {
-      console.log('[sincronizar] iniciando...')
-      console.log('[sincronizar] URL:', window.location.origin + '/api/conciliadores/sincronizar')
       const r = await fetch('/api/conciliadores/sincronizar', { method: 'POST' })
-      console.log('[sincronizar] resposta recebida:', r.status)
-
       const resultado = await r.json()
-      console.log('[sincronizar] dados:', resultado)
 
       if (!r.ok) {
-        console.error('[sincronizar] erro:', resultado.error)
         toast({
           title: '❌ Erro ao sincronizar',
           description: resultado.error ?? 'Verifique sua conexão'
@@ -77,13 +71,11 @@ export default function DivergenciasPage() {
         return
       }
 
-      console.log('[sincronizar] sucesso! Mostrando toast...')
       toast({
         title: '✅ Sincronização concluída',
         description: `${resultado.sincronizadas} verificada(s), ${resultado.resolvidas} resolvida(s)`
       })
     } catch (e: any) {
-      console.error('[sincronizar] exceção:', e)
       toast({
         title: '❌ Erro de conexão',
         description: e.message
@@ -183,14 +175,6 @@ export default function DivergenciasPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* BOTÃO DE TESTE */}
-          <button
-            onClick={() => alert('TESTE: Botão funcionando!')}
-            className="h-9 px-2 bg-yellow-500 text-white rounded text-xs font-bold"
-          >
-            TESTE
-          </button>
-
           {conciliadores.length > 0 && userRole !== 'operador_conciliador' && (
             <select
               value={filtroConciliador}
@@ -205,22 +189,8 @@ export default function DivergenciasPage() {
           )}
           <button
             onClick={() => {
-              console.log('[ATUALIZAR] Clicado! loading=', loading)
-              console.log('[ATUALIZAR] Função sincronizar:', typeof sincronizar)
-              if (loading) {
-                console.warn('[ATUALIZAR] Botão desabilitado (loading=true)')
-                alert('Aguarde... ainda carregando')
-                return
-              }
-              console.log('[ATUALIZAR] Iniciando sincronização...')
-              sincronizar().then(() => {
-                console.log('[ATUALIZAR] sincronizar done')
-                return carregar()
-              }).then(() => {
-                console.log('[ATUALIZAR] carregar done')
-              }).catch((e: any) => {
-                console.error('[ATUALIZAR] Erro:', e)
-              })
+              if (loading) return
+              sincronizar().then(() => carregar()).catch(console.error)
             }}
             disabled={loading}
             className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 rounded-lg text-[13px] text-gray-600 hover:bg-gray-50 disabled:opacity-50"
