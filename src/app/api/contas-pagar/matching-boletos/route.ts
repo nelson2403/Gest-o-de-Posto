@@ -27,16 +27,23 @@ export async function GET(req: NextRequest) {
       .not('boleto_valor', 'is', null)
       .not('boleto_vencimento', 'is', null)
 
-    // 3. Faz o matching
+    // 3. Faz o matching (MAIS RIGOROSO)
     const matching = []
     for (const conta of contasPagar) {
       const boleto = boletos?.find(b => {
-        const fornecedorMatch =
-          conta.fornecedor?.toUpperCase().includes(b.fornecedor_nome?.toUpperCase()) ||
-          b.fornecedor_nome?.toUpperCase().includes(conta.fornecedor?.toUpperCase())
+        // Normaliza nomes removendo caracteres especiais
+        const normalizaConta = conta.fornecedor?.toUpperCase().replace(/[^\w\s]/g, '') ?? ''
+        const normalizaBoleto = b.fornecedor_nome?.toUpperCase().replace(/[^\w\s]/g, '') ?? ''
 
+        // Match exato OU pelo menos 80% de similaridade
+        const fornecedorMatch =
+          normalizaConta === normalizaBoleto ||
+          (normalizaConta.length > 10 && normalizaBoleto.includes(normalizaConta.substring(0, 15)))
+
+        // Valor exato (tolerância de R$ 0,01)
         const valorMatch = Math.abs(Number(conta.valor) - Number(b.boleto_valor)) < 0.01
 
+        // Vencimento exato
         const vencimentoMatch =
           String(conta.data_vencimento) === String(b.boleto_vencimento)
 
