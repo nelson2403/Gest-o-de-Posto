@@ -49,8 +49,7 @@ export async function GET(req: NextRequest) {
         gerente_respondeu_por,
         nf_url,
         fornecedor,
-        post:postos(id, nome, empresa_id),
-        empresa:empresas(id, nome)
+        post:postos(id, nome, empresa_id)
       `)
       .eq('is_uso_consumo', true)
       .not('nf_valor_informado', 'is', null)
@@ -71,10 +70,23 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Buscar nomes das empresas
+    const empresaIds = (tarefas ?? []).map(t => (t.post as any)?.empresa_id).filter(Boolean)
+    let empresasMap: Record<string, string> = {}
+    if (empresaIds.length > 0) {
+      const { data: empresas } = await admin
+        .from('empresas')
+        .select('id, nome')
+        .in('id', empresaIds)
+      for (const e of empresas ?? []) {
+        empresasMap[e.id] = e.nome
+      }
+    }
+
     const dados: UsosConsumoItem[] = (tarefas ?? []).map(t => ({
       id: t.id as string,
       titulo: t.titulo as string,
-      empresa_nome: (t.empresa as any)?.nome ?? 'Desconhecida',
+      empresa_nome: empresasMap[(t.post as any)?.empresa_id] ?? 'Desconhecida',
       posto_nome: (t.post as any)?.nome ?? 'Desconhecido',
       data_nf: t.nf_anexada_em ? new Date(t.nf_anexada_em).toISOString().slice(0, 10) : '',
       nf_valor: Number(t.nf_valor_informado ?? 0),
