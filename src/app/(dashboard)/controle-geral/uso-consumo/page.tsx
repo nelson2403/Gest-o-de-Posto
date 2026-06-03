@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Header } from '@/components/layout/Header'
 import { Button } from '@/components/ui/button'
-import { AlertTriangle, Loader2, RefreshCw, Download, FileText } from 'lucide-react'
+import { AlertTriangle, Loader2, RefreshCw, Download, FileText, Trash2 } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import type { UsosConsumoItem } from '@/app/api/fiscal/uso-consumo/route'
 
@@ -23,6 +23,7 @@ export default function UsosConsumoPage() {
   const [totalGasto, setTotalGasto] = useState(0)
   const [filtroPostoId, setFiltroPostoId] = useState<string>('todos')
   const [filtroMes, setFiltroMes] = useState<string>('')  // formato: YYYY-MM
+  const [deletando, setDeletando] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -70,6 +71,40 @@ export default function UsosConsumoPage() {
   const meses = Array.from(
     new Set(dados.map(d => d.data_nf.substring(0, 7)))  // YYYY-MM
   ).sort().reverse()  // Mais recentes primeiro
+
+  const excluir = async (id: string, fornecedor: string) => {
+    if (!confirm(`Tem certeza que quer remover "${fornecedor}" da lista de Uso e Consumo?`)) {
+      return
+    }
+
+    setDeletando(id)
+    try {
+      const r = await fetch(`/api/fiscal/uso-consumo/${id}`, { method: 'DELETE' })
+      const d = await r.json()
+
+      if (!r.ok) {
+        toast({
+          title: '❌ Erro ao remover',
+          description: d.error ?? 'Verifique sua conexão'
+        })
+        return
+      }
+
+      // Remove do array local
+      setDados(dados.filter(item => item.id !== id))
+      toast({
+        title: '✅ Removido com sucesso',
+        description: `"${fornecedor}" foi removido de Uso e Consumo`
+      })
+    } catch (e: any) {
+      toast({
+        title: '❌ Erro de conexão',
+        description: e.message
+      })
+    } finally {
+      setDeletando(null)
+    }
+  }
 
   const exportarCSV = () => {
     const headers = ['ID', 'Título', 'Empresa', 'Posto', 'Data NF', 'Valor NF', 'Manifesto AS', 'Diferença', 'Fornecedor', 'Gerente', 'Respondida em']
@@ -221,6 +256,7 @@ export default function UsosConsumoPage() {
                       <th className="px-4 py-3 text-right font-semibold text-gray-700 text-[12px]">Diferença</th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700 text-[12px]">Gerente</th>
                       <th className="px-4 py-3 text-center font-semibold text-gray-700 text-[12px]">NF</th>
+                      <th className="px-4 py-3 text-center font-semibold text-gray-700 text-[12px]">Ação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -253,6 +289,16 @@ export default function UsosConsumoPage() {
                               📄
                             </a>
                           )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            onClick={() => excluir(d.id, d.fornecedor || 'Nota')}
+                            disabled={deletando === d.id}
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                            title="Remover de Uso e Consumo"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </td>
                       </tr>
                     ))}
