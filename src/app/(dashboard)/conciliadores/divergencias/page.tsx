@@ -58,6 +58,29 @@ export default function DivergenciasPage() {
     loadUserRole()
   }, [])
 
+  const sincronizar = useCallback(async () => {
+    try {
+      const r = await fetch('/api/conciliadores/sincronizar', { method: 'POST' })
+      const resultado = await r.json()
+      if (!r.ok) {
+        toast({
+          title: '❌ Erro ao sincronizar',
+          description: resultado.error ?? 'Verifique sua conexão'
+        })
+        return
+      }
+      toast({
+        title: '✅ Sincronização concluída',
+        description: `${resultado.sincronizadas} verificada(s), ${resultado.resolvidas} resolvida(s)`
+      })
+    } catch (e: any) {
+      toast({
+        title: '❌ Erro de conexão',
+        description: e.message
+      })
+    }
+  }, [])
+
   const carregar = useCallback(async () => {
     setLoading(true)
     setErro('')
@@ -163,7 +186,10 @@ export default function DivergenciasPage() {
             </select>
           )}
           <button
-            onClick={carregar}
+            onClick={async () => {
+              await sincronizar()
+              await carregar()
+            }}
             disabled={loading}
             className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 rounded-lg text-[13px] text-gray-600 hover:bg-gray-50 disabled:opacity-50"
           >
