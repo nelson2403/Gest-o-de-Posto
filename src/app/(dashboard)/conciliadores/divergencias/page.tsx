@@ -196,8 +196,12 @@ export default function DivergenciasPage() {
           )}
           <button
             onClick={async () => {
+              console.log('[BOTAO] Clicado em Atualizar')
+              console.log('[BOTAO] loading=', loading)
               await sincronizar()
+              console.log('[BOTAO] sincronizar concluído')
               await carregar()
+              console.log('[BOTAO] carregar concluído')
             }}
             disabled={loading}
             className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 rounded-lg text-[13px] text-gray-600 hover:bg-gray-50 disabled:opacity-50"
