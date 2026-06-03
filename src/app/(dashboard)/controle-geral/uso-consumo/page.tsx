@@ -22,6 +22,7 @@ export default function UsosConsumoPage() {
   const [erro, setErro] = useState('')
   const [totalGasto, setTotalGasto] = useState(0)
   const [filtroPostoId, setFiltroPostoId] = useState<string>('todos')
+  const [filtroMes, setFiltroMes] = useState<string>('')  // formato: YYYY-MM
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -46,10 +47,16 @@ export default function UsosConsumoPage() {
     carregar()
   }, [carregar])
 
-  // Filtrar dados por posto
-  const dadosFiltrados = filtroPostoId === 'todos'
-    ? dados
-    : dados.filter(d => d.posto_nome === filtroPostoId)
+  // Filtrar dados por posto e mês
+  const dadosFiltrados = dados.filter(d => {
+    // Filtro por posto
+    const postoOk = filtroPostoId === 'todos' || d.posto_nome === filtroPostoId
+
+    // Filtro por mês
+    const mesOk = !filtroMes || d.data_nf.startsWith(filtroMes)
+
+    return postoOk && mesOk
+  })
 
   // Calcular total gasto apenas dos dados filtrados
   const totalGastoFiltrado = dadosFiltrados.reduce((sum, d) => sum + d.nf_valor, 0)
@@ -58,6 +65,11 @@ export default function UsosConsumoPage() {
   const postos = Array.from(
     new Set(dados.map(d => d.posto_nome))
   ).sort()
+
+  // Obter lista única de meses
+  const meses = Array.from(
+    new Set(dados.map(d => d.data_nf.substring(0, 7)))  // YYYY-MM
+  ).sort().reverse()  // Mais recentes primeiro
 
   const exportarCSV = () => {
     const headers = ['ID', 'Título', 'Empresa', 'Posto', 'Data NF', 'Valor NF', 'Manifesto AS', 'Diferença', 'Fornecedor', 'Gerente', 'Respondida em']
@@ -96,19 +108,39 @@ export default function UsosConsumoPage() {
       />
 
       <div className="px-4 md:px-6 space-y-5">
-        {/* Filtro por Posto */}
-        <div className="flex items-center gap-2">
-          <label className="text-[12px] font-semibold text-gray-700">Filtrar por Posto:</label>
-          <select
-            value={filtroPostoId}
-            onChange={(e) => setFiltroPostoId(e.target.value)}
-            className="h-9 px-3 border border-gray-200 rounded-lg text-[13px] text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="todos">Todos os Postos</option>
-            {postos.map(posto => (
-              <option key={posto} value={posto}>{posto}</option>
-            ))}
-          </select>
+        {/* Filtros por Posto e Mês */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <label className="text-[12px] font-semibold text-gray-700">Posto:</label>
+            <select
+              value={filtroPostoId}
+              onChange={(e) => setFiltroPostoId(e.target.value)}
+              className="h-9 px-3 border border-gray-200 rounded-lg text-[13px] text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="todos">Todos</option>
+              {postos.map(posto => (
+                <option key={posto} value={posto}>{posto}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-[12px] font-semibold text-gray-700">Mês:</label>
+            <input
+              type="month"
+              value={filtroMes}
+              onChange={(e) => setFiltroMes(e.target.value)}
+              className="h-9 px-3 border border-gray-200 rounded-lg text-[13px] text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {filtroMes && (
+              <button
+                onClick={() => setFiltroMes('')}
+                className="text-[12px] text-blue-600 hover:text-blue-700 font-medium"
+              >
+                Limpar
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Cards de resumo */}
