@@ -21,6 +21,7 @@ export default function UsosConsumoPage() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
   const [totalGasto, setTotalGasto] = useState(0)
+  const [filtroPostoId, setFiltroPostoId] = useState<string>('todos')
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -45,9 +46,22 @@ export default function UsosConsumoPage() {
     carregar()
   }, [carregar])
 
+  // Filtrar dados por posto
+  const dadosFiltrados = filtroPostoId === 'todos'
+    ? dados
+    : dados.filter(d => d.posto_nome === filtroPostoId)
+
+  // Calcular total gasto apenas dos dados filtrados
+  const totalGastoFiltrado = dadosFiltrados.reduce((sum, d) => sum + d.nf_valor, 0)
+
+  // Obter lista única de postos
+  const postos = Array.from(
+    new Set(dados.map(d => d.posto_nome))
+  ).sort()
+
   const exportarCSV = () => {
     const headers = ['ID', 'Título', 'Empresa', 'Posto', 'Data NF', 'Valor NF', 'Manifesto AS', 'Diferença', 'Fornecedor', 'Gerente', 'Respondida em']
-    const rows = dados.map(d => [
+    const rows = dadosFiltrados.map(d => [
       d.id,
       d.titulo,
       d.empresa_nome,
@@ -82,15 +96,34 @@ export default function UsosConsumoPage() {
       />
 
       <div className="px-4 md:px-6 space-y-5">
+        {/* Filtro por Posto */}
+        <div className="flex items-center gap-2">
+          <label className="text-[12px] font-semibold text-gray-700">Filtrar por Posto:</label>
+          <select
+            value={filtroPostoId}
+            onChange={(e) => setFiltroPostoId(e.target.value)}
+            className="h-9 px-3 border border-gray-200 rounded-lg text-[13px] text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="todos">Todos os Postos</option>
+            {postos.map(posto => (
+              <option key={posto} value={posto}>{posto}</option>
+            ))}
+          </select>
+        </div>
+
         {/* Cards de resumo */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-white border border-gray-200 rounded-lg p-4">
-            <p className="text-[11px] text-gray-500 uppercase font-semibold">Total de Notas</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{dados.length}</p>
+            <p className="text-[11px] text-gray-500 uppercase font-semibold">
+              {filtroPostoId === 'todos' ? 'Total de Notas' : `Notas - ${filtroPostoId}`}
+            </p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{dadosFiltrados.length}</p>
           </div>
           <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 rounded-lg p-4">
-            <p className="text-[11px] text-emerald-700 uppercase font-semibold">Total Gasto</p>
-            <p className="text-2xl font-bold text-emerald-900 mt-1">{fmtMoeda(totalGasto)}</p>
+            <p className="text-[11px] text-emerald-700 uppercase font-semibold">
+              {filtroPostoId === 'todos' ? 'Total Gasto' : `Total Gasto - ${filtroPostoId}`}
+            </p>
+            <p className="text-2xl font-bold text-emerald-900 mt-1">{fmtMoeda(totalGastoFiltrado)}</p>
           </div>
         </div>
 
@@ -137,10 +170,10 @@ export default function UsosConsumoPage() {
         {/* Tabela */}
         {!loading && !erro && (
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            {dados.length === 0 ? (
+            {dadosFiltrados.length === 0 ? (
               <div className="px-4 py-8 text-center text-gray-500">
                 <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p>Nenhuma nota marcada como "Uso e Consumo"</p>
+                <p>{dados.length === 0 ? 'Nenhuma nota marcada como "Uso e Consumo"' : 'Nenhuma nota encontrada para este filtro'}</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -159,7 +192,7 @@ export default function UsosConsumoPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {dados.map(d => (
+                    {dadosFiltrados.map(d => (
                       <tr key={d.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-3 text-[12px] text-gray-600">{fmtData(d.data_nf)}</td>
                         <td className="px-4 py-3 text-[12px] text-gray-800 font-medium">{d.fornecedor || '—'}</td>
