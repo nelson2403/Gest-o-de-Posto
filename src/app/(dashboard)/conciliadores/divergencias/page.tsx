@@ -39,7 +39,24 @@ export default function DivergenciasPage() {
   const [erro, setErro] = useState('')
   const [selecionada, setSelecionada] = useState<DivergenciaItem | null>(null)
   const [filtroConciliador, setFiltroConciliador] = useState<string>('todos')
+  const [userRole, setUserRole] = useState<string | null>(null)
   const divergenciasAnterioresRef = useRef<DivergenciaItem[]>([])
+
+  // Carregar role do usuário
+  useEffect(() => {
+    const loadUserRole = async () => {
+      try {
+        const r = await fetch('/api/user-info')
+        if (r.ok) {
+          const data = await r.json()
+          setUserRole(data.role)
+        }
+      } catch (e) {
+        console.error('Erro ao carregar role do usuário:', e)
+      }
+    }
+    loadUserRole()
+  }, [])
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -60,17 +77,23 @@ export default function DivergenciasPage() {
                   !novasDivergencias.some((nova: DivergenciaItem) => nova.id === antiga.id)
       )
 
+      console.log('Divergências anteriores:', divergenciasAnterioresRef.current.length)
+      console.log('Novas divergências:', novasDivergencias.length)
+      console.log('Resolvidas detectadas:', resolvidas.map(d => ({ id: d.id, titulo: d.titulo })))
+
       // Marcar resolvidas como concluídas automaticamente
       if (resolvidas.length > 0) {
         for (const div of resolvidas) {
           try {
-            await fetch(`/api/conciliadores/divergencias/${div.id}/concluir`, {
+            const respConcluir = await fetch(`/api/conciliadores/divergencias/${div.id}/concluir`, {
               method: 'PATCH',
             })
+            console.log(`Concluir ${div.id}:`, respConcluir.ok ? 'sucesso' : respConcluir.status)
           } catch (e) {
             console.error(`Erro ao concluir divergência ${div.id}:`, e)
           }
         }
+        toast({ title: `${resolvidas.length} divergência(s) concluída(s) automaticamente!` })
       }
 
       divergenciasAnterioresRef.current = novasDivergencias
@@ -120,7 +143,7 @@ export default function DivergenciasPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {conciliadores.length > 0 && (
+          {conciliadores.length > 0 && userRole !== 'operador_conciliador' && (
             <select
               value={filtroConciliador}
               onChange={(e) => setFiltroConciliador(e.target.value)}
