@@ -204,21 +204,23 @@ export default function DivergenciasPage() {
             </select>
           )}
           <button
-            onClick={async () => {
-              console.log('[BOTAO] Clicado em Atualizar, loading=', loading)
+            onClick={() => {
+              console.log('[ATUALIZAR] Clicado! loading=', loading)
+              console.log('[ATUALIZAR] Função sincronizar:', typeof sincronizar)
               if (loading) {
-                console.warn('[BOTAO] Botão está desabilitado (loading=true)')
+                console.warn('[ATUALIZAR] Botão desabilitado (loading=true)')
+                alert('Aguarde... ainda carregando')
                 return
               }
-              try {
-                console.log('[BOTAO] Iniciando sincronizar...')
-                await sincronizar()
-                console.log('[BOTAO] sincronizar concluído, iniciando carregar...')
-                await carregar()
-                console.log('[BOTAO] carregar concluído')
-              } catch (e: any) {
-                console.error('[BOTAO] Erro:', e)
-              }
+              console.log('[ATUALIZAR] Iniciando sincronização...')
+              sincronizar().then(() => {
+                console.log('[ATUALIZAR] sincronizar done')
+                return carregar()
+              }).then(() => {
+                console.log('[ATUALIZAR] carregar done')
+              }).catch((e: any) => {
+                console.error('[ATUALIZAR] Erro:', e)
+              })
             }}
             disabled={loading}
             className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 rounded-lg text-[13px] text-gray-600 hover:bg-gray-50 disabled:opacity-50"
