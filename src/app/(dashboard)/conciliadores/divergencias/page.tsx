@@ -60,20 +60,29 @@ export default function DivergenciasPage() {
 
   const sincronizar = useCallback(async () => {
     try {
+      console.log('[sincronizar] iniciando...')
       const r = await fetch('/api/conciliadores/sincronizar', { method: 'POST' })
+      console.log('[sincronizar] resposta recebida:', r.status)
+
       const resultado = await r.json()
+      console.log('[sincronizar] dados:', resultado)
+
       if (!r.ok) {
+        console.error('[sincronizar] erro:', resultado.error)
         toast({
           title: '❌ Erro ao sincronizar',
           description: resultado.error ?? 'Verifique sua conexão'
         })
         return
       }
+
+      console.log('[sincronizar] sucesso! Mostrando toast...')
       toast({
         title: '✅ Sincronização concluída',
         description: `${resultado.sincronizadas} verificada(s), ${resultado.resolvidas} resolvida(s)`
       })
     } catch (e: any) {
+      console.error('[sincronizar] exceção:', e)
       toast({
         title: '❌ Erro de conexão',
         description: e.message
