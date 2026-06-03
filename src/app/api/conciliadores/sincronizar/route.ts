@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       .select(`
         id, titulo,
         extrato_data, extrato_movimento, extrato_status,
-        extrato_diferenca_notificada,
+        extrato_diferenca,
         posto_id, banco, conta_bancaria_id,
         posto:postos(id, nome, codigo_empresa_externo),
         recorrente:tarefas_recorrentes(usuario_id, posto:postos(id, nome, codigo_empresa_externo)),
@@ -128,12 +128,12 @@ export async function POST(req: NextRequest) {
       const novoStatus = isDivergente ? 'divergente' : 'ok'
       const statusMudou = novoStatus !== t.extrato_status
 
-      if (statusMudou || Math.abs(diferenca - (t.extrato_diferenca_notificada ?? 0)) > 0.01) {
+      if (statusMudou || Math.abs(diferenca - (t.extrato_diferenca ?? 0)) > 0.01) {
         await admin
           .from('tarefas')
           .update({
             extrato_status: novoStatus,
-            extrato_diferenca_notificada: diferenca,
+            extrato_diferenca: diferenca,
             atualizada_em: new Date().toISOString(),
           })
           .eq('id', t.id)
