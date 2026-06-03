@@ -8,6 +8,17 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const postoNome = searchParams.get('posto')
 
+    // Se filtro por posto, primeiro encontra o ID
+    let postoId: string | null = null
+    if (postoNome) {
+      const { data: posto } = await admin
+        .from('postos')
+        .select('id')
+        .ilike('nome', `%${postoNome}%`)
+        .single()
+      postoId = posto?.id ?? null
+    }
+
     // Busca todas as notas com status pendente ou aguardando (filtro opcional por posto)
     let query = admin
       .from('fiscal_tarefas')
@@ -26,8 +37,8 @@ export async function GET(req: NextRequest) {
       .in('status', ['pendente_gerente', 'aguardando_fiscal', 'nf_rejeitada'])
       .order('data_emissao', { ascending: false })
 
-    if (postoNome) {
-      query = query.eq('postos.nome', postoNome)
+    if (postoId) {
+      query = query.eq('posto_id', postoId)
     }
 
     const { data: notas } = await query
