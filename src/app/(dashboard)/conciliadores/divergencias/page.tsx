@@ -35,6 +35,7 @@ function fmtData(d: string): string {
 
 export default function DivergenciasPage() {
   const [divergencias, setDivergencias] = useState<DivergenciaItem[]>([])
+  const [divergenciasAnteriores, setDivergenciasAnteriores] = useState<DivergenciaItem[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
   const [selecionada, setSelecionada] = useState<DivergenciaItem | null>(null)
@@ -50,13 +51,36 @@ export default function DivergenciasPage() {
         setErro(d.error ?? 'Erro ao carregar')
         return
       }
-      setDivergencias(d.divergencias ?? [])
+
+      const novasDivergencias = d.divergencias ?? []
+
+      // Detectar divergências resolvidas (que eram divergente e agora estão ok)
+      const resolvidas = divergenciasAnteriores.filter(
+        antiga => antiga.extrato_status === 'divergente' &&
+                  !novasDivergencias.some((nova: DivergenciaItem) =>
+                    nova.id === antiga.id && nova.extrato_status !== 'divergente'
+                  )
+      )
+
+      // Marcar resolvidas como concluídas automaticamente
+      for (const div of resolvidas) {
+        try {
+          await fetch(`/api/conciliadores/divergencias/${div.id}/concluir`, {
+            method: 'PATCH',
+          })
+        } catch (e) {
+          console.error(`Erro ao concluir divergência ${div.id}:`, e)
+        }
+      }
+
+      setDivergenciasAnteriores(novasDivergencias)
+      setDivergencias(novasDivergencias)
     } catch (e: any) {
       setErro(e.message)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [divergenciasAnteriores])
 
   useEffect(() => {
     carregar()
