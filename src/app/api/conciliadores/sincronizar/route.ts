@@ -132,10 +132,8 @@ export async function POST(req: NextRequest) {
       const statusAnterior = t.extrato_status as string
       const statusMudou = novoStatus !== statusAnterior
 
-      console.log(`[sync-calc] ${t.id}: movimento=${movExtrato}, autosystem=${movAtual}, diferenca=${diferenca}, isDivergente=${isDivergente}, statusAnterior=${statusAnterior}, novoStatus=${novoStatus}, mudou=${statusMudou}`)
 
       if (statusMudou || Math.abs(diferenca - (t.extrato_diferenca ?? 0)) > 0.01) {
-        console.log(`[sync-update] ${t.id}: ${t.extrato_status} → ${novoStatus}, diferenca: ${diferenca}`)
 
         try {
           const { data: updated, error: updateError } = await admin
@@ -150,19 +148,15 @@ export async function POST(req: NextRequest) {
 
           if (updateError) {
             const msg = `${t.id}: ${updateError.message} (code: ${updateError.code})`
-            console.error(`[sync-error] ${msg}`)
             erros.push(msg)
           } else if (!updated || updated.length === 0) {
             const msg = `${t.id}: UPDATE retornou 0 linhas (status anterior: ${t.extrato_status})`
-            console.warn(`[sync-no-rows] ${msg}`)
             naoAtualizadas.push(msg)
           } else {
             atualizadas.push(`${t.id}: ${t.extrato_status} → ${novoStatus} (diff: ${diferenca})`)
-            console.log(`[sync-ok] ${t.id}: salva com sucesso, rows: ${updated.length}`)
           }
         } catch (updateErr: any) {
           const msg = `${t.id}: ${updateErr.message}`
-          console.error(`[sync-exception] ${msg}`)
           erros.push(msg)
         }
 
@@ -173,15 +167,9 @@ export async function POST(req: NextRequest) {
         }
       } else if (isDivergente) {
         divergentes++
-        console.log(`[sync-divergente-nao-atualizada] ${t.id}: diferença não mudou o suficiente (${Math.abs(diferenca - (t.extrato_diferenca ?? 0))})`)
       }
     }
 
-    console.log(`[sincronizar] Resultado final: ${atualizadas.length} atualizadas, ${sincronizadas} sincronizadas, ${resolvidas} resolvidas`)
-
-    if (atualizadas.length === 0 && tarefas.length > 0) {
-      console.warn(`[sincronizar] ⚠️  AVISO: Nenhuma tarefa foi atualizada apesar de ter achado ${tarefas.length} tarefas!`)
-    }
 
     return NextResponse.json({
       sincronizadas,
@@ -199,7 +187,6 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch (e: any) {
-    console.error('[sincronizar] erro:', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
