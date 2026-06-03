@@ -61,6 +61,7 @@ export default function DivergenciasPage() {
   const sincronizar = useCallback(async () => {
     try {
       console.log('[sincronizar] iniciando...')
+      console.log('[sincronizar] URL:', window.location.origin + '/api/conciliadores/sincronizar')
       const r = await fetch('/api/conciliadores/sincronizar', { method: 'POST' })
       console.log('[sincronizar] resposta recebida:', r.status)
 
