@@ -41,14 +41,12 @@ export async function GET(req: NextRequest) {
       .from('fiscal_tarefas')
       .select(`
         id,
-        titulo,
+        fornecedor_nome,
         valor_as,
         nf_valor_informado,
         nf_anexada_em,
-        gerente_respondeu_em,
-        gerente_respondeu_por,
+        nf_anexada_por,
         nf_url,
-        fornecedor,
         post:postos(id, nome, empresa_id)
       `)
       .eq('is_uso_consumo', true)
@@ -57,8 +55,8 @@ export async function GET(req: NextRequest) {
 
     if (error) throw error
 
-    // Buscar nomes dos gerentes
-    const gerenteIds = (tarefas ?? []).map(t => t.gerente_respondeu_por).filter(Boolean)
+    // Buscar nomes dos gerentes (nf_anexada_por)
+    const gerenteIds = (tarefas ?? []).map(t => t.nf_anexada_por).filter(Boolean)
     let gerentesMap: Record<string, string> = {}
     if (gerenteIds.length > 0) {
       const { data: gerentes } = await admin
@@ -85,16 +83,16 @@ export async function GET(req: NextRequest) {
 
     const dados: UsosConsumoItem[] = (tarefas ?? []).map(t => ({
       id: t.id as string,
-      titulo: t.titulo as string,
+      titulo: `NF - ${t.fornecedor_nome}` as string,
       empresa_nome: empresasMap[(t.post as any)?.empresa_id] ?? 'Desconhecida',
       posto_nome: (t.post as any)?.nome ?? 'Desconhecido',
       data_nf: t.nf_anexada_em ? new Date(t.nf_anexada_em).toISOString().slice(0, 10) : '',
       nf_valor: Number(t.nf_valor_informado ?? 0),
       manifestacao_as: Number(t.valor_as ?? 0),
       diferenca: Math.abs(Number(t.nf_valor_informado ?? 0) - Number(t.valor_as ?? 0)),
-      fornecedor: t.fornecedor ?? null,
-      gerente_respondeu: gerentesMap[t.gerente_respondeu_por as string] ?? 'Desconhecido',
-      respondida_em: t.gerente_respondeu_em ? new Date(t.gerente_respondeu_em).toISOString().slice(0, 10) : '',
+      fornecedor: t.fornecedor_nome ?? null,
+      gerente_respondeu: gerentesMap[t.nf_anexada_por as string] ?? 'Desconhecido',
+      respondida_em: t.nf_anexada_em ? new Date(t.nf_anexada_em).toISOString().slice(0, 10) : '',
       nf_url: t.nf_url ?? null,
     }))
 
