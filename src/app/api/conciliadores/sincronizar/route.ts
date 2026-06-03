@@ -88,6 +88,8 @@ export async function POST(req: NextRequest) {
     let divergentes = 0
     let resolvidas = 0
     const atualizadas: string[] = []
+    const erros: string[] = []
+    const naoAtualizadas: string[] = []
 
     // 4. Recalcular divergências
     for (const t of tarefas) {
@@ -135,21 +137,33 @@ export async function POST(req: NextRequest) {
       if (statusMudou || Math.abs(diferenca - (t.extrato_diferenca ?? 0)) > 0.01) {
         console.log(`[sync-update] ${t.id}: ${t.extrato_status} → ${novoStatus}, diferenca: ${diferenca}`)
 
-        const { data: updated, error: updateError } = await admin
-          .from('tarefas')
-          .update({
-            extrato_status: novoStatus,
-            extrato_diferenca: diferenca,
-            atualizada_em: new Date().toISOString(),
-          })
-          .eq('id', t.id)
-          .select()
+        try {
+          const { data: updated, error: updateError } = await admin
+            .from('tarefas')
+            .update({
+              extrato_status: novoStatus,
+              extrato_diferenca: diferenca,
+              atualizada_em: new Date().toISOString(),
+            })
+            .eq('id', t.id)
+            .select()
 
-        if (updateError) {
-          console.error(`[sync-error] ${t.id}: ${updateError.message}`)
-        } else {
-          atualizadas.push(`${t.id}: ${t.extrato_status} → ${novoStatus} (diff: ${diferenca})`)
-          console.log(`[sync-ok] ${t.id}: salva com sucesso`)
+          if (updateError) {
+            const msg = `${t.id}: ${updateError.message} (code: ${updateError.code})`
+            console.error(`[sync-error] ${msg}`)
+            erros.push(msg)
+          } else if (!updated || updated.length === 0) {
+            const msg = `${t.id}: UPDATE retornou 0 linhas (status anterior: ${t.extrato_status})`
+            console.warn(`[sync-no-rows] ${msg}`)
+            naoAtualizadas.push(msg)
+          } else {
+            atualizadas.push(`${t.id}: ${t.extrato_status} → ${novoStatus} (diff: ${diferenca})`)
+            console.log(`[sync-ok] ${t.id}: salva com sucesso, rows: ${updated.length}`)
+          }
+        } catch (updateErr: any) {
+          const msg = `${t.id}: ${updateErr.message}`
+          console.error(`[sync-exception] ${msg}`)
+          erros.push(msg)
         }
 
         if (statusMudou && !isDivergente) {
@@ -166,7 +180,7 @@ export async function POST(req: NextRequest) {
     console.log(`[sincronizar] Resultado final: ${atualizadas.length} atualizadas, ${sincronizadas} sincronizadas, ${resolvidas} resolvidas`)
 
     if (atualizadas.length === 0 && tarefas.length > 0) {
-      console.warn('[sincronizar] ⚠️  AVISO: Nenhuma tarefa foi atualizada apesar de ter achado ${tarefas.length} tarefas!')
+      console.warn(`[sincronizar] ⚠️  AVISO: Nenhuma tarefa foi atualizada apesar de ter achado ${tarefas.length} tarefas!`)
     }
 
     return NextResponse.json({
@@ -177,7 +191,11 @@ export async function POST(req: NextRequest) {
       debug: {
         totalTarefas: tarefas.length,
         atualizadasCount: atualizadas.length,
-        exemplos: atualizadas.slice(0, 3),
+        errosCount: erros.length,
+        naoAtualizadasCount: naoAtualizadas.length,
+        exemplosAtualizadas: atualizadas.slice(0, 5),
+        exemplosErros: erros.slice(0, 5),
+        exemplosNaoAtualizadas: naoAtualizadas.slice(0, 5),
       },
     })
   } catch (e: any) {
