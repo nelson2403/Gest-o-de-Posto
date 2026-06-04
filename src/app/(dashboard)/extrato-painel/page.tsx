@@ -147,7 +147,11 @@ export default function ExtratoPainelPage() {
   async function verificarDivergencias() {
     setVerificando(true)
     try {
-      // Usa endpoint que filtra por postos do usuário (não retorna divergências de postos que não tem acesso)
+      // 1. Sincroniza (recalcula) divergências dos postos do usuário
+      const syncRes = await fetch('/api/conciliadores/sincronizar', { method: 'POST' })
+      const syncJson = await syncRes.json()
+
+      // 2. Carrega apenas divergências dos postos do usuário (não do sistema inteiro)
       const res  = await fetch('/api/extrato-verificar/por-usuario', { method: 'POST' })
       const json = await res.json()
       if (!res.ok) {
