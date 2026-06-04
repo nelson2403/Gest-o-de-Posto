@@ -147,7 +147,8 @@ export default function ExtratoPainelPage() {
   async function verificarDivergencias() {
     setVerificando(true)
     try {
-      const res  = await fetch('/api/extrato-verificar', { method: 'POST' })
+      // Usa endpoint que filtra por postos do usuário (não retorna divergências de postos que não tem acesso)
+      const res  = await fetch('/api/extrato-verificar/por-usuario', { method: 'POST' })
       const json = await res.json()
       if (!res.ok) {
         toast({ variant: 'destructive', title: 'Erro ao verificar', description: json.error })
