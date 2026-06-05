@@ -156,28 +156,23 @@ export async function POST(req: NextRequest) {
               atualizado_em: new Date().toISOString(),
             })
             .eq('id', t.id)
-            .select()
 
           if (updateError) {
-            const msg = `${t.id}: ${updateError.message} (code: ${updateError.code})`
-            erros.push(msg)
-            console.log('[SYNC] UPDATE ERROR:', msg)
-          } else if (!updated || updated.length === 0) {
-            const msg = `${t.id}: UPDATE retornou 0 linhas (status anterior: ${t.extrato_status})`
-            naoAtualizadas.push(msg)
-            console.log('[SYNC]', msg)
+            console.log('[SYNC] UPDATE ERROR:', t.id, updateError.message)
+            erros.push(`${t.id}: ${updateError.message}`)
           } else {
-            atualizadas.push(`${t.id}: ${t.extrato_status} → ${novoStatus} (diff: ${diferenca})`)
-            if (isDivergente) divergentes++
-            else resolvidas++
+            atualizadas.push(`${t.id}: ${statusAnterior} → ${novoStatus}`)
+            if (statusMudou && !isDivergente) {
+              resolvidas++
+            } else if (isDivergente) {
+              divergentes++
+            }
           }
         } catch (updateErr: any) {
-          const msg = `${t.id}: ${updateErr.message}`
-          erros.push(msg)
-          console.log('[SYNC] CATCH ERROR:', msg)
+          console.log('[SYNC] CATCH ERROR:', t.id, updateErr.message)
+          erros.push(`${t.id}: ${updateErr.message}`)
         }
       } else if (isDivergente) {
-        // Sem mudança de status, mas ainda é divergente (estava divergente)
         divergentes++
       }
     }
