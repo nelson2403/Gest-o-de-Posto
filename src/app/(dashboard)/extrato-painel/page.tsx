@@ -13,7 +13,7 @@ import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils/cn'
 import { formatCurrency } from '@/lib/utils/formatters'
 import {
-  AlertTriangle, Clock, RefreshCw, ScanSearch,
+  CheckCircle2, AlertTriangle, Clock, RefreshCw, ScanSearch,
   FileSpreadsheet, TrendingUp, TrendingDown, Minus, Search, Download,
 } from 'lucide-react'
 import type { Role } from '@/types/database.types'
