@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
     let divergentes = 0
     let resolvidas = 0
     let tentouAtualizar = 0
+    let comDivergenciaSignificativa = 0
     const atualizadas: string[] = []
     const erros: string[] = []
     const naoAtualizadas: string[] = []
@@ -139,6 +140,13 @@ export async function POST(req: NextRequest) {
       const movExtrato = (t.extrato_movimento as number) ?? 0
       const diferenca = parseFloat((movExtrato - movAtual).toFixed(2))
       const isDivergente = Math.abs(diferenca) > 0.02
+
+      if (isDivergente) comDivergenciaSignificativa++
+
+      // Log das primeiras 5 com diferença > 0.02
+      if (isDivergente && comDivergenciaSignificativa <= 5) {
+        console.log(`[SYNC] Divergente ${comDivergenciaSignificativa}: id=${t.id}, diferenca=${diferenca}, movExtrato=${movExtrato}, movAtual=${movAtual}`)
+      }
 
       // Atualizar tarefa no banco
       const novoStatus = isDivergente ? 'divergente' : 'ok'
@@ -182,6 +190,7 @@ export async function POST(req: NextRequest) {
 
     console.log('[SYNC] Resultado:', {
       sincronizadas,
+      comDivergenciaSignificativa,
       divergentes,
       resolvidas,
       tentouAtualizar,
