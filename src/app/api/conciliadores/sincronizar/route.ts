@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Buscar tarefas de conciliação dos postos do usuário
+    // 2. Buscar tarefas de conciliação dos postos do usuário (incluindo as não verificadas ainda)
     let query = admin
       .from('tarefas')
       .select(`
@@ -49,7 +49,6 @@ export async function POST(req: NextRequest) {
         conta_bancaria:contas_bancarias(codigo_conta_externo)
       `)
       .eq('categoria', 'conciliacao_bancaria')
-      .in('extrato_status', ['ok', 'divergente'])
       .not('extrato_arquivo_path', 'is', null)
       .not('extrato_data', 'is', null)
 
