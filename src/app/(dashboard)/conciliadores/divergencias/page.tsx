@@ -138,7 +138,17 @@ export default function DivergenciasPage() {
   }, [])
 
   useEffect(() => {
-    carregar()
+    // Auto-sincroniza ao carregar (sem notificação, silencioso)
+    const autoSync = async () => {
+      try {
+        await fetch('/api/conciliadores/sincronizar', { method: 'POST' })
+      } catch (e) {
+        console.error('Auto-sync erro:', e)
+      }
+      // Depois carrega as divergências
+      carregar()
+    }
+    autoSync()
   }, [carregar])
 
   // Obter lista única de conciliadores
@@ -187,17 +197,6 @@ export default function DivergenciasPage() {
               ))}
             </select>
           )}
-          <button
-            onClick={() => {
-              if (loading) return
-              sincronizar().then(() => carregar()).catch(console.error)
-            }}
-            disabled={loading}
-            className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 rounded-lg text-[13px] text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            Atualizar
-          </button>
         </div>
       </div>
 
@@ -425,7 +424,7 @@ function DivergenciaCard({ item, onClick }: { item: DivergenciaItem; onClick: ()
   const cores = PRIORIDADE_CORES[item.prioridade] || PRIORIDADE_CORES.media
 
   return (
-    <button
+    <div
       onClick={onClick}
       className={`w-full text-left border rounded-lg p-3 hover:shadow-md transition-all cursor-pointer ${cores.bg}`}
     >
@@ -456,7 +455,14 @@ function DivergenciaCard({ item, onClick }: { item: DivergenciaItem; onClick: ()
             )}
           </div>
         </div>
-        <div className="flex flex-col items-end gap-1 whitespace-nowrap flex-shrink-0">
+        <div className="flex flex-col items-end gap-1.5 whitespace-nowrap flex-shrink-0">
+          <Link
+            href={`/tarefas?id=${item.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="text-[11px] text-blue-600 hover:text-blue-800 font-medium hover:underline"
+          >
+            Ver Tarefa →
+          </Link>
           <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${
             item.prioridade === 'urgente'
               ? 'bg-red-600 text-white'
@@ -475,6 +481,6 @@ function DivergenciaCard({ item, onClick }: { item: DivergenciaItem; onClick: ()
           </span>
         </div>
       </div>
-    </button>
+    </div>
   )
 }
