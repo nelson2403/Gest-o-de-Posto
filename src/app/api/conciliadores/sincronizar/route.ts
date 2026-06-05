@@ -161,23 +161,23 @@ export async function POST(req: NextRequest) {
           if (updateError) {
             const msg = `${t.id}: ${updateError.message} (code: ${updateError.code})`
             erros.push(msg)
+            console.log('[SYNC] UPDATE ERROR:', msg)
           } else if (!updated || updated.length === 0) {
             const msg = `${t.id}: UPDATE retornou 0 linhas (status anterior: ${t.extrato_status})`
             naoAtualizadas.push(msg)
+            console.log('[SYNC]', msg)
           } else {
             atualizadas.push(`${t.id}: ${t.extrato_status} → ${novoStatus} (diff: ${diferenca})`)
+            if (isDivergente) divergentes++
+            else resolvidas++
           }
         } catch (updateErr: any) {
           const msg = `${t.id}: ${updateErr.message}`
           erros.push(msg)
-        }
-
-        if (statusMudou && !isDivergente) {
-          resolvidas++
-        } else if (isDivergente) {
-          divergentes++
+          console.log('[SYNC] CATCH ERROR:', msg)
         }
       } else if (isDivergente) {
+        // Sem mudança de status, mas ainda é divergente (estava divergente)
         divergentes++
       }
     }
