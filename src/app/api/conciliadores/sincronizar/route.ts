@@ -144,10 +144,10 @@ export async function POST(req: NextRequest) {
       const novoStatus = isDivergente ? 'divergente' : 'ok'
       const statusAnterior = t.extrato_status as string
 
-      // SEMPRE atualizar com status e diferença
+      // SEMPRE atualizar com status e diferença (usando admin para bypass RLS)
       tentouAtualizar++
       try {
-        const { error: updateError } = await supabase
+        const { error: updateError } = await admin
           .from('tarefas')
           .update({
             extrato_status: novoStatus,
