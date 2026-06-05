@@ -99,11 +99,8 @@ export async function POST(req: NextRequest) {
     let sincronizadas = 0
     let divergentes = 0
     let resolvidas = 0
-    let tentouAtualizar = 0
-    let comDivergenciaSignificativa = 0
     const atualizadas: string[] = []
     const erros: string[] = []
-    const naoAtualizadas: string[] = []
 
     // 4. Recalcular divergências
     for (const t of tarefas) {
@@ -140,25 +137,8 @@ export async function POST(req: NextRequest) {
       const movExtrato = (t.extrato_movimento as number) ?? 0
       const diferenca = parseFloat((movExtrato - movAtual).toFixed(2))
       const isDivergente = Math.abs(diferenca) > 0.02
-
-      if (isDivergente) comDivergenciaSignificativa++
-
-      // Log das primeiras 5 com diferença > 0.02
-      if (isDivergente && comDivergenciaSignificativa <= 5) {
-        console.log(`[SYNC] Divergente ${comDivergenciaSignificativa}: id=${t.id}, diferenca=${diferenca}, movExtrato=${movExtrato}, movAtual=${movAtual}`)
-      }
-
-      // Atualizar tarefa no banco
       const novoStatus = isDivergente ? 'divergente' : 'ok'
       const statusAnterior = t.extrato_status as string
-
-      // SEMPRE atualizar com status e diferença (usando admin para bypass RLS)
-      tentouAtualizar++
-
-      // Log para as primeiras divergentes
-      if (isDivergente && tentouAtualizar <= 10) {
-        console.log(`[SYNC] Salvando ${t.id}: status=${novoStatus}, diferenca=${diferenca}`)
-      }
 
       try {
         const { error: updateError } = await admin
@@ -171,32 +151,27 @@ export async function POST(req: NextRequest) {
           .eq('id', t.id)
 
         if (!updateError) {
-          atualizadas.push(`${t.id}: ${statusAnterior} → ${novoStatus}`)
+          atualizadas.push(t.id)
           if (isDivergente) {
             divergentes++
           } else if (statusAnterior === 'divergente') {
             resolvidas++
           }
         } else {
-          console.log(`[SYNC] UPDATE ERRO para ${t.id}: ${updateError.message}`)
-          erros.push(`${t.id}: ${updateError.message}`)
+          erros.push(t.id)
         }
       } catch (updateErr: any) {
-        console.log(`[SYNC] UPDATE EXCEPTION para ${t.id}: ${updateErr.message}`)
-        erros.push(`${t.id}: ${updateErr.message}`)
+        erros.push(t.id)
       }
     }
 
 
     console.log('[SYNC] Resultado:', {
       sincronizadas,
-      comDivergenciaSignificativa,
       divergentes,
       resolvidas,
-      tentouAtualizar,
       atualizadas: atualizadas.length,
-      erros: erros.length,
-      exemplosErros: erros.slice(0, 3)
+      erros: erros.length
     })
 
     return NextResponse.json({
