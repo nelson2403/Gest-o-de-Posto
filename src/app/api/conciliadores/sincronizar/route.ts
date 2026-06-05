@@ -99,6 +99,7 @@ export async function POST(req: NextRequest) {
     let sincronizadas = 0
     let divergentes = 0
     let resolvidas = 0
+    let tentouAtualizar = 0
     const atualizadas: string[] = []
     const erros: string[] = []
     const naoAtualizadas: string[] = []
@@ -146,6 +147,7 @@ export async function POST(req: NextRequest) {
 
 
       if (statusMudou || Math.abs(diferenca - (t.extrato_diferenca ?? 0)) > 0.01) {
+        tentouAtualizar++
         try {
           const { error: updateError } = await supabase
             .from('tarefas')
@@ -164,9 +166,11 @@ export async function POST(req: NextRequest) {
               divergentes++
             }
           } else {
+            console.log(`[SYNC] UPDATE ERRO para ${t.id}: ${updateError.message}`)
             erros.push(`${t.id}: ${updateError.message}`)
           }
         } catch (updateErr: any) {
+          console.log(`[SYNC] UPDATE EXCEPTION para ${t.id}: ${updateErr.message}`)
           erros.push(`${t.id}: ${updateErr.message}`)
         }
       } else if (isDivergente) {
@@ -179,7 +183,10 @@ export async function POST(req: NextRequest) {
       sincronizadas,
       divergentes,
       resolvidas,
-      atualizadas: atualizadas.length
+      tentouAtualizar,
+      atualizadas: atualizadas.length,
+      erros: erros.length,
+      exemplosErros: erros.slice(0, 3)
     })
 
     return NextResponse.json({
