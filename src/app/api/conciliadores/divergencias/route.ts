@@ -112,7 +112,10 @@ export async function GET(req: NextRequest) {
 
     const { data: tarefas, error } = await query
 
-    if (error) throw error
+    if (error) {
+      console.log('[DIVERGENCIAS] ERRO na query:', error)
+      throw error
+    }
 
     console.log('[DIVERGENCIAS] Tarefas encontradas:', tarefas?.length ?? 0)
     if (tarefas?.length && tarefas.length > 0) {
