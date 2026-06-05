@@ -221,6 +221,23 @@ export default function ExtratoPainelPage() {
 
   useEffect(() => { load() }, [])
 
+  // Auto-load divergências ao entrar na página
+  useEffect(() => {
+    const autoVerify = async () => {
+      try {
+        const res = await fetch('/api/extrato-verificar/por-usuario', { method: 'POST' })
+        const json = await res.json()
+        if (res.ok) {
+          setAlertas(json.divergentes ?? [])
+        }
+      } catch (e) {
+        console.error('Auto-verify erro:', e)
+      }
+      await load()
+    }
+    autoVerify()
+  }, [])
+
   // ── Postos únicos para o filtro ────────────────────────────────────────────
   const postosUnicos = useMemo(() => {
     const nomes = [...new Set(rows.map(r => r.posto?.nome).filter(Boolean) as string[])]
@@ -261,22 +278,10 @@ export default function ExtratoPainelPage() {
         title="Painel de Extrato"
         description="Monitoramento do cruzamento de dados entre extratos bancários e AUTOSYSTEM"
         actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline" size="sm"
-              onClick={verificarDivergencias}
-              disabled={verificando || loading}
-              className="gap-1.5 text-[13px] border-orange-300 text-orange-700 hover:bg-orange-50"
-              title="Verifica se o AUTOSYSTEM foi alterado após a validação dos extratos"
-            >
-              <ShieldAlert className={cn('w-3.5 h-3.5', verificando && 'animate-pulse')} />
-              {verificando ? 'Verificando...' : 'Verificar Divergências'}
-            </Button>
-            <Button variant="outline" size="sm" onClick={load} disabled={loading} className="gap-1.5 text-[13px]">
-              <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-              Atualizar
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" onClick={load} disabled={loading} className="gap-1.5 text-[13px]">
+            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+            Atualizar
+          </Button>
         }
       />
 
