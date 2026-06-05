@@ -58,11 +58,24 @@ export async function POST(req: NextRequest) {
 
     const { data: tarefas } = await query
 
+    console.log('[SYNC] Tarefas encontradas:', tarefas?.length ?? 0)
+    if (tarefas?.length) {
+      console.log('[SYNC] Exemplos:', tarefas.slice(0, 2).map(t => ({
+        id: t.id,
+        titulo: t.titulo,
+        extrato_status: t.extrato_status,
+        extrato_diferenca: t.extrato_diferenca,
+        extrato_data: t.extrato_data
+      })))
+    }
+
     if (!tarefas?.length) {
+      console.log('[SYNC] Nenhuma tarefa encontrada para sincronizar')
       return NextResponse.json({
         sincronizadas: 0,
         divergentes: 0,
         resolvidas: 0,
+        debug: { message: 'Nenhuma tarefa encontrada para sincronizar' }
       })
     }
 
@@ -169,6 +182,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
+
+    console.log('[SYNC] Resultado:', {
+      sincronizadas,
+      divergentes,
+      resolvidas,
+      atualizadas: atualizadas.length
+    })
 
     return NextResponse.json({
       sincronizadas,
