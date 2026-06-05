@@ -146,6 +146,7 @@ export async function POST(req: NextRequest) {
 
 
       if (statusMudou || Math.abs(diferenca - (t.extrato_diferenca ?? 0)) > 0.01) {
+        console.log(`[SYNC] Atualizando ${t.id}: ${statusAnterior} → ${novoStatus} (diff: ${diferenca})`)
 
         try {
           const { data: updated, error: updateError } = await admin
@@ -158,10 +159,11 @@ export async function POST(req: NextRequest) {
             .eq('id', t.id)
 
           if (updateError) {
-            console.log('[SYNC] UPDATE ERROR:', t.id, updateError.message)
+            console.log('[SYNC] ERROR ao atualizar:', updateError)
             erros.push(`${t.id}: ${updateError.message}`)
           } else {
             atualizadas.push(`${t.id}: ${statusAnterior} → ${novoStatus}`)
+            console.log(`[SYNC] ✓ Atualizada com sucesso`)
             if (statusMudou && !isDivergente) {
               resolvidas++
             } else if (isDivergente) {
@@ -169,10 +171,11 @@ export async function POST(req: NextRequest) {
             }
           }
         } catch (updateErr: any) {
-          console.log('[SYNC] CATCH ERROR:', t.id, updateErr.message)
+          console.log('[SYNC] EXCEPTION ao atualizar:', updateErr)
           erros.push(`${t.id}: ${updateErr.message}`)
         }
       } else if (isDivergente) {
+        console.log(`[SYNC] ${t.id} já era divergente, apenas contando`)
         divergentes++
       }
     }
