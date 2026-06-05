@@ -111,6 +111,13 @@ export async function GET(req: NextRequest) {
 
     if (error) throw error
 
+    console.log('[DIVERGENCIAS] Query retornou:', tarefas?.length ?? 0, 'tarefas')
+    if (tarefas && tarefas.length > 0) {
+      const comDivergente = tarefas.filter(t => (t.extrato_status as string) === 'divergente').length
+      const comDiferenca = tarefas.filter(t => t.extrato_diferenca && Math.abs(t.extrato_diferenca as number) > 0.02).length
+      console.log('[DIVERGENCIAS] Com status divergente:', comDivergente, '| Com diferença > 0.02:', comDiferenca)
+    }
+
     const agora = new Date()
     const divergencias: DivergenciaItem[] = (tarefas ?? [])
       .filter(t => {
@@ -119,6 +126,8 @@ export async function GET(req: NextRequest) {
         const foiDivergente = t.extrato_diferenca && Math.abs(t.extrato_diferenca as number) > 0.02
         return isDivergente || foiDivergente
       })
+
+    console.log('[DIVERGENCIAS] Após filtro:', divergencias.length, 'divergências')
       .map(t => {
         const dataInicio = new Date(t.data_inicio ?? t.criado_em)
         const diasPendente = Math.floor((agora.getTime() - dataInicio.getTime()) / (1000 * 60 * 60 * 24))
