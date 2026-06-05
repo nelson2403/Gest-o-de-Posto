@@ -115,7 +115,12 @@ export async function GET(req: NextRequest) {
     if (tarefas && tarefas.length > 0) {
       const comDivergente = tarefas.filter(t => (t.extrato_status as string) === 'divergente').length
       const comDiferenca = tarefas.filter(t => t.extrato_diferenca && Math.abs(t.extrato_diferenca as number) > 0.02).length
+      const statusValues = new Set(tarefas.map(t => t.extrato_status))
+      console.log('[DIVERGENCIAS] Status únicos encontrados:', Array.from(statusValues))
       console.log('[DIVERGENCIAS] Com status divergente:', comDivergente, '| Com diferença > 0.02:', comDiferenca)
+      if (comDiferenca > 0) {
+        console.log('[DIVERGENCIAS] Exemplo com diferença:', tarefas.filter(t => t.extrato_diferenca && Math.abs(t.extrato_diferenca as number) > 0.02)[0])
+      }
     }
 
     const agora = new Date()
