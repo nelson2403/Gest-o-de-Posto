@@ -126,8 +126,6 @@ export async function GET(req: NextRequest) {
         const foiDivergente = t.extrato_diferenca && Math.abs(t.extrato_diferenca as number) > 0.02
         return isDivergente || foiDivergente
       })
-
-    console.log('[DIVERGENCIAS] Após filtro:', divergencias.length, 'divergências')
       .map(t => {
         const dataInicio = new Date(t.data_inicio ?? t.criado_em)
         const diasPendente = Math.floor((agora.getTime() - dataInicio.getTime()) / (1000 * 60 * 60 * 24))
@@ -158,7 +156,7 @@ export async function GET(req: NextRequest) {
         }
       })
 
-    console.log('[DIVERGENCIAS] Divergências após filtro:', divergencias.length)
+    console.log('[DIVERGENCIAS] Após filtro:', divergencias.length, 'divergências formatadas')
     return NextResponse.json({ divergencias, total: divergencias.length })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
