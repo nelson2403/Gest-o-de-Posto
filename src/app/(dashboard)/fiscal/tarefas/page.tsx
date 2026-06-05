@@ -479,7 +479,7 @@ function DialogReconhecer({
     const valorNf = parseFloat(nfValor.replace(',', '.'))
     if (!valorNf) return setErro('Informe o valor da NF')
 
-    if (!eCombustivel && itens.length > 0) {
+    if (!eCombustivel && !isUsoConsumo && itens.length > 0) {
       const itemInvalido = itens.find(it => !it.qtd_unidades?.toString().trim() || !it.codigo_barras?.trim())
       if (itemInvalido) return setErro('Preencha a quantidade e o código de barras de todos os itens do romaneio')
     }
@@ -607,8 +607,8 @@ function DialogReconhecer({
             ))}
           </div>
 
-          {/* Itens do romaneio — oculto para combustível */}
-          {!eCombustivel && <div className="space-y-2">
+          {/* Itens do romaneio — oculto para combustível e uso e consumo */}
+          {!eCombustivel && !isUsoConsumo && <div className="space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-[13px] font-semibold text-gray-800">3. Itens do Romaneio</p>
               <div className="flex items-center gap-2">
