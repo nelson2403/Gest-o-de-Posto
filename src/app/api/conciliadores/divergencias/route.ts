@@ -23,12 +23,8 @@ export interface DivergenciaItem {
 // GET — retorna divergências bancárias para conciliador
 // Filtra: tarefas de conciliacao_bancaria com status divergente ou ok mas ainda pendente
 export async function GET(req: NextRequest) {
-  console.log('[DIVERGENCIAS] GET chamado')
-
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  console.log('[DIVERGENCIAS] user:', user?.id)
-
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
   // Verifica role do usuário
@@ -45,8 +41,6 @@ export async function GET(req: NextRequest) {
 
   // Conciliadores veem só seu(s) posto(s); master/adm veem tudo
   const isMaster = ['master', 'adm_financeiro'].includes(userData.role)
-  console.log('[DIVERGENCIAS] isMaster:', isMaster, 'role:', userData.role)
-
   let postoIds: string[] = []
 
   if (!isMaster) {
@@ -57,7 +51,6 @@ export async function GET(req: NextRequest) {
       .eq('usuario_id', user.id)
 
     postoIds = (postos ?? []).map(p => p.posto_id)
-    console.log('[DIVERGENCIAS] Conciliador postoIds:', postoIds.length)
 
     if (postoIds.length === 0) {
       return NextResponse.json({ error: 'Nenhum posto atribuído a este conciliador' }, { status: 400 })
@@ -111,45 +104,21 @@ export async function GET(req: NextRequest) {
 
     // Filtrar por posto: conciliadores veem só seu(s) posto(s), admin_financeiro/master veem tudo
     if (!isMaster && postoIds.length > 0) {
-      console.log('[DIVERGENCIAS] Filtrando por postos:', postoIds)
       query = query.in('posto_id', postoIds)
-    } else {
-      console.log('[DIVERGENCIAS] NÃO filtrando por postos (master ou sem postos)')
     }
 
     const { data: tarefas, error } = await query
 
-    if (error) {
-      console.log('[DIVERGENCIAS] ERRO na query:', error)
-      throw error
-    }
-
-    console.log('[DIVERGENCIAS] Tarefas encontradas:', tarefas?.length ?? 0)
-    if (tarefas?.length && tarefas.length > 0) {
-      const exemplo = tarefas[0]
-      console.log('[DIVERGENCIAS] Exemplo tarefa:', {
-        id: exemplo.id,
-        extrato_status: exemplo.extrato_status,
-        extrato_diferenca: exemplo.extrato_diferenca,
-        posto_id: exemplo.posto_id
-      })
-    }
+    if (error) throw error
 
     const agora = new Date()
-
-    // Para master, retorna TODAS as tarefas com diferença (não filtra por status)
-    const tarefasParaMostrar = isMaster
-      ? (tarefas ?? [])
-      : (tarefas ?? []).filter(t => {
-          // Para conciliadores: divergentes OU (ok mas com diferença não nula)
-          const isDivergente = (t.extrato_status as string) === 'divergente'
-          const foiDivergente = t.extrato_diferenca && Math.abs(t.extrato_diferenca as number) > 0.02
-          return isDivergente || foiDivergente
-        })
-
-    console.log('[DIVERGENCIAS] Tarefas para mostrar:', tarefasParaMostrar.length, '(isMaster:', isMaster, ')')
-
-    const divergencias: DivergenciaItem[] = tarefasParaMostrar
+    const divergencias: DivergenciaItem[] = (tarefas ?? [])
+      .filter(t => {
+        // Filtra: divergentes OU (ok mas com diferença não nula = foi divergente antes)
+        const isDivergente = (t.extrato_status as string) === 'divergente'
+        const foiDivergente = t.extrato_diferenca && Math.abs(t.extrato_diferenca as number) > 0.02
+        return isDivergente || foiDivergente
+      })
       .map(t => {
         const dataInicio = new Date(t.data_inicio ?? t.criado_em)
         const diasPendente = Math.floor((agora.getTime() - dataInicio.getTime()) / (1000 * 60 * 60 * 24))
