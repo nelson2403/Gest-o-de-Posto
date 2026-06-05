@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
 
       if (statusMudou || Math.abs(diferenca - (t.extrato_diferenca ?? 0)) > 0.01) {
         try {
-          await admin
+          const { error: updateError } = await supabase
             .from('tarefas')
             .update({
               extrato_status: novoStatus,
@@ -156,11 +156,15 @@ export async function POST(req: NextRequest) {
             })
             .eq('id', t.id)
 
-          atualizadas.push(`${t.id}: ${statusAnterior} → ${novoStatus}`)
-          if (statusMudou && !isDivergente) {
-            resolvidas++
-          } else if (isDivergente) {
-            divergentes++
+          if (!updateError) {
+            atualizadas.push(`${t.id}: ${statusAnterior} → ${novoStatus}`)
+            if (statusMudou && !isDivergente) {
+              resolvidas++
+            } else if (isDivergente) {
+              divergentes++
+            }
+          } else {
+            erros.push(`${t.id}: ${updateError.message}`)
           }
         } catch (updateErr: any) {
           erros.push(`${t.id}: ${updateErr.message}`)
