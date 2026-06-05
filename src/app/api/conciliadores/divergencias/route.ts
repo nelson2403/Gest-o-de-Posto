@@ -136,13 +136,20 @@ export async function GET(req: NextRequest) {
     }
 
     const agora = new Date()
-    const divergencias: DivergenciaItem[] = (tarefas ?? [])
-      .filter(t => {
-        // Filtra: divergentes OU (ok mas com diferença não nula = foi divergente antes)
-        const isDivergente = (t.extrato_status as string) === 'divergente'
-        const foiDivergente = t.extrato_diferenca && Math.abs(t.extrato_diferenca as number) > 0.02
-        return isDivergente || foiDivergente
-      })
+
+    // Para master, retorna TODAS as tarefas com diferença (não filtra por status)
+    const tarefasParaMostrar = isMaster
+      ? (tarefas ?? [])
+      : (tarefas ?? []).filter(t => {
+          // Para conciliadores: divergentes OU (ok mas com diferença não nula)
+          const isDivergente = (t.extrato_status as string) === 'divergente'
+          const foiDivergente = t.extrato_diferenca && Math.abs(t.extrato_diferenca as number) > 0.02
+          return isDivergente || foiDivergente
+        })
+
+    console.log('[DIVERGENCIAS] Tarefas para mostrar:', tarefasParaMostrar.length, '(isMaster:', isMaster, ')')
+
+    const divergencias: DivergenciaItem[] = tarefasParaMostrar
       .map(t => {
         const dataInicio = new Date(t.data_inicio ?? t.criado_em)
         const diasPendente = Math.floor((agora.getTime() - dataInicio.getTime()) / (1000 * 60 * 60 * 24))
