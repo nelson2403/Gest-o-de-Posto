@@ -111,7 +111,10 @@ export async function GET(req: NextRequest) {
 
     // Filtrar por posto: conciliadores veem só seu(s) posto(s), admin_financeiro/master veem tudo
     if (!isMaster && postoIds.length > 0) {
+      console.log('[DIVERGENCIAS] Filtrando por postos:', postoIds)
       query = query.in('posto_id', postoIds)
+    } else {
+      console.log('[DIVERGENCIAS] NÃO filtrando por postos (master ou sem postos)')
     }
 
     const { data: tarefas, error } = await query
