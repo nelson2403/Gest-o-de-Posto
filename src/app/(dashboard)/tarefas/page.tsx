@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Header } from '@/components/layout/Header'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
@@ -145,6 +146,7 @@ function PrioridadeBadge({ prioridade }: { prioridade: PrioridadeTarefa }) {
 export default function TarefasPage() {
   const { usuario } = useAuthContext()
   const supabase = createClient()
+  const searchParams = useSearchParams()
   const role = usuario?.role as Role | undefined
   const isOperador     = role === 'operador_caixa'
   const isConciliador  = role === 'operador_conciliador'
@@ -329,6 +331,17 @@ export default function TarefasPage() {
     return () => { supabase.removeChannel(channel) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usuario?.id])
+
+  // Auto-open tarefa se houver ?id na URL (ex: /tarefas?id=abc123)
+  useEffect(() => {
+    const tarefaId = searchParams.get('id')
+    if (tarefaId && tarefas.length > 0) {
+      const tarefa = tarefas.find(t => t.id === tarefaId)
+      if (tarefa) {
+        openViewTarefa(tarefa)
+      }
+    }
+  }, [tarefas, searchParams])
 
   // ── Dados filtrados ────────────────────────────────────────────────
   const filtered = useMemo(() => {
