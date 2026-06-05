@@ -146,6 +146,12 @@ export async function POST(req: NextRequest) {
 
       // SEMPRE atualizar com status e diferença (usando admin para bypass RLS)
       tentouAtualizar++
+
+      // Log para as primeiras divergentes
+      if (isDivergente && tentouAtualizar <= 10) {
+        console.log(`[SYNC] Salvando ${t.id}: status=${novoStatus}, diferenca=${diferenca}`)
+      }
+
       try {
         const { error: updateError } = await admin
           .from('tarefas')
