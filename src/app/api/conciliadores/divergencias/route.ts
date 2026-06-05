@@ -23,8 +23,12 @@ export interface DivergenciaItem {
 // GET — retorna divergências bancárias para conciliador
 // Filtra: tarefas de conciliacao_bancaria com status divergente ou ok mas ainda pendente
 export async function GET(req: NextRequest) {
+  console.log('[DIVERGENCIAS] GET chamado')
+
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
+  console.log('[DIVERGENCIAS] user:', user?.id)
+
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
   // Verifica role do usuário
