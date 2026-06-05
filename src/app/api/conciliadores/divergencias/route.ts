@@ -41,6 +41,8 @@ export async function GET(req: NextRequest) {
 
   // Conciliadores veem só seu(s) posto(s); master/adm veem tudo
   const isMaster = ['master', 'adm_financeiro'].includes(userData.role)
+  console.log('[DIVERGENCIAS] isMaster:', isMaster, 'role:', userData.role)
+
   let postoIds: string[] = []
 
   if (!isMaster) {
@@ -51,6 +53,7 @@ export async function GET(req: NextRequest) {
       .eq('usuario_id', user.id)
 
     postoIds = (postos ?? []).map(p => p.posto_id)
+    console.log('[DIVERGENCIAS] Conciliador postoIds:', postoIds.length)
 
     if (postoIds.length === 0) {
       return NextResponse.json({ error: 'Nenhum posto atribuído a este conciliador' }, { status: 400 })
@@ -111,6 +114,17 @@ export async function GET(req: NextRequest) {
 
     if (error) throw error
 
+    console.log('[DIVERGENCIAS] Tarefas encontradas:', tarefas?.length ?? 0)
+    if (tarefas?.length && tarefas.length > 0) {
+      const exemplo = tarefas[0]
+      console.log('[DIVERGENCIAS] Exemplo tarefa:', {
+        id: exemplo.id,
+        extrato_status: exemplo.extrato_status,
+        extrato_diferenca: exemplo.extrato_diferenca,
+        posto_id: exemplo.posto_id
+      })
+    }
+
     const agora = new Date()
     const divergencias: DivergenciaItem[] = (tarefas ?? [])
       .filter(t => {
@@ -149,6 +163,7 @@ export async function GET(req: NextRequest) {
         }
       })
 
+    console.log('[DIVERGENCIAS] Divergências após filtro:', divergencias.length)
     return NextResponse.json({ divergencias, total: divergencias.length })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
