@@ -143,38 +143,33 @@ export async function POST(req: NextRequest) {
       // Atualizar tarefa no banco
       const novoStatus = isDivergente ? 'divergente' : 'ok'
       const statusAnterior = t.extrato_status as string
-      const statusMudou = novoStatus !== statusAnterior
 
+      // SEMPRE atualizar com status e diferença
+      tentouAtualizar++
+      try {
+        const { error: updateError } = await supabase
+          .from('tarefas')
+          .update({
+            extrato_status: novoStatus,
+            extrato_diferenca: diferenca,
+            atualizado_em: new Date().toISOString(),
+          })
+          .eq('id', t.id)
 
-      if (statusMudou || Math.abs(diferenca - (t.extrato_diferenca ?? 0)) > 0.01) {
-        tentouAtualizar++
-        try {
-          const { error: updateError } = await supabase
-            .from('tarefas')
-            .update({
-              extrato_status: novoStatus,
-              extrato_diferenca: diferenca,
-              atualizado_em: new Date().toISOString(),
-            })
-            .eq('id', t.id)
-
-          if (!updateError) {
-            atualizadas.push(`${t.id}: ${statusAnterior} → ${novoStatus}`)
-            if (statusMudou && !isDivergente) {
-              resolvidas++
-            } else if (isDivergente) {
-              divergentes++
-            }
-          } else {
-            console.log(`[SYNC] UPDATE ERRO para ${t.id}: ${updateError.message}`)
-            erros.push(`${t.id}: ${updateError.message}`)
+        if (!updateError) {
+          atualizadas.push(`${t.id}: ${statusAnterior} → ${novoStatus}`)
+          if (isDivergente) {
+            divergentes++
+          } else if (statusAnterior === 'divergente') {
+            resolvidas++
           }
-        } catch (updateErr: any) {
-          console.log(`[SYNC] UPDATE EXCEPTION para ${t.id}: ${updateErr.message}`)
-          erros.push(`${t.id}: ${updateErr.message}`)
+        } else {
+          console.log(`[SYNC] UPDATE ERRO para ${t.id}: ${updateError.message}`)
+          erros.push(`${t.id}: ${updateError.message}`)
         }
-      } else if (isDivergente) {
-        divergentes++
+      } catch (updateErr: any) {
+        console.log(`[SYNC] UPDATE EXCEPTION para ${t.id}: ${updateErr.message}`)
+        erros.push(`${t.id}: ${updateErr.message}`)
       }
     }
 
