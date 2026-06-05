@@ -13,9 +13,8 @@ import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils/cn'
 import { formatCurrency } from '@/lib/utils/formatters'
 import {
-  CheckCircle2, AlertTriangle, Clock, RefreshCw, ScanSearch,
+  AlertTriangle, Clock, RefreshCw, ScanSearch,
   FileSpreadsheet, TrendingUp, TrendingDown, Minus, Search, Download,
-  ShieldAlert, X, ShieldCheck,
 } from 'lucide-react'
 import type { Role } from '@/types/database.types'
 
@@ -112,71 +111,6 @@ export default function ExtratoPainelPage() {
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'ok' | 'divergente' | 'pendente'>('todos')
   const [filtroPosto, setFiltroPosto] = useState('todos')
 
-  // ── Verificação de divergências ────────────────────────────────────────────
-  interface DivergenciaAlerta {
-    id: string; titulo: string; postoNome: string; data: string
-    movExtrato: number; movAnterior: number; movAtual: number; diferenca: number
-  }
-  const [verificando,  setVerificando]  = useState(false)
-  const [alertas,      setAlertas]      = useState<DivergenciaAlerta[]>([])
-  const [verificadoEm, setVerificadoEm] = useState<Date | null>(null)
-  const [aceitando,    setAceitando]    = useState(false)
-
-  async function aceitarTodas() {
-    if (!alertas.length) return
-    setAceitando(true)
-    try {
-      const res  = await fetch('/api/extrato-verificar/aceitar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: alertas.map(a => a.id) }),
-      })
-      const json = await res.json()
-      if (!res.ok) {
-        toast({ variant: 'destructive', title: 'Erro ao confirmar', description: json.error })
-        return
-      }
-      toast({ title: `✅ ${json.aceitas} divergência${json.aceitas !== 1 ? 's' : ''} confirmada${json.aceitas !== 1 ? 's' : ''} como correta${json.aceitas !== 1 ? 's' : ''}` })
-      setAlertas([])
-      await load()
-    } finally {
-      setAceitando(false)
-    }
-  }
-
-  async function verificarDivergencias() {
-    setVerificando(true)
-    try {
-      // 1. Sincroniza (recalcula) divergências dos postos do usuário
-      const syncRes = await fetch('/api/conciliadores/sincronizar', { method: 'POST' })
-      const syncJson = await syncRes.json()
-
-      // 2. Carrega apenas divergências dos postos do usuário (não do sistema inteiro)
-      const res  = await fetch('/api/extrato-verificar/por-usuario', { method: 'POST' })
-      const json = await res.json()
-      if (!res.ok) {
-        toast({ variant: 'destructive', title: 'Erro ao verificar', description: json.error })
-        return
-      }
-      setAlertas(json.divergentes ?? [])
-      setVerificadoEm(new Date())
-      await load() // recarrega tabela para refletir os novos status
-      if (json.divergentes?.length > 0) {
-        const resMsg = json.resolvidos > 0 ? ` · ${json.resolvidos} resolvida${json.resolvidos > 1 ? 's' : ''}` : ''
-        toast({
-          variant: 'destructive',
-          title: `⚠️ ${json.divergentes.length} divergência${json.divergentes.length > 1 ? 's' : ''} detectada${json.divergentes.length > 1 ? 's' : ''}${resMsg}`,
-          description: 'O AUTOSYSTEM foi alterado após a validação do extrato.',
-        })
-      } else if (json.resolvidos > 0) {
-        toast({ title: `✅ ${json.resolvidos} divergência${json.resolvidos > 1 ? 's' : ''} resolvida${json.resolvidos > 1 ? 's' : ''} — AUTOSYSTEM voltou a bater com o extrato.` })
-      } else {
-        toast({ title: `✅ Tudo OK — ${json.verificadas} extrato${json.verificadas !== 1 ? 's' : ''} verificado${json.verificadas !== 1 ? 's' : ''}` })
-      }
-    } finally {
-      setVerificando(false)
-    }
-  }
 
   async function load() {
     setLoading(true)
@@ -220,23 +154,6 @@ export default function ExtratoPainelPage() {
   }
 
   useEffect(() => { load() }, [])
-
-  // Auto-load divergências ao entrar na página
-  useEffect(() => {
-    const autoVerify = async () => {
-      try {
-        const res = await fetch('/api/extrato-verificar/por-usuario', { method: 'POST' })
-        const json = await res.json()
-        if (res.ok) {
-          setAlertas(json.divergentes ?? [])
-        }
-      } catch (e) {
-        console.error('Auto-verify erro:', e)
-      }
-      await load()
-    }
-    autoVerify()
-  }, [])
 
   // ── Postos únicos para o filtro ────────────────────────────────────────────
   const postosUnicos = useMemo(() => {
@@ -306,83 +223,6 @@ export default function ExtratoPainelPage() {
           ))}
         </div>
 
-        {/* ── Painel de alertas de divergência ────────────────────────── */}
-        {alertas.length > 0 && (
-          <div className="rounded-xl border border-red-300 bg-red-50 p-4 space-y-3">
-            <div className="flex flex-wrap items-start gap-2">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <ShieldAlert className="w-4 h-4 text-red-600 flex-shrink-0" />
-                <span className="font-semibold text-[13px] text-red-700">
-                  {alertas.length} extrato{alertas.length !== 1 ? 's' : ''} divergiu após a validação — AUTOSYSTEM alterado
-                </span>
-                {verificadoEm && (
-                  <span className="text-[11px] text-red-400 whitespace-nowrap">
-                    Verificado às {verificadoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <Button
-                  size="sm"
-                  onClick={aceitarTodas}
-                  disabled={aceitando}
-                  className="h-7 px-3 text-[11px] gap-1.5 bg-green-600 hover:bg-green-700 text-white"
-                >
-                  {aceitando
-                    ? <RefreshCw className="w-3 h-3 animate-spin" />
-                    : <ShieldCheck className="w-3 h-3" />}
-                  Confirmar todas como corretas
-                </Button>
-                <button onClick={() => setAlertas([])} className="text-red-400 hover:text-red-600 transition-colors">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {alertas.map(a => (
-                <div key={a.id} className="bg-white rounded-lg border border-red-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[13px] font-semibold text-gray-800">{a.postoNome}</p>
-                    <p className="text-[11px] text-gray-500">{a.titulo} · Data: {new Date(a.data + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3 text-[12px]">
-                    <div className="text-center">
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Extrato</p>
-                      <p className="font-mono font-semibold text-gray-700">{a.movExtrato >= 0 ? '+' : ''}{formatCurrency(a.movExtrato)}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">AS anterior</p>
-                      <p className="font-mono font-semibold text-green-700">{a.movAnterior >= 0 ? '+' : ''}{formatCurrency(a.movAnterior)}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">AS atual</p>
-                      <p className="font-mono font-semibold text-red-600">{a.movAtual >= 0 ? '+' : ''}{formatCurrency(a.movAtual)}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Diferença</p>
-                      <p className={cn('font-mono font-bold', Math.abs(a.diferenca) < 0.02 ? 'text-green-600' : 'text-red-600')}>
-                        {a.diferenca >= 0 ? '+' : ''}{formatCurrency(a.diferenca)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Sem alertas após verificação ── */}
-        {alertas.length === 0 && verificadoEm && (
-          <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-green-600" />
-            <span className="text-[13px] text-green-700 font-medium">
-              Todos os extratos validados estão consistentes com o AUTOSYSTEM.
-            </span>
-            <span className="text-[11px] text-green-500 ml-1">
-              Verificado às {verificadoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-            </span>
-          </div>
-        )}
 
         {/* ── Filtros ─────────────────────────────────────────────────── */}
         <div className="flex flex-col gap-2">
