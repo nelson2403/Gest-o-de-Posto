@@ -190,12 +190,84 @@ async function fetchPageContext(page: string): Promise<string> {
     } catch { /* ignore */ }
   }
 
+  // ── Caixas (fechamentos de frentista) ──────────────────────────────────────
+  try {
+    const dataIni30 = new Date(hoje.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const { data } = await sb
+      .from('frentista_fechamentos')
+      .select('frentista_nome, data_fechamento, total_as, total_frentista, total_diferenca, postos(nome)')
+      .gte('data_fechamento', dataIni30)
+      .order('data_fechamento', { ascending: false })
+      .limit(500)
+
+    if (data?.length) {
+      const comDiverg  = data.filter((f: any) => Math.abs(Number(f.total_diferenca || 0)) > 0.02)
+      const somaDiverg = comDiverg.reduce((s: number, f: any) => s + Math.abs(Number(f.total_diferenca || 0)), 0)
+
+      const porFrent: Record<string, { qtd: number; diverg: number }> = {}
+      for (const f of data as any[]) {
+        const n = f.frentista_nome ?? 'Sem nome'
+        if (!porFrent[n]) porFrent[n] = { qtd: 0, diverg: 0 }
+        porFrent[n].qtd++
+        porFrent[n].diverg += Math.abs(Number(f.total_diferenca || 0))
+      }
+      const rankFrent = Object.entries(porFrent)
+        .sort((a, b) => b[1].diverg - a[1].diverg).slice(0, 10)
+        .map(([n, v]) => `${n}: ${v.qtd} fechamento(s), divergência R$${v.diverg.toFixed(2)}`).join(' | ')
+
+      const maiores = [...(data as any[])]
+        .sort((a, b) => Math.abs(Number(b.total_diferenca || 0)) - Math.abs(Number(a.total_diferenca || 0)))
+        .slice(0, 6)
+        .map((f: any) => `${f.frentista_nome} (${f.postos?.nome ?? '?'}) ${f.data_fechamento}: dif R$${Number(f.total_diferenca || 0).toFixed(2)}`)
+        .join(' | ')
+
+      parts.push(`CAIXAS — FECHAMENTOS FRENTISTA (últimos 30 dias): ${data.length} fechamento(s) | ${comDiverg.length} com divergência | soma das divergências R$${somaDiverg.toFixed(2)}`)
+      parts.push(`CAIXAS POR FRENTISTA: ${rankFrent}`)
+      if (maiores) parts.push(`MAIORES DIVERGÊNCIAS DE CAIXA: ${maiores}`)
+    }
+  } catch { /* ignore */ }
+
+  // ── Comissionamento ─────────────────────────────────────────────────────────
+  try {
+    const [{ data: membros }, { data: esquemas }, { data: regras }] = await Promise.all([
+      sb.from('comissio_membros').select('nome, role, ativo, postos:posto_id(nome)'),
+      sb.from('comissio_esquemas').select('id'),
+      sb.from('comissio_regras').select('id'),
+    ])
+    if (membros?.length) {
+      const ativos = (membros as any[]).filter(m => m.ativo)
+      const roleLabel: Record<string, string> = {
+        supervisor: 'Supervisor', manager: 'Gerente', pit_boss: 'Líder de Pista',
+        oil_changer: 'Trocador de Óleo', seller: 'Vendedor',
+      }
+      const porRole: Record<string, number> = {}
+      const porPosto: Record<string, number> = {}
+      for (const m of ativos) {
+        porRole[m.role] = (porRole[m.role] || 0) + 1
+        const pn = (m.postos as any)?.nome ?? 'Sem posto'
+        porPosto[pn] = (porPosto[pn] || 0) + 1
+      }
+      const rolesStr = Object.entries(porRole).map(([r, c]) => `${roleLabel[r] ?? r}: ${c}`).join(' | ')
+      const postosStr = Object.entries(porPosto).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([n, c]) => `${n}: ${c}`).join(' | ')
+
+      parts.push(`COMISSIONAMENTO: ${ativos.length} membro(s) ativo(s) | ${esquemas?.length ?? 0} esquema(s) | ${regras?.length ?? 0} regra(s)`)
+      parts.push(`MEMBROS POR FUNÇÃO: ${rolesStr}`)
+      parts.push(`MEMBROS POR POSTO: ${postosStr}`)
+    }
+  } catch { /* ignore */ }
+
   return parts.length > 0
     ? `\n\nDADOS REAIS DO SISTEMA (${hoje.toLocaleDateString('pt-BR')}):\n${parts.join('\n')}`
     : '\n\n[Nenhum dado disponível]'
 }
 
-function buildSystemPrompt(page: string, contextData: string): string {
+// Detecta se o usuário está pedindo um RELATÓRIO/ANÁLISE detalhada
+function pedeRelatorio(messages: ChatMessage[]): boolean {
+  const ultima = [...messages].reverse().find(m => m.role === 'user')?.content?.toLowerCase() ?? ''
+  return /(relat[óo]rio|an[áa]lise|analise|analisar|detalh|completo|panorama|diagn[óo]stico|consolidad)/.test(ultima)
+}
+
+function buildSystemPrompt(page: string, contextData: string, modoRelatorio: boolean): string {
   const paginaLabel: Record<string, string> = {
     '/': 'Dashboard', '/analitico': 'Análise de vendas', '/estoque': 'Estoque',
     '/contas-pagar': 'Contas a Pagar', '/tarefas': 'Tarefas',
@@ -204,16 +276,34 @@ function buildSystemPrompt(page: string, contextData: string): string {
   }
   const paginaNome = paginaLabel[page.replace(/\?.*$/, '')] ?? page
 
-  return `Você é um assistente de BI de uma rede de postos de combustível.
+  const regrasBase = `Você é um analista de BI de uma rede de postos de combustível.
 
-REGRAS:
+REGRAS GERAIS:
 - Responda SEMPRE em português brasileiro
 - Use SOMENTE os dados fornecidos abaixo — NUNCA invente números ou nomes
-- Se um dado não estiver nos dados, responda: "dado não disponível"
+- Se um dado não estiver disponível, diga "dado não disponível"
+- Faça cálculos usando os números exatos dos dados fornecidos
+- Página atual: ${paginaNome}`
+
+  if (modoRelatorio) {
+    return `${regrasBase}
+
+MODO RELATÓRIO (o usuário pediu um relatório/análise):
+- Gere um relatório COMPLETO e bem estruturado em markdown.
+- Estrutura: comece com um título "## Relatório de ...", depois seções com "### ".
+- Use listas com "- ", **negrito** para destacar números e nomes importantes.
+- Inclua: situação geral, números/totais, rankings (top responsáveis/postos/produtos), pontos de atenção e uma seção final "### Recomendações" com ações práticas.
+- Pode ser longo e detalhado (sem limite de linhas).
+- Baseie TUDO nos dados reais abaixo.
+${contextData}`
+  }
+
+  return `${regrasBase}
+
+REGRAS DE RESPOSTA RÁPIDA:
 - Respostas CURTAS: máximo 6 linhas, sem introdução e sem "próximos passos"
 - Use bullet points para listas
-- Faça cálculos usando os números exatos dos dados fornecidos
-- Página atual: ${paginaNome}
+- Se o usuário quiser algo mais completo, sugira pedir um "relatório"
 ${contextData}`
 }
 
@@ -226,9 +316,11 @@ export async function POST(req: NextRequest) {
     }
     if (!messages?.length) return new Response('Mensagens inválidas', { status: 400 })
 
-    const [contextData, systemPrompt] = await (async () => {
+    const modoRelatorio = pedeRelatorio(messages)
+
+    const [, systemPrompt] = await (async () => {
       const ctx = await fetchPageContext(page ?? '/')
-      return [ctx, buildSystemPrompt(page ?? '/', ctx)]
+      return [ctx, buildSystemPrompt(page ?? '/', ctx, modoRelatorio)]
     })()
 
     const stream = await groqClient.chat.completions.create({
@@ -238,8 +330,8 @@ export async function POST(req: NextRequest) {
         ...messages.map(m => ({ role: m.role, content: m.content })),
       ],
       stream: true,
-      max_tokens: 500,
-      temperature: 0.05,
+      max_tokens: modoRelatorio ? 2200 : 500,
+      temperature: modoRelatorio ? 0.2 : 0.05,
     })
 
     const encoder = new TextEncoder()

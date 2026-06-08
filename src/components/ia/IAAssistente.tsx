@@ -50,6 +50,50 @@ const DEFAULT_ACTIONS = [
   { label: 'Resumo geral', message: 'Faça um resumo geral da situação atual do sistema.' },
 ]
 
+// Relatórios prontos — disponíveis em qualquer página
+const RELATORIO_ACTIONS = [
+  { label: '📊 Conciliação Bancária', message: 'Gere um relatório completo da conciliação bancária: tarefas de extrato abertas, divergências, valores, ranking por responsável e recomendações.' },
+  { label: '💰 Caixas (Frentistas)', message: 'Gere um relatório de análise dos fechamentos de caixa dos frentistas (últimos 30 dias): total, divergências, ranking por frentista, maiores diferenças e recomendações.' },
+  { label: '🛒 Vendas e Lucro', message: 'Gere um relatório de análise de vendas do mês atual: faturamento, custo, lucro bruto, margem, top produtos por lucro e recomendações.' },
+  { label: '🎯 Comissionamento', message: 'Gere um relatório do comissionamento: membros ativos por função e por posto, esquemas e regras configurados, e pontos de atenção.' },
+]
+
+// Renderiza **negrito** dentro de uma linha
+function renderInline(text: string, keyBase: string) {
+  return text.split('**').map((seg, i) =>
+    i % 2 === 1
+      ? <strong key={`${keyBase}-${i}`}>{seg}</strong>
+      : <span key={`${keyBase}-${i}`}>{seg}</span>
+  )
+}
+
+// Markdown simplificado (títulos, listas, negrito) para os relatórios
+function MarkdownLite({ text }: { text: string }) {
+  const linhas = text.split('\n')
+  return (
+    <div>
+      {linhas.map((raw, i) => {
+        const line = raw.trimEnd()
+        if (!line.trim()) return <div key={i} className="h-1.5" />
+        if (line.startsWith('### '))
+          return <p key={i} className="font-bold text-[13px] text-gray-900 mt-2 mb-0.5">{renderInline(line.slice(4), `h3-${i}`)}</p>
+        if (line.startsWith('## '))
+          return <p key={i} className="font-bold text-[14px] text-indigo-700 mt-1.5 mb-1">{renderInline(line.slice(3), `h2-${i}`)}</p>
+        if (line.startsWith('# '))
+          return <p key={i} className="font-bold text-[15px] text-indigo-700 mt-1 mb-1">{renderInline(line.slice(2), `h1-${i}`)}</p>
+        if (/^[-•*]\s/.test(line))
+          return (
+            <div key={i} className="flex gap-1.5 pl-1 mb-0.5">
+              <span className="text-indigo-400 leading-relaxed">•</span>
+              <span className="flex-1">{renderInline(line.replace(/^[-•*]\s/, ''), `li-${i}`)}</span>
+            </div>
+          )
+        return <p key={i} className="mb-0.5">{renderInline(line, `p-${i}`)}</p>
+      })}
+    </div>
+  )
+}
+
 function MessageBubble({ msg }: { msg: Message }) {
   const isUser = msg.role === 'user'
   return (
@@ -61,13 +105,13 @@ function MessageBubble({ msg }: { msg: Message }) {
       )}
       <div
         className={cn(
-          'max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap',
+          'max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed',
           isUser
-            ? 'bg-indigo-600 text-white rounded-tr-sm'
+            ? 'bg-indigo-600 text-white rounded-tr-sm whitespace-pre-wrap'
             : 'bg-gray-100 text-gray-800 rounded-tl-sm'
         )}
       >
-        {msg.content}
+        {isUser ? msg.content : <MarkdownLite text={msg.content} />}
       </div>
     </div>
   )
@@ -241,8 +285,25 @@ export function IAAssistente() {
                 </div>
                 <p className="text-[13px] font-semibold text-gray-700">Como posso ajudar?</p>
                 <p className="text-[12px] text-gray-400 mt-1 mb-4">
-                  Analiso os dados do sistema e gero insights em tempo real.
+                  Analiso os dados do sistema e gero relatórios em tempo real.
                 </p>
+
+                {/* Relatórios prontos */}
+                <p className="w-full text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Relatórios</p>
+                <div className="w-full grid grid-cols-2 gap-2 mb-4">
+                  {RELATORIO_ACTIONS.map(qa => (
+                    <button
+                      key={qa.label}
+                      onClick={() => sendMessage(qa.message)}
+                      className="text-left px-2.5 py-2 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-[11.5px] text-white font-semibold transition-colors leading-tight"
+                    >
+                      {qa.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Ações sugeridas da página atual */}
+                <p className="w-full text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Sugestões desta página</p>
                 <div className="w-full flex flex-col gap-2">
                   {quickActions.map(qa => (
                     <button
