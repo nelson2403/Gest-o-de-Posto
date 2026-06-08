@@ -1,6 +1,10 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import {
+  qzDisponivel, listarImpressoras, imprimirHtmlTermica,
+  getImpressoraSalva, setImpressoraSalva,
+} from '@/lib/qz-printer'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -164,6 +168,96 @@ function SignaturePad({ onCapture }: { onCapture: (dataUrl: string) => void }) {
   )
 }
 
+// ── Modal de configuração da impressora térmica ───────────────────────────────
+
+function ConfigImpressoraModal({
+  impressora, impressoras, carregando, erro,
+  onSelecionar, onRecarregar, onFechar, onTestar,
+}: {
+  impressora: string
+  impressoras: string[]
+  carregando: boolean
+  erro: string
+  onSelecionar: (nome: string) => void
+  onRecarregar: () => void
+  onFechar: () => void
+  onTestar: (nome: string) => void
+}) {
+  const [escolhida, setEscolhida] = useState(impressora)
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900">Impressora Térmica (QZ Tray)</h2>
+          <button onClick={onFechar} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {carregando ? (
+            <p className="text-sm text-gray-500 text-center py-6">Procurando impressoras…</p>
+          ) : erro ? (
+            <div className="space-y-3">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+                {erro}
+              </div>
+              <button onClick={onRecarregar}
+                className="w-full py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200">
+                Tentar novamente
+              </button>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                  Selecione a impressora deste PDV
+                </label>
+                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-60 overflow-y-auto">
+                  {impressoras.length === 0 ? (
+                    <p className="text-sm text-gray-400 px-3 py-3">Nenhuma impressora encontrada.</p>
+                  ) : impressoras.map(nome => (
+                    <button
+                      key={nome}
+                      onClick={() => setEscolhida(nome)}
+                      className={`w-full text-left px-3 py-2.5 text-sm flex items-center gap-2 ${
+                        escolhida === nome ? 'bg-orange-50 text-orange-700 font-medium' : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${escolhida === nome ? 'bg-orange-500' : 'bg-gray-300'}`} />
+                      {nome}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => escolhida && onTestar(escolhida)}
+                  disabled={!escolhida}
+                  className="flex-1 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Testar
+                </button>
+                <button
+                  onClick={() => escolhida && onSelecionar(escolhida)}
+                  disabled={!escolhida}
+                  className="flex-1 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50"
+                >
+                  Salvar
+                </button>
+              </div>
+
+              <p className="text-[11px] text-gray-400 text-center">
+                Na 1ª impressão o QZ Tray pedirá permissão — marque "Remember" e "Allow".
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Tela principal ────────────────────────────────────────────────────────────
 
 type Fase = 'codigo' | 'pin' | 'setup_pin' | 'form' | 'conferencia' | 'concluido'
@@ -188,6 +282,119 @@ export default function CaixaPage() {
   const [loginPin,        setLoginPin]        = useState('')
   const [loginPinConfirm, setLoginPinConfirm] = useState('')
   const [employeeNome,    setEmployeeNome]    = useState('')
+
+  // ── Impressora térmica (QZ Tray) ────────────────────────────────────────────
+  const [impressora,        setImpressora]        = useState('')
+  const [showImpressora,    setShowImpressora]    = useState(false)
+  const [impressoras,       setImpressoras]       = useState<string[]>([])
+  const [carregandoImpr,    setCarregandoImpr]    = useState(false)
+  const [erroImpr,          setErroImpr]          = useState('')
+
+  useEffect(() => {
+    setImpressora(getImpressoraSalva())
+  }, [])
+
+  function escapeHtml(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  }
+
+  // Monta o HTML do cupom para a impressora térmica (80mm)
+  function buildCupomHtml(): string {
+    const totAS = itens.reduce((s, i) => s + (i.valor_as ?? 0), 0)
+    const totFr = itens.reduce((s, i) => s + (parseFloat(i.valor_frentista.replace(',', '.')) || 0), 0)
+    const totDif = totFr - totAS
+    const linhas = itens.map(item => {
+      const vf = parseFloat(item.valor_frentista.replace(',', '.')) || 0
+      return `<tr>
+        <td>${escapeHtml(item.label)}</td>
+        <td class="r">${fmt(item.valor_as)}</td>
+        <td class="r">${fmt(vf)}</td>
+        <td class="r">${fmt(item.diferenca)}</td>
+      </tr>`
+    }).join('')
+    return `<!doctype html><html><head><meta charset="utf-8"><style>
+      * { font-family:'Courier New',monospace; font-size:11px; color:#000; }
+      body { width:72mm; margin:0; padding:0; }
+      table { width:100%; border-collapse:collapse; }
+      td,th { padding:1px 2px; vertical-align:top; }
+      h1 { font-size:13px; margin:0 0 3px; }
+      .hdr { border-bottom:1px dashed #000; padding-bottom:4px; margin-bottom:4px; }
+      .tot td { border-top:1px solid #000; font-weight:bold; }
+      .r { text-align:right; white-space:nowrap; }
+      th.l { text-align:left; }
+    </style></head><body>
+      <div class="hdr">
+        <h1>Conferencia de Caixa</h1>
+        <div>${escapeHtml(frentista?.posto_nome ?? '')} - ${fmtData(data)}${turno ? ' - ' + escapeHtml(turno) : ''}</div>
+        <div>Operador: ${escapeHtml(frentista?.nome ?? '')}</div>
+      </div>
+      <table>
+        <thead><tr><th class="l">Forma</th><th class="r">Sist.</th><th class="r">Frent.</th><th class="r">Dif.</th></tr></thead>
+        <tbody>${linhas}</tbody>
+        <tfoot><tr class="tot"><td>Total</td><td class="r">${fmt(totAS)}</td><td class="r">${fmt(totFr)}</td><td class="r">${fmt(totDif)}</td></tr></tfoot>
+      </table>
+      ${observacao ? `<div style="margin-top:6px">Obs: ${escapeHtml(observacao)}</div>` : ''}
+      ${assinatura ? `<div style="margin-top:8px;border-top:1px dashed #000;padding-top:4px">Assinatura:<br><img src="${assinatura}" style="max-width:55mm"/><br><span style="font-size:9px">${new Date().toLocaleString('pt-BR')} - ${escapeHtml(frentista?.nome ?? '')}</span></div>` : ''}
+    </body></html>`
+  }
+
+  // Imprime: se tiver impressora térmica configurada (QZ), usa ela; senão, diálogo do navegador
+  async function imprimirCupom() {
+    if (impressora) {
+      try {
+        await imprimirHtmlTermica(impressora, buildCupomHtml(), 80)
+        return
+      } catch (e) {
+        console.error('[QZ] Falha ao imprimir na térmica, usando diálogo:', e)
+      }
+    }
+    window.print()
+  }
+
+  async function abrirConfigImpressora() {
+    setShowImpressora(true)
+    setErroImpr('')
+    setCarregandoImpr(true)
+    try {
+      const ok = await qzDisponivel()
+      if (!ok) {
+        setErroImpr('QZ Tray não detectado. Instale e abra o QZ Tray neste computador (qz.io/download).')
+        setImpressoras([])
+        return
+      }
+      setImpressoras(await listarImpressoras())
+    } catch (e: any) {
+      setErroImpr('Erro ao acessar o QZ Tray: ' + (e?.message ?? e))
+    } finally {
+      setCarregandoImpr(false)
+    }
+  }
+
+  function salvarImpressora(nome: string) {
+    setImpressora(nome)
+    setImpressoraSalva(nome)
+    setShowImpressora(false)
+  }
+
+  async function testarImpressora(nome: string) {
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+      *{font-family:'Courier New',monospace;font-size:12px;color:#000}
+      body{width:72mm;margin:0;padding:0;text-align:center}
+    </style></head><body>
+      <div style="border-bottom:1px dashed #000;padding:4px 0;margin-bottom:6px">
+        <strong style="font-size:14px">TESTE DE IMPRESSAO</strong>
+      </div>
+      <div>Impressora OK!</div>
+      <div>${new Date().toLocaleString('pt-BR')}</div>
+      <div style="margin-top:8px">.</div>
+    </body></html>`
+    try {
+      await imprimirHtmlTermica(nome, html, 80)
+      setErroImpr('')
+    } catch (e: any) {
+      setErroImpr('Falha ao testar: ' + (e?.message ?? e))
+    }
+  }
 
   async function carregarDados(tk: string): Promise<boolean> {
     const dadosRes = await fetch(`/api/caixa/dados?data=${data}`, {
@@ -317,8 +524,8 @@ export default function CaixaPage() {
       setFechamentoId(json.fechamento?.id ?? '')
       setFase('concluido')
 
-      // Abre impressão após breve delay para renderizar
-      setTimeout(() => window.print(), 500)
+      // Imprime após breve delay para renderizar
+      setTimeout(() => { imprimirCupom() }, 500)
     } finally {
       setLoading(false)
     }
@@ -373,8 +580,33 @@ export default function CaixaPage() {
                 {loading ? 'Verificando…' : 'Continuar'}
               </button>
             </form>
+
+            <button
+              type="button"
+              onClick={abrirConfigImpressora}
+              className="w-full mt-4 text-xs text-gray-400 hover:text-gray-600 flex items-center justify-center gap-1.5"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              {impressora ? `Impressora: ${impressora}` : 'Configurar impressora térmica'}
+            </button>
           </div>
         </div>
+
+        {showImpressora && (
+          <ConfigImpressoraModal
+            impressora={impressora}
+            impressoras={impressoras}
+            carregando={carregandoImpr}
+            erro={erroImpr}
+            onSelecionar={salvarImpressora}
+            onRecarregar={abrirConfigImpressora}
+            onFechar={() => setShowImpressora(false)}
+            onTestar={testarImpressora}
+          />
+        )}
       </div>
     )
   }
@@ -754,7 +986,7 @@ export default function CaixaPage() {
             </p>
             <div className="mt-6 space-y-2">
               <button
-                onClick={() => window.print()}
+                onClick={imprimirCupom}
                 className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200"
               >
                 Reimprimir

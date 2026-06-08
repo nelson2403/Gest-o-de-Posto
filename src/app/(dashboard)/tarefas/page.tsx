@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Header } from '@/components/layout/Header'
@@ -144,6 +144,14 @@ function PrioridadeBadge({ prioridade }: { prioridade: PrioridadeTarefa }) {
 // ─── Página ───────────────────────────────────────────────────────────────────
 
 export default function TarefasPage() {
+  return (
+    <Suspense fallback={null}>
+      <TarefasPageInner />
+    </Suspense>
+  )
+}
+
+function TarefasPageInner() {
   const { usuario } = useAuthContext()
   const supabase = createClient()
   const searchParams = useSearchParams()
