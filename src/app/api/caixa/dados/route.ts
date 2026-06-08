@@ -15,6 +15,22 @@ export async function GET(req: NextRequest) {
 
     const admin = createAdminClient()
 
+    // Já existe fechamento deste frentista para esta data? (regra: 1 por dia)
+    const { data: jaFez } = await admin
+      .from('frentista_fechamentos')
+      .select('id')
+      .eq('frentista_id', sessao.frentista_id)
+      .eq('data_fechamento', data)
+      .maybeSingle()
+
+    if (jaFez) {
+      return NextResponse.json({
+        ja_fechado: true,
+        frentista: { nome: sessao.nome, codigo: sessao.codigo },
+        data,
+      })
+    }
+
     // Campos configurados para o posto
     const { data: configRow } = await admin
       .from('frentista_campos')
@@ -89,6 +105,7 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({
+      ja_fechado: false,
       campos: camposAtivos,
       valores_as: valoresAS,
       frentista: { nome: sessao.nome, codigo: sessao.codigo },

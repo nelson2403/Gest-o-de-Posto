@@ -49,7 +49,8 @@ function fmtDif(v: number | null): { text: string; cls: string } {
 }
 
 function dataHoje(): string {
-  return new Date().toISOString().slice(0, 10)
+  // Hoje no fuso do Brasil (YYYY-MM-DD)
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
 }
 
 function fmtData(iso: string): string {
@@ -268,7 +269,7 @@ function ConfigImpressoraModal({
 
 // ── Tela principal ────────────────────────────────────────────────────────────
 
-type Fase = 'codigo' | 'pin' | 'setup_pin' | 'form' | 'conferencia' | 'concluido'
+type Fase = 'codigo' | 'pin' | 'setup_pin' | 'form' | 'conferencia' | 'concluido' | 'bloqueado'
 
 export default function CaixaPage() {
   const [fase,      setFase]      = useState<Fase>('codigo')
@@ -414,6 +415,8 @@ export default function CaixaPage() {
     })
     const dadosJson = await dadosRes.json()
     if (!dadosRes.ok) { setErro(dadosJson.error ?? 'Erro ao carregar dados'); return false }
+    // Regra: só um fechamento por dia — se já fez hoje, bloqueia
+    if (dadosJson.ja_fechado) { setFase('bloqueado'); return false }
     setCampos(dadosJson.campos)
     const valAS: Record<string, number | null> = dadosJson.valores_as ?? {}
     setItens(dadosJson.campos.map((c: CampoConfig) => ({
@@ -545,6 +548,49 @@ export default function CaixaPage() {
 
   // ── Renders por fase ───────────────────────────────────────────────────────
 
+  function reiniciar() {
+    setFase('codigo')
+    setToken('')
+    setFrentista(null)
+    setItens([])
+    setAssinatura('')
+    setData(dataHoje())
+    setLoginCodigo('')
+    setLoginPin('')
+    setLoginPinConfirm('')
+    setEmployeeNome('')
+    setErro('')
+  }
+
+  // ── FASE: Bloqueado (já fez o fechamento de hoje) ──────────────────────────────
+  if (fase === 'bloqueado') {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <div className="w-full max-w-sm">
+          <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900">Fechamento já realizado</h2>
+            <p className="text-sm text-gray-500 mt-2">
+              {employeeNome ? `${employeeNome.split(' ')[0]}, você` : 'Você'} já enviou o
+              fechamento de hoje ({fmtData(data)}). Só é permitido um fechamento por dia.
+            </p>
+            <button
+              onClick={reiniciar}
+              className="w-full mt-6 py-2.5 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600"
+            >
+              Voltar
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // ── FASE: Código ──────────────────────────────────────────────────────────────
   if (fase === 'codigo') {
     return (
@@ -576,12 +622,11 @@ export default function CaixaPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Data do fechamento</label>
-                <input
-                  type="date"
-                  value={data}
-                  onChange={e => setData(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-                />
+                <div className="w-full border border-gray-200 bg-gray-50 rounded-lg px-3 py-2.5 text-sm text-gray-700 flex items-center justify-between">
+                  <span>{fmtData(data)}</span>
+                  <span className="text-xs text-gray-400">hoje</span>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1">O fechamento é sempre do dia atual.</p>
               </div>
               {erro && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{erro}</p>}
               <button

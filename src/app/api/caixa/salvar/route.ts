@@ -10,6 +10,11 @@ interface ItemFechamento {
   diferenca:        number | null
 }
 
+// Data de "hoje" no fuso do Brasil (YYYY-MM-DD)
+function hojeBrasil(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+}
+
 export async function POST(req: NextRequest) {
   try {
     const sessao = await validarSessao(extrairToken(req))
@@ -27,11 +32,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Itens e assinatura obrigatórios' }, { status: 400 })
     }
 
+    const admin = createAdminClient()
+    const hoje = hojeBrasil()
+
+    // Regra 1: frentista só pode fechar o dia atual
+    if (body.data && body.data !== hoje) {
+      return NextResponse.json(
+        { error: 'Só é permitido enviar o fechamento do dia atual.' },
+        { status: 400 },
+      )
+    }
+
+    // Regra 2: apenas um fechamento por frentista por dia
+    const { data: existente } = await admin
+      .from('frentista_fechamentos')
+      .select('id')
+      .eq('frentista_id', sessao.frentista_id)
+      .eq('data_fechamento', hoje)
+      .maybeSingle()
+
+    if (existente) {
+      return NextResponse.json(
+        { error: 'Você já enviou o fechamento de hoje. Não é possível enviar novamente.' },
+        { status: 409 },
+      )
+    }
+
     const total_as        = body.itens.reduce((s, i) => s + (i.valor_as ?? 0), 0)
     const total_frentista = body.itens.reduce((s, i) => s + i.valor_frentista, 0)
     const total_diferenca = total_frentista - total_as
-
-    const admin = createAdminClient()
 
     const { data: fechamento, error } = await admin
       .from('frentista_fechamentos')
@@ -39,7 +68,7 @@ export async function POST(req: NextRequest) {
         posto_id:         sessao.posto_id,
         frentista_id:     sessao.frentista_id,
         frentista_nome:   sessao.nome,
-        data_fechamento:  body.data,
+        data_fechamento:  hoje,
         turno:            body.turno ?? null,
         itens:            body.itens,
         total_as:         parseFloat(total_as.toFixed(2)),
@@ -53,6 +82,13 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
+    // Violação de unicidade (índice frentista_id+data) = já fez hoje (corrida)
+    if (error && (error as any).code === '23505') {
+      return NextResponse.json(
+        { error: 'Você já enviou o fechamento de hoje. Não é possível enviar novamente.' },
+        { status: 409 },
+      )
+    }
     if (error) throw error
 
     // Invalida a sessão após envio (uma sessão por fechamento)
