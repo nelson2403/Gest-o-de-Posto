@@ -99,54 +99,68 @@ export default function SugestaoPedidoPage() {
     return { label: `${DIAS_SEMANA[proximo]} (em ${diff}d)`, urgente: false }
   }
 
+  // Monta uma página de relatório (uma por subgrupo)
+  function paginaSubgrupo(posto_nome: string, sg: string, prods: Produto[]): string {
+    const linhas = prods.map(p => {
+      const urg = urgencia(p)
+      const cor = urg === 'critico' ? 'color:#c00' : urg === 'baixo' ? 'color:#b45309' : ''
+      return `<tr>
+        <td style="font-family:monospace;${cor}">${p.produto_codigo ?? '—'}</td>
+        <td style="${cor}">${p.produto_nome}</td>
+        <td style="text-align:right;font-weight:700;${cor}">${fmtQtd(p.sugerido, p.unid_med)}</td>
+      </tr>`
+    }).join('')
+    return `<section class="pg">
+      <h2>${sg}</h2>
+      <p>${posto_nome} &nbsp;·&nbsp; ${fmtData(dataIni)} a ${fmtData(dataFim)} &nbsp;·&nbsp; ${prods.length} produto(s)</p>
+      <table>
+        <thead><tr><th>Código</th><th>Produto</th><th style="text-align:right">Qtd Sugerida</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </section>`
+  }
+
+  function abrirImpressao(titulo: string, corpo: string) {
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>${titulo}</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 24px; color: #111; font-size: 13px; }
+      h2 { margin: 0 0 4px; font-size: 17px; }
+      p  { margin: 0 0 14px; color: #555; font-size: 12px; }
+      table { width: 100%; border-collapse: collapse; }
+      th { text-align: left; padding: 6px 8px; background: #f0f0f0; border: 1px solid #ccc; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+      td { padding: 5px 8px; border: 1px solid #e0e0e0; }
+      .pg { page-break-after: always; }
+      .pg:last-child { page-break-after: auto; }
+      @media print { body { margin: 12px; } }
+    </style></head><body>
+    ${corpo}
+    <script>window.onload=()=>window.print()</script>
+    </body></html>`
+    const win = window.open('', '_blank')
+    if (!win) return
+    win.document.write(html)
+    win.document.close()
+  }
+
+  // Relatório do posto: uma página por subgrupo
   function imprimirPedido(s: SugestaoPosto) {
-    // Agrupa por subgrupo
     const grupos: Record<string, Produto[]> = {}
     for (const p of s.produtos) {
       const sg = p.subgrupo_nome ?? 'Sem subgrupo'
       if (!grupos[sg]) grupos[sg] = []
       grupos[sg].push(p)
     }
+    const corpo = Object.entries(grupos)
+      .sort(([a], [b]) => a === 'Sem subgrupo' ? 1 : b === 'Sem subgrupo' ? -1 : a.localeCompare(b))
+      .map(([sg, prods]) => paginaSubgrupo(s.posto_nome, sg, prods))
+      .join('')
+    abrirImpressao(`Pedido — ${s.posto_nome}`, corpo)
+  }
 
-    let linhas = ''
-    for (const [sg, prods] of Object.entries(grupos).sort(([a], [b]) => a.localeCompare(b))) {
-      linhas += `<tr><td colspan="3" class="sg">${sg}</td></tr>`
-      for (const p of prods) {
-        const urg = urgencia(p)
-        const cor = urg === 'critico' ? 'color:#c00' : urg === 'baixo' ? 'color:#b45309' : ''
-        linhas += `<tr>
-          <td style="font-family:monospace;${cor}">${p.produto_codigo ?? '—'}</td>
-          <td style="${cor}">${p.produto_nome}</td>
-          <td style="text-align:right;font-weight:600;${cor}">${fmtQtd(p.sugerido, p.unid_med)}</td>
-        </tr>`
-      }
-    }
-
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-    <title>Pedido — ${s.posto_nome}</title>
-    <style>
-      body { font-family: Arial, sans-serif; margin: 24px; color: #111; font-size: 13px; }
-      h2 { margin: 0 0 4px; font-size: 16px; }
-      p  { margin: 0 0 16px; color: #555; font-size: 12px; }
-      table { width: 100%; border-collapse: collapse; }
-      th { text-align: left; padding: 6px 8px; background: #f0f0f0; border: 1px solid #ccc; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
-      td { padding: 5px 8px; border: 1px solid #e0e0e0; }
-      tr.sg-row td { background: #e8f0e8; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 4px 8px; }
-      @media print { body { margin: 12px; } }
-    </style></head><body>
-    <h2>Sugestão de Pedido — ${s.posto_nome}</h2>
-    <p>Período de referência: ${fmtData(dataIni)} a ${fmtData(dataFim)} &nbsp;·&nbsp; ${s.produtos.length} produto(s)</p>
-    <table>
-      <thead><tr><th>Código</th><th>Produto</th><th style="text-align:right">Qtd Sugerida</th></tr></thead>
-      <tbody>${linhas.replace(/<tr><td colspan="3" class="sg">/g, '<tr class="sg-row"><td colspan="3">')}</tbody>
-    </table>
-    <script>window.onload=()=>window.print()</script>
-    </body></html>`
-
-    const win = window.open('', '_blank')
-    if (!win) return
-    win.document.write(html)
-    win.document.close()
+  // Relatório de um único subgrupo
+  function imprimirSubgrupo(posto_nome: string, sg: string, prods: Produto[]) {
+    abrirImpressao(`Pedido — ${posto_nome} — ${sg}`, paginaSubgrupo(posto_nome, sg, prods))
   }
 
   // Totais globais
@@ -329,7 +343,7 @@ export default function SugestaoPedidoPage() {
                 {/* Botão Relatório */}
                 <button
                   onClick={() => imprimirPedido(s)}
-                  title="Imprimir relatório do pedido"
+                  title="Imprimir relatório completo (uma página por subgrupo)"
                   className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
                 >
                   <Printer className="w-3.5 h-3.5" /> Relatório
@@ -414,10 +428,19 @@ export default function SugestaoPedidoPage() {
                               {/* Cabeçalho do subgrupo */}
                               <tr key={`sg-${sg}`} className="border-b border-gray-100 dark:border-gray-800">
                                 <td colSpan={6} className="px-5 py-2 bg-gray-50 dark:bg-gray-800/60">
-                                  <span className="flex items-center gap-1.5 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
-                                    <Layers className="w-3 h-3" /> {sg}
-                                    <span className="ml-1 font-normal normal-case tracking-normal text-gray-400">({prods.length})</span>
-                                  </span>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="flex items-center gap-1.5 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
+                                      <Layers className="w-3 h-3" /> {sg}
+                                      <span className="ml-1 font-normal normal-case tracking-normal text-gray-400">({prods.length})</span>
+                                    </span>
+                                    <button
+                                      onClick={() => imprimirSubgrupo(s.posto_nome, sg, prods)}
+                                      title={`Imprimir relatório do subgrupo "${sg}"`}
+                                      className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors normal-case tracking-normal"
+                                    >
+                                      <Printer className="w-3 h-3" /> Relatório
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
 
