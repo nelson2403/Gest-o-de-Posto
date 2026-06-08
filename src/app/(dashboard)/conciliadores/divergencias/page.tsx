@@ -138,17 +138,8 @@ export default function DivergenciasPage() {
   }, [])
 
   useEffect(() => {
-    // Auto-sincroniza ao carregar (sem notificação, silencioso)
-    const autoSync = async () => {
-      try {
-        await fetch('/api/conciliadores/sincronizar', { method: 'POST' })
-      } catch (e) {
-        console.error('Auto-sync erro:', e)
-      }
-      // Depois carrega as divergências
-      carregar()
-    }
-    autoSync()
+    // Carrega divergências ao abrir a página
+    carregar()
   }, [carregar])
 
   // Obter lista única de conciliadores
