@@ -209,9 +209,17 @@ function ConfigImpressoraModal({
           ) : (
             <>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                  Selecione a impressora deste PDV
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-medium text-gray-700">
+                    Selecione a impressora deste PDV
+                  </label>
+                  <button
+                    onClick={onRecarregar}
+                    className="text-xs text-orange-600 hover:text-orange-700 font-medium"
+                  >
+                    ↻ Recarregar lista
+                  </button>
+                </div>
                 <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-60 overflow-y-auto">
                   {impressoras.length === 0 ? (
                     <p className="text-sm text-gray-400 px-3 py-3">Nenhuma impressora encontrada.</p>
