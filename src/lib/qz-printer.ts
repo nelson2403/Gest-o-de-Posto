@@ -81,19 +81,23 @@ export async function imprimirHtmlTermica(
   larguraMm = 80,
 ): Promise<void> {
   const qz = await conectarQz()
+  // Largura imprimível: ~72mm em bobina de 80mm, ~48mm em bobina de 58mm
+  const pageWidth = larguraMm <= 58 ? 48 : 72
   const config = qz.configs.create(nomeImpressora, {
     margins: 0,
     units: 'mm',
-    size: { width: larguraMm, height: null },
+    size: { width: pageWidth, height: null },
     colorType: 'grayscale',
     rasterize: true,
-    scaleContent: false,
+    scaleContent: true,
   })
   const data = [{
     type: 'pixel',
     format: 'html',
     flavor: 'plain',
     data: html,
+    // Renderiza o HTML exatamente na largura imprimível (evita corte na direita)
+    options: { pageWidth, units: 'mm' },
   }]
   await qz.print(config, data)
 }

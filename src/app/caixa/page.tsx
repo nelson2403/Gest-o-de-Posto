@@ -308,6 +308,8 @@ export default function CaixaPage() {
 
   // Monta o HTML do cupom para a impressora térmica (80mm)
   function buildCupomHtml(): string {
+    // formato compacto sem "R$" para caber as colunas no cupom
+    const m = (v: number | null) => (v == null ? '-' : fmt(v).replace('R$', '').trim())
     const totAS = itens.reduce((s, i) => s + (i.valor_as ?? 0), 0)
     const totFr = itens.reduce((s, i) => s + (parseFloat(i.valor_frentista.replace(',', '.')) || 0), 0)
     const totDif = totFr - totAS
@@ -315,34 +317,36 @@ export default function CaixaPage() {
       const vf = parseFloat(item.valor_frentista.replace(',', '.')) || 0
       return `<tr>
         <td>${escapeHtml(item.label)}</td>
-        <td class="r">${fmt(item.valor_as)}</td>
-        <td class="r">${fmt(vf)}</td>
-        <td class="r">${fmt(item.diferenca)}</td>
+        <td class="r">${m(item.valor_as)}</td>
+        <td class="r">${m(vf)}</td>
+        <td class="r">${m(item.diferenca)}</td>
       </tr>`
     }).join('')
     return `<!doctype html><html><head><meta charset="utf-8"><style>
-      * { font-family:'Courier New',monospace; font-size:11px; color:#000; }
-      body { width:72mm; margin:0; padding:0; }
-      table { width:100%; border-collapse:collapse; }
-      td,th { padding:1px 2px; vertical-align:top; }
-      h1 { font-size:13px; margin:0 0 3px; }
-      .hdr { border-bottom:1px dashed #000; padding-bottom:4px; margin-bottom:4px; }
+      * { font-family:'Courier New',monospace; font-size:9px; color:#000; }
+      html,body { width:100%; margin:0; padding:0; }
+      table { width:100%; border-collapse:collapse; table-layout:fixed; }
+      td,th { padding:0 1px; vertical-align:top; overflow:hidden; }
+      td:first-child,th:first-child { width:40%; word-break:break-word; }
+      h1 { font-size:12px; margin:0 0 2px; }
+      .hdr { border-bottom:1px dashed #000; padding-bottom:3px; margin-bottom:3px; }
       .tot td { border-top:1px solid #000; font-weight:bold; }
       .r { text-align:right; white-space:nowrap; }
       th.l { text-align:left; }
     </style></head><body>
       <div class="hdr">
         <h1>Conferencia de Caixa</h1>
-        <div>${escapeHtml(frentista?.posto_nome ?? '')} - ${fmtData(data)}${turno ? ' - ' + escapeHtml(turno) : ''}</div>
+        <div>${escapeHtml(frentista?.posto_nome ?? '')}</div>
+        <div>${fmtData(data)}${turno ? ' - ' + escapeHtml(turno) : ''}</div>
         <div>Operador: ${escapeHtml(frentista?.nome ?? '')}</div>
       </div>
       <table>
         <thead><tr><th class="l">Forma</th><th class="r">Sist.</th><th class="r">Frent.</th><th class="r">Dif.</th></tr></thead>
         <tbody>${linhas}</tbody>
-        <tfoot><tr class="tot"><td>Total</td><td class="r">${fmt(totAS)}</td><td class="r">${fmt(totFr)}</td><td class="r">${fmt(totDif)}</td></tr></tfoot>
+        <tfoot><tr class="tot"><td>Total</td><td class="r">${m(totAS)}</td><td class="r">${m(totFr)}</td><td class="r">${m(totDif)}</td></tr></tfoot>
       </table>
-      ${observacao ? `<div style="margin-top:6px">Obs: ${escapeHtml(observacao)}</div>` : ''}
-      ${assinatura ? `<div style="margin-top:8px;border-top:1px dashed #000;padding-top:4px">Assinatura:<br><img src="${assinatura}" style="max-width:55mm"/><br><span style="font-size:9px">${new Date().toLocaleString('pt-BR')} - ${escapeHtml(frentista?.nome ?? '')}</span></div>` : ''}
+      ${observacao ? `<div style="margin-top:5px">Obs: ${escapeHtml(observacao)}</div>` : ''}
+      ${assinatura ? `<div style="margin-top:6px;border-top:1px dashed #000;padding-top:3px">Assinatura:<br><img src="${assinatura}" style="max-width:50mm"/><br><span>${new Date().toLocaleString('pt-BR')}</span></div>` : ''}
     </body></html>`
   }
 
