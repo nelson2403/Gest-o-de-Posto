@@ -782,7 +782,7 @@ export default function CaixaPage() {
       </div>
 
       {/* Comprovante — apenas na impressão */}
-      <div className="hidden print:block p-4">
+      <div className="hidden print:block p-4 cupom-print">
         <div className="mb-4 border-b border-gray-300 pb-3">
           <h1 className="text-lg font-bold">Conferência de Caixa</h1>
           <p className="text-sm">
