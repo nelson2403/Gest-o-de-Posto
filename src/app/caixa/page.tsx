@@ -323,15 +323,15 @@ export default function CaixaPage() {
       </tr>`
     }).join('')
     return `<!doctype html><html><head><meta charset="utf-8"><style>
-      * { font-family:'Courier New',monospace; font-size:9px; color:#000; }
+      * { font-family:'Courier New',monospace; font-size:12px; font-weight:bold; color:#000; }
       html,body { width:100%; margin:0; padding:0; }
       table { width:100%; border-collapse:collapse; table-layout:fixed; }
-      td,th { padding:0 1px; vertical-align:top; overflow:hidden; }
-      td:first-child,th:first-child { width:40%; word-break:break-word; }
-      h1 { font-size:12px; margin:0 0 2px; }
-      .hdr { border-bottom:1px dashed #000; padding-bottom:3px; margin-bottom:3px; }
-      .tot td { border-top:1px solid #000; font-weight:bold; }
-      .r { text-align:right; white-space:nowrap; }
+      td,th { padding:1px 1px; vertical-align:top; overflow:hidden; }
+      td:first-child,th:first-child { width:36%; word-break:break-word; }
+      h1 { font-size:15px; margin:0 0 2px; }
+      .hdr { border-bottom:2px solid #000; padding-bottom:3px; margin-bottom:3px; }
+      .tot td { border-top:2px solid #000; }
+      .r { text-align:right; white-space:nowrap; font-size:11px; }
       th.l { text-align:left; }
     </style></head><body>
       <div class="hdr">
