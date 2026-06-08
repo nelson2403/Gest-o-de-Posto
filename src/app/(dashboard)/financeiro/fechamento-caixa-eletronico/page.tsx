@@ -1,170 +1,247 @@
 'use client'
 
-import { useState } from 'react'
-import { Calendar, Download, Eye } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Header } from '@/components/layout/Header'
+import { useAuthContext } from '@/contexts/AuthContext'
 
-interface Fechamento {
-  id: string
-  data: string
-  posto_nome: string
-  operador_nome: string
-  turno?: string
-  total_diferenca: number
-  criado_em: string
+// ── Tipos ─────────────────────────────────────────────────────────────────────
+
+interface PostoRow { id: string; nome: string }
+
+interface ItemFechamento {
+  label:           string
+  valor_as:        number | null
+  valor_frentista: number | null
+  diferenca:       number | null
 }
 
+interface Fechamento {
+  id:               string
+  data_fechamento:  string
+  frentista_nome:   string
+  turno:            string | null
+  total_as:         number | null
+  total_frentista:  number | null
+  total_diferenca:  number | null
+  itens:            ItemFechamento[] | null
+  assinatura_img:   string | null
+  observacao:       string | null
+  postos?:          { nome: string } | null
+}
+
+// ── Componente ────────────────────────────────────────────────────────────────
+
 export default function ConsultaFechamentoCaixaPage() {
-  const [dataInicial, setDataInicial] = useState('')
-  const [dataFinal, setDataFinal] = useState('')
-  const [fechamentos, setFechamentos] = useState<Fechamento[]>([])
-  const [loading, setLoading] = useState(false)
-  const [erro, setErro] = useState('')
+  const { usuario } = useAuthContext()
+  const role = usuario?.role
+  const podeAcessar = ['master', 'adm_financeiro', 'gerente', 'operador_caixa'].includes(role ?? '')
 
-  async function handleBuscar(e: React.FormEvent) {
-    e.preventDefault()
-    if (!dataInicial || !dataFinal) {
-      setErro('Informe data inicial e final')
-      return
-    }
+  const [postos,  setPostos]  = useState<PostoRow[]>([])
+  const [postoId, setPostoId] = useState('')
 
+  const [fechamentos,  setFechamentos]  = useState<Fechamento[]>([])
+  const [dataIni,      setDataIni]      = useState('')
+  const [dataFim,      setDataFim]      = useState('')
+  const [loading,      setLoading]      = useState(false)
+  const [buscou,       setBuscou]       = useState(false)
+  const [selectedFech, setSelectedFech] = useState<Fechamento | null>(null)
+
+  // Carrega postos
+  useEffect(() => {
+    fetch('/api/postos-mapeamento')
+      .then(r => r.json())
+      .then(j => {
+        const lista: PostoRow[] = j.data ?? []
+        setPostos(lista)
+        if (lista.length) setPostoId(lista[0].id)
+      })
+  }, [])
+
+  async function carregarFechamentos() {
     setLoading(true)
-    setErro('')
-    try {
-      const res = await fetch(`/api/caixa/fechamentos?data_ini=${dataInicial}&data_fim=${dataFinal}`)
-      const json = await res.json()
-
-      if (!res.ok) {
-        setErro(json.error ?? 'Erro ao buscar')
-        setFechamentos([])
-        return
-      }
-
-      setFechamentos(json.fechamentos ?? [])
-    } catch (e: any) {
-      setErro(e.message)
-      setFechamentos([])
-    } finally {
-      setLoading(false)
-    }
+    setBuscou(true)
+    setSelectedFech(null)
+    const params = new URLSearchParams()
+    if (postoId) params.set('posto_id', postoId)
+    if (dataIni) params.set('data_ini', dataIni)
+    if (dataFim) params.set('data_fim', dataFim)
+    const res = await fetch(`/api/caixa/fechamentos?${params}`)
+    const j   = await res.json()
+    setFechamentos(Array.isArray(j) ? j : [])
+    setLoading(false)
   }
 
-  function fmtData(iso: string): string {
-    return new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR')
-  }
-
-  function fmtMoeda(v: number): string {
+  function fmt(v: number | null) {
+    if (v === null || v === undefined) return '—'
     return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   }
 
-  return (
-    <div className="p-6 space-y-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Fechamento de Caixa Eletrônico</h1>
-        <p className="text-sm text-gray-500 mt-1">Consulte os fechamentos de caixa registrados</p>
-      </div>
+  function fmtDif(v: number | null) {
+    if (v === null) return { text: '—', cls: 'text-gray-400' }
+    if (Math.abs(v) < 0.01) return { text: 'R$ 0,00', cls: 'text-emerald-600' }
+    const t = v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    return { text: (v > 0 ? '+' : '') + t, cls: v < 0 ? 'text-red-600' : 'text-amber-600' }
+  }
 
-      {/* Filtros */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <form onSubmit={handleBuscar} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+  if (!podeAcessar) {
+    return (
+      <div className="animate-fade-in">
+        <Header title="Fechamento de Caixa Eletrônico" description="Consulta de fechamentos" />
+        <div className="p-6 text-center text-gray-400 text-sm">Sem permissão para acessar esta página.</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="animate-fade-in">
+      <Header
+        title="Fechamento de Caixa Eletrônico"
+        description="Consulte os fechamentos de caixa registrados pelos frentistas"
+      />
+
+      <div className="p-4 md:p-6 max-w-5xl space-y-5">
+
+        {/* Filtros */}
+        <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 space-y-4">
+          <div className="flex items-center gap-4 flex-wrap">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-2">Data Inicial</label>
-              <input
-                type="date"
-                value={dataInicial}
-                onChange={e => setDataInicial(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-              />
+              <label className="block text-xs font-medium text-gray-700 mb-1">Posto</label>
+              <select
+                value={postoId}
+                onChange={e => setPostoId(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-w-[260px]"
+              >
+                {postos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-2">Data Final</label>
-              <input
-                type="date"
-                value={dataFinal}
-                onChange={e => setDataFinal(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-              />
+              <label className="block text-xs font-medium text-gray-700 mb-1">Data inicial</label>
+              <input type="date" value={dataIni} onChange={e => setDataIni(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Data final</label>
+              <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
             </div>
             <div className="flex items-end">
               <button
-                type="submit"
+                onClick={carregarFechamentos}
                 disabled={loading}
-                className="w-full bg-red-700 hover:bg-red-800 text-white font-medium py-2 rounded-lg transition-colors disabled:opacity-50"
+                className="px-5 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50"
               >
-                {loading ? 'Buscando...' : 'Buscar'}
+                {loading ? 'Buscando…' : 'Buscar'}
               </button>
             </div>
           </div>
+        </div>
 
-          {erro && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-              {erro}
-            </div>
-          )}
-        </form>
-      </div>
-
-      {/* Resultados */}
-      {fechamentos.length > 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+        {/* Tabela */}
+        {fechamentos.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 py-12 text-center text-gray-400 text-sm">
+            {loading
+              ? 'Carregando…'
+              : buscou
+                ? 'Nenhum fechamento encontrado para este período.'
+                : 'Selecione o posto e período e clique em Buscar.'}
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-6 py-3 font-semibold text-gray-700">Data</th>
-                  <th className="text-left px-6 py-3 font-semibold text-gray-700">Posto</th>
-                  <th className="text-left px-6 py-3 font-semibold text-gray-700">Operador</th>
-                  <th className="text-left px-6 py-3 font-semibold text-gray-700">Turno</th>
-                  <th className="text-right px-6 py-3 font-semibold text-gray-700">Diferença</th>
-                  <th className="text-center px-6 py-3 font-semibold text-gray-700">Ações</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Data</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Frentista</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Turno</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600">Total Sistema</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600">Total Frentista</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600">Diferença</th>
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
-                {fechamentos.map(f => (
-                  <tr key={f.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">{fmtData(f.data)}</td>
-                    <td className="px-6 py-4 font-medium text-gray-900">{f.posto_nome}</td>
-                    <td className="px-6 py-4 text-gray-700">{f.operador_nome}</td>
-                    <td className="px-6 py-4 text-gray-600">
-                      <span className="capitalize text-xs bg-gray-100 px-2 py-1 rounded">
-                        {f.turno || '—'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <span className={`font-semibold ${Math.abs(f.total_diferenca) < 0.01 ? 'text-emerald-600' : f.total_diferenca > 0 ? 'text-amber-600' : 'text-red-600'}`}>
-                        {fmtMoeda(f.total_diferenca)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <button
-                        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Visualizar detalhes"
-                      >
-                        <Eye className="w-4 h-4" />
-                        Ver
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+              <tbody className="divide-y divide-gray-100">
+                {fechamentos.map(f => {
+                  const dif = fmtDif(f.total_diferenca)
+                  return (
+                    <tr key={f.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-gray-700">{f.data_fechamento?.split('-').reverse().join('/')}</td>
+                      <td className="px-4 py-3 font-medium text-gray-800">{f.frentista_nome}</td>
+                      <td className="px-4 py-3 text-gray-500 capitalize">{f.turno ?? '—'}</td>
+                      <td className="px-4 py-3 text-right text-gray-700">{fmt(f.total_as)}</td>
+                      <td className="px-4 py-3 text-right text-gray-700">{fmt(f.total_frentista)}</td>
+                      <td className={`px-4 py-3 text-right font-medium ${dif.cls}`}>{dif.text}</td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => setSelectedFech(selectedFech?.id === f.id ? null : f)}
+                          className="text-orange-500 hover:text-orange-600 text-xs"
+                        >
+                          {selectedFech?.id === f.id ? 'Fechar' : 'Ver'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
+        )}
 
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center text-sm text-gray-600">
-            <span>{fechamentos.length} resultado(s)</span>
-            <button className="inline-flex items-center gap-2 text-red-700 hover:text-red-800 font-medium">
-              <Download className="w-4 h-4" />
-              Exportar
-            </button>
+        {/* Detalhe */}
+        {selectedFech && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+            <h3 className="font-semibold text-gray-800">
+              Fechamento — {selectedFech.frentista_nome} — {selectedFech.data_fechamento?.split('-').reverse().join('/')}
+            </h3>
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">Campo</th>
+                    <th className="text-right px-4 py-2 font-medium text-gray-600">Sistema</th>
+                    <th className="text-right px-4 py-2 font-medium text-gray-600">Frentista</th>
+                    <th className="text-right px-4 py-2 font-medium text-gray-600">Diferença</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(selectedFech.itens ?? []).map((item, idx) => {
+                    const d = fmtDif(item.diferenca)
+                    return (
+                      <tr key={idx} className={idx % 2 === 0 ? '' : 'bg-gray-50'}>
+                        <td className="px-4 py-2 font-medium text-gray-800">{item.label}</td>
+                        <td className="px-4 py-2 text-right text-gray-700">{fmt(item.valor_as)}</td>
+                        <td className="px-4 py-2 text-right text-gray-700">{fmt(item.valor_frentista)}</td>
+                        <td className={`px-4 py-2 text-right ${d.cls}`}>{d.text}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-gray-300 font-bold bg-gray-50">
+                    <td className="px-4 py-2">Total</td>
+                    <td className="px-4 py-2 text-right">{fmt(selectedFech.total_as)}</td>
+                    <td className="px-4 py-2 text-right">{fmt(selectedFech.total_frentista)}</td>
+                    <td className={`px-4 py-2 text-right ${fmtDif(selectedFech.total_diferenca).cls}`}>
+                      {fmtDif(selectedFech.total_diferenca).text}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            {selectedFech.assinatura_img && (
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Assinatura:</p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={selectedFech.assinatura_img} alt="Assinatura" className="h-16 border border-gray-200 rounded-lg" />
+              </div>
+            )}
+            {selectedFech.observacao && (
+              <p className="text-sm text-gray-600">
+                <span className="font-medium">Obs:</span> {selectedFech.observacao}
+              </p>
+            )}
           </div>
-        </div>
-      ) : !loading && dataInicial && dataFinal ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-          <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500">Nenhum fechamento encontrado para este período</p>
-        </div>
-      ) : null}
+        )}
+      </div>
     </div>
   )
 }

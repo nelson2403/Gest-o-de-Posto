@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
       .single()
 
     if (!usuario) return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
-    const roles = ['master', 'adm_financeiro', 'gerente']
+    const roles = ['master', 'adm_financeiro', 'gerente', 'operador_caixa']
     if (!roles.includes(usuario.role ?? '')) {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
     }

@@ -89,6 +89,7 @@ const NAV_GROUPS: NavGroup[] = [
       },
       { href: '/controle-caixas',     label: 'Controle de Caixas',   icon: CheckSquare, permission: 'controle_caixas.view' as Permission },
       { href: '/controle-dinheiro',   label: 'Controle de Dinheiro', icon: Banknote,    permission: 'controle_caixas.view' as Permission },
+      { href: '/financeiro/fechamento-caixa-eletronico', label: 'Fechamento de Caixa', icon: Receipt, permission: 'controle_caixas.view' as Permission },
     ],
   },
   {
