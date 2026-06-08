@@ -33,7 +33,13 @@ async function getQz(): Promise<any> {
 export async function conectarQz(): Promise<any> {
   const qz = await getQz()
   if (!qz.websocket.isActive()) {
-    await qz.websocket.connect({ retries: 2, delay: 1 })
+    // Timeout para não travar a UI caso o QZ Tray não esteja rodando/acessível
+    await Promise.race([
+      qz.websocket.connect({ retries: 1, delay: 1 }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('QZ Tray não respondeu (timeout)')), 8000)
+      ),
+    ])
   }
   return qz
 }
