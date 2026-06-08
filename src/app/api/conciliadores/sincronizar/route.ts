@@ -183,10 +183,8 @@ export async function POST(req: NextRequest) {
         totalTarefas: tarefas.length,
         atualizadasCount: atualizadas.length,
         errosCount: erros.length,
-        naoAtualizadasCount: naoAtualizadas.length,
         exemplosAtualizadas: atualizadas.slice(0, 5),
         exemplosErros: erros.slice(0, 5),
-        exemplosNaoAtualizadas: naoAtualizadas.slice(0, 5),
       },
     })
   } catch (e: any) {

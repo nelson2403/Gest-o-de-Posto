@@ -737,46 +737,108 @@ export default function CaixaPage() {
   // ── FASE: Concluído ────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4 print:hidden">
-      <div className="w-full max-w-sm">
-        <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
-          <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-bold text-gray-900">Fechamento Enviado!</h2>
-          <p className="text-sm text-gray-500 mt-2">
-            Fechamento registrado com sucesso.
-            {fechamentoId && <span className="block text-xs text-gray-400 mt-1">ID: {fechamentoId.slice(0, 8)}…</span>}
-          </p>
-          <div className="mt-6 space-y-2">
-            <button
-              onClick={() => window.print()}
-              className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200"
-            >
-              Reimprimir
-            </button>
-            <button
-              onClick={() => {
-                setFase('codigo')
-                setToken('')
-                setFrentista(null)
-                setItens([])
-                setAssinatura('')
-                setData(dataHoje())
-                setLoginCodigo('')
-                setLoginPin('')
-                setLoginPinConfirm('')
-                setEmployeeNome('')
-              }}
-              className="w-full py-2.5 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600"
-            >
-              Novo Fechamento
-            </button>
+    <>
+      {/* Tela de sucesso — apenas na tela (oculta na impressão) */}
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4 print:hidden">
+        <div className="w-full max-w-sm">
+          <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900">Fechamento Enviado!</h2>
+            <p className="text-sm text-gray-500 mt-2">
+              Fechamento registrado com sucesso.
+              {fechamentoId && <span className="block text-xs text-gray-400 mt-1">ID: {fechamentoId.slice(0, 8)}…</span>}
+            </p>
+            <div className="mt-6 space-y-2">
+              <button
+                onClick={() => window.print()}
+                className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200"
+              >
+                Reimprimir
+              </button>
+              <button
+                onClick={() => {
+                  setFase('codigo')
+                  setToken('')
+                  setFrentista(null)
+                  setItens([])
+                  setAssinatura('')
+                  setData(dataHoje())
+                  setLoginCodigo('')
+                  setLoginPin('')
+                  setLoginPinConfirm('')
+                  setEmployeeNome('')
+                }}
+                className="w-full py-2.5 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600"
+              >
+                Novo Fechamento
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* Comprovante — apenas na impressão */}
+      <div className="hidden print:block p-4">
+        <div className="mb-4 border-b border-gray-300 pb-3">
+          <h1 className="text-lg font-bold">Conferência de Caixa</h1>
+          <p className="text-sm">
+            {frentista?.posto_nome} — {fmtData(data)}{turno ? ` — Turno: ${turno}` : ''}
+          </p>
+          <p className="text-sm">Operador: {frentista?.nome}</p>
+        </div>
+
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="border-b border-gray-400">
+              <th className="text-left py-2 font-semibold">Forma de Pagamento</th>
+              <th className="text-right py-2 font-semibold">Sistema</th>
+              <th className="text-right py-2 font-semibold">Frentista</th>
+              <th className="text-right py-2 font-semibold">Diferença</th>
+            </tr>
+          </thead>
+          <tbody>
+            {itens.map(item => {
+              const vf  = parseFloat(item.valor_frentista.replace(',', '.')) || 0
+              const dif = fmtDif(item.diferenca)
+              return (
+                <tr key={item.tipo} className="border-b border-gray-200">
+                  <td className="py-1.5 font-medium">{item.label}</td>
+                  <td className="py-1.5 text-right">{fmt(item.valor_as)}</td>
+                  <td className="py-1.5 text-right">{fmt(vf)}</td>
+                  <td className={`py-1.5 text-right ${dif.cls}`}>{dif.text}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-gray-400 font-bold">
+              <td className="py-2">Total</td>
+              <td className="py-2 text-right">{fmt(totalAS)}</td>
+              <td className="py-2 text-right">{fmt(totalFrentista)}</td>
+              <td className={`py-2 text-right ${fmtDif(totalDif).cls}`}>{fmtDif(totalDif).text}</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        {observacao && (
+          <p className="mt-4 text-sm"><span className="font-medium">Observação:</span> {observacao}</p>
+        )}
+
+        {assinatura && (
+          <div className="mt-6 border-t border-gray-300 pt-3">
+            <p className="text-xs text-gray-500 mb-1">Assinatura do operador:</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={assinatura} alt="Assinatura" className="h-16 object-contain" />
+            <p className="text-xs text-gray-400 mt-1">
+              {new Date().toLocaleString('pt-BR')} — {frentista?.nome}
+            </p>
+          </div>
+        )}
+      </div>
+    </>
   )
 }

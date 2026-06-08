@@ -62,7 +62,7 @@ export default function FechamentoFrentistaPage() {
 
   const [postos,  setPostos]  = useState<PostoRow[]>([])
   const [postoId, setPostoId] = useState('')
-  const [tab,     setTab]     = useState<'campos' | 'contas' | 'fechamentos'>('contas')
+  const [tab,     setTab]     = useState<'campos' | 'contas'>('contas')
   const [campos,  setCampos]  = useState<Campo[]>([])
   const [saving,  setSaving]  = useState(false)
   const [msg,     setMsg]     = useState('')
@@ -73,13 +73,6 @@ export default function FechamentoFrentistaPage() {
   const [formasSalvando, setFormasSalvando] = useState<Record<string, boolean>>({})
   const [formasSalvo,    setFormasSalvo]    = useState<Record<string, boolean>>({})
   const [buscaFormas,    setBuscaFormas]    = useState('')
-
-  // Fechamentos
-  const [fechamentos,  setFechamentos]  = useState<any[]>([])
-  const [fDataIni,     setFDataIni]     = useState('')
-  const [fDataFim,     setFDataFim]     = useState('')
-  const [fLoading,     setFLoading]     = useState(false)
-  const [selectedFech, setSelectedFech] = useState<any | null>(null)
 
   // Carrega postos
   useEffect(() => {
@@ -157,29 +150,6 @@ export default function FechamentoFrentistaPage() {
     setFormasSalvando(p => ({ ...p, [forma.chave]: false }))
   }
 
-  async function carregarFechamentos() {
-    setFLoading(true)
-    const params = new URLSearchParams({ posto_id: postoId })
-    if (fDataIni) params.set('data_ini', fDataIni)
-    if (fDataFim) params.set('data_fim', fDataFim)
-    const res = await fetch(`/api/caixa/fechamentos?${params}`)
-    const j   = await res.json()
-    setFechamentos(Array.isArray(j) ? j : [])
-    setFLoading(false)
-  }
-
-  function fmt(v: number | null) {
-    if (v === null || v === undefined) return '—'
-    return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-  }
-
-  function fmtDif(v: number | null) {
-    if (v === null) return { text: '—', cls: 'text-gray-400' }
-    if (Math.abs(v) < 0.01) return { text: 'R$ 0,00', cls: 'text-emerald-600' }
-    const t = v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-    return { text: (v > 0 ? '+' : '') + t, cls: v < 0 ? 'text-red-600' : 'text-amber-600' }
-  }
-
   const formasFiltradas = useMemo(() =>
     formas.filter(f => f.chave.toLowerCase().includes(buscaFormas.toLowerCase())),
     [formas, buscaFormas],
@@ -221,7 +191,7 @@ export default function FechamentoFrentistaPage() {
           </select>
           <div className="ml-auto">
             <a
-              href="/caixa"
+              href="/pdv"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-600"
@@ -229,7 +199,7 @@ export default function FechamentoFrentistaPage() {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
-              Abrir tela do frentista
+              Abrir tela do frentista (PDV)
             </a>
           </div>
         </div>
@@ -239,7 +209,6 @@ export default function FechamentoFrentistaPage() {
           {([
             ['contas',      'Formas de Pagamento AUTOSYSTEM'],
             ['campos',      'Campos do Formulário'],
-            ['fechamentos', 'Fechamentos'],
           ] as const).map(([id, label]) => (
             <button
               key={id}
@@ -475,131 +444,6 @@ export default function FechamentoFrentistaPage() {
                 </button>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* ── Tab: Fechamentos ─────────────────────────────────────────────── */}
-        {tab === 'fechamentos' && (
-          <div className="space-y-4">
-            <div className="flex gap-3 flex-wrap items-end">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Data inicial</label>
-                <input type="date" value={fDataIni} onChange={e => setFDataIni(e.target.value)}
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Data final</label>
-                <input type="date" value={fDataFim} onChange={e => setFDataFim(e.target.value)}
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-              </div>
-              <button
-                onClick={carregarFechamentos}
-                disabled={fLoading}
-                className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50"
-              >
-                {fLoading ? 'Buscando…' : 'Buscar'}
-              </button>
-            </div>
-
-            {fechamentos.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-200 py-12 text-center text-gray-400 text-sm">
-                {fLoading ? 'Carregando…' : 'Clique em Buscar para ver os fechamentos.'}
-              </div>
-            ) : (
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Data</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Frentista</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-600">Turno</th>
-                      <th className="text-right px-4 py-3 font-medium text-gray-600">Total Sistema</th>
-                      <th className="text-right px-4 py-3 font-medium text-gray-600">Total Frentista</th>
-                      <th className="text-right px-4 py-3 font-medium text-gray-600">Diferença</th>
-                      <th className="px-4 py-3" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {fechamentos.map(f => {
-                      const dif = fmtDif(f.total_diferenca)
-                      return (
-                        <tr key={f.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-gray-700">{f.data_fechamento?.split('-').reverse().join('/')}</td>
-                          <td className="px-4 py-3 font-medium text-gray-800">{f.frentista_nome}</td>
-                          <td className="px-4 py-3 text-gray-500">{f.turno ?? '—'}</td>
-                          <td className="px-4 py-3 text-right text-gray-700">{fmt(f.total_as)}</td>
-                          <td className="px-4 py-3 text-right text-gray-700">{fmt(f.total_frentista)}</td>
-                          <td className={`px-4 py-3 text-right font-medium ${dif.cls}`}>{dif.text}</td>
-                          <td className="px-4 py-3">
-                            <button
-                              onClick={() => setSelectedFech(selectedFech?.id === f.id ? null : f)}
-                              className="text-orange-500 hover:text-orange-600 text-xs"
-                            >
-                              {selectedFech?.id === f.id ? 'Fechar' : 'Ver'}
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {selectedFech && (
-              <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-                <h3 className="font-semibold text-gray-800">
-                  Fechamento — {selectedFech.frentista_nome} — {selectedFech.data_fechamento?.split('-').reverse().join('/')}
-                </h3>
-                <div className="overflow-x-auto rounded-lg border border-gray-200">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200">
-                        <th className="text-left px-4 py-2 font-medium text-gray-600">Campo</th>
-                        <th className="text-right px-4 py-2 font-medium text-gray-600">Sistema</th>
-                        <th className="text-right px-4 py-2 font-medium text-gray-600">Frentista</th>
-                        <th className="text-right px-4 py-2 font-medium text-gray-600">Diferença</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(selectedFech.itens ?? []).map((item: any, idx: number) => {
-                        const d = fmtDif(item.diferenca)
-                        return (
-                          <tr key={idx} className={idx % 2 === 0 ? '' : 'bg-gray-50'}>
-                            <td className="px-4 py-2 font-medium text-gray-800">{item.label}</td>
-                            <td className="px-4 py-2 text-right text-gray-700">{fmt(item.valor_as)}</td>
-                            <td className="px-4 py-2 text-right text-gray-700">{fmt(item.valor_frentista)}</td>
-                            <td className={`px-4 py-2 text-right ${d.cls}`}>{d.text}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 border-gray-300 font-bold bg-gray-50">
-                        <td className="px-4 py-2">Total</td>
-                        <td className="px-4 py-2 text-right">{fmt(selectedFech.total_as)}</td>
-                        <td className="px-4 py-2 text-right">{fmt(selectedFech.total_frentista)}</td>
-                        <td className={`px-4 py-2 text-right ${fmtDif(selectedFech.total_diferenca).cls}`}>
-                          {fmtDif(selectedFech.total_diferenca).text}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-                {selectedFech.assinatura_img && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Assinatura:</p>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={selectedFech.assinatura_img} alt="Assinatura" className="h-16 border border-gray-200 rounded-lg" />
-                  </div>
-                )}
-                {selectedFech.observacao && (
-                  <p className="text-sm text-gray-600">
-                    <span className="font-medium">Obs:</span> {selectedFech.observacao}
-                  </p>
-                )}
-              </div>
-            )}
           </div>
         )}
       </div>

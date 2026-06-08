@@ -40,6 +40,7 @@ export async function middleware(request: NextRequest) {
     '/api/caixa/config',
     '/api/caixa/frentistas',
     '/caixa',
+    '/pdv',
   ]
   const publicFiles  = ['/manifest.json', '/robots.txt', '/sitemap.xml']
   const isPublic = publicRoutes.some((r) => pathname.startsWith(r)) || publicFiles.includes(pathname)
