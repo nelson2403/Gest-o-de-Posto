@@ -342,6 +342,16 @@ export default function CaixaPage() {
         <div>${fmtData(data)}${turno ? ' - ' + escapeHtml(turno) : ''}</div>
         <div>Operador: ${escapeHtml(frentista?.nome ?? '')}</div>
       </div>
+      ${conferenciaAS && conferenciaAS.total_vendas > 0 ? (() => {
+        const venda = conferenciaAS.total_vendas
+        const difV = parseFloat((totFr - venda).toFixed(2))
+        const ok = Math.abs(difV) < 0.02
+        const veredito = ok ? 'CAIXA CERTO' : difV < 0 ? `FALTANDO ${m(Math.abs(difV))}` : `SOBRANDO ${m(Math.abs(difV))}`
+        return `<div style="text-align:center;border:1px solid #000;padding:4px;margin-bottom:4px">
+          <div style="font-size:14px"><strong>${veredito}</strong></div>
+          <div style="font-size:10px">Venda: ${m(venda)} | Declarado: ${m(totFr)}</div>
+        </div>`
+      })() : ''}
       <table>
         <thead><tr><th class="l">Forma</th><th class="r">Sist.</th><th class="r">Frent.</th><th class="r">Dif.</th></tr></thead>
         <tbody>${linhas}</tbody>
@@ -938,6 +948,27 @@ export default function CaixaPage() {
             </div>
 
             <div className="p-6 space-y-5 print:p-4">
+              {/* Veredito: o frentista presta contas da VENDA de produtos */}
+              {conferenciaAS && conferenciaAS.total_vendas > 0 && (() => {
+                const venda  = conferenciaAS.total_vendas
+                const difV   = parseFloat((totalFrentista - venda).toFixed(2))
+                const ok     = Math.abs(difV) < 0.02
+                const faltou = difV < 0
+                return (
+                  <div className={`rounded-xl border-2 px-5 py-4 text-center ${
+                    ok ? 'bg-emerald-50 border-emerald-300' : faltou ? 'bg-red-50 border-red-300' : 'bg-amber-50 border-amber-300'
+                  }`}>
+                    <p className={`text-2xl font-extrabold ${ok ? 'text-emerald-700' : faltou ? 'text-red-700' : 'text-amber-700'}`}>
+                      {ok ? '✓ CAIXA CERTO' : faltou ? `FALTANDO ${fmt(Math.abs(difV))}` : `SOBRANDO ${fmt(Math.abs(difV))}`}
+                    </p>
+                    <div className="flex justify-center gap-5 mt-2 text-sm text-gray-600 flex-wrap">
+                      <span>Venda de Produtos: <span className="font-bold text-gray-800">{fmt(venda)}</span></span>
+                      <span>Você declarou: <span className="font-bold text-gray-800">{fmt(totalFrentista)}</span></span>
+                    </div>
+                  </div>
+                )
+              })()}
+
               {/* Tabela conferência */}
               <div className="overflow-x-auto rounded-xl border border-gray-200 print:border-gray-400">
                 <table className="w-full text-sm">
