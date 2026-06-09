@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { usePathname } from 'next/navigation'
-import { Bot, X, Send, Loader2, Sparkles, ChevronDown, RotateCcw } from 'lucide-react'
+import { Bot, X, Send, Loader2, Sparkles, ChevronDown, RotateCcw, Printer } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { useAuthContext } from '@/contexts/AuthContext'
 
@@ -94,8 +94,50 @@ function MarkdownLite({ text }: { text: string }) {
   )
 }
 
-function MessageBubble({ msg }: { msg: Message }) {
+// Converte o markdown do relatório em HTML para impressão/PDF
+function mdToHtml(text: string): string {
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const inline = (s: string) => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  const lines = text.split('\n')
+  let html = '', inList = false
+  const closeList = () => { if (inList) { html += '</ul>'; inList = false } }
+  for (const raw of lines) {
+    const line = raw.trim()
+    if (!line) { closeList(); html += '<div style="height:6px"></div>'; continue }
+    if (line.startsWith('### ')) { closeList(); html += `<h3>${inline(line.slice(4))}</h3>` }
+    else if (line.startsWith('## ')) { closeList(); html += `<h2>${inline(line.slice(3))}</h2>` }
+    else if (line.startsWith('# ')) { closeList(); html += `<h1>${inline(line.slice(2))}</h1>` }
+    else if (/^[-•*]\s/.test(line)) { if (!inList) { html += '<ul>'; inList = true } html += `<li>${inline(line.replace(/^[-•*]\s/, ''))}</li>` }
+    else { closeList(); html += `<p>${inline(line)}</p>` }
+  }
+  closeList()
+  return html
+}
+
+function imprimirRelatorio(text: string) {
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relatório</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 32px; color:#111; font-size:13px; line-height:1.5; max-width:820px; }
+    h1 { font-size:20px; color:#3730a3; margin:0 0 8px; }
+    h2 { font-size:17px; color:#4338ca; margin:16px 0 6px; }
+    h3 { font-size:14px; margin:12px 0 4px; }
+    ul { margin:4px 0 8px 0; padding-left:20px; } li { margin:2px 0; }
+    p { margin:3px 0; } strong { color:#111; }
+    .rodape { margin-top:24px; border-top:1px solid #ddd; padding-top:8px; color:#888; font-size:11px; }
+    @media print { body { margin:16px; } }
+  </style></head><body>
+  ${mdToHtml(text)}
+  <div class="rodape">Gerado pelo Assistente IA · Sistema de Gestão Pedra do Pombal · ${new Date().toLocaleString('pt-BR')}</div>
+  <script>window.onload=()=>window.print()</script></body></html>`
+  const win = window.open('', '_blank')
+  if (!win) return
+  win.document.write(html)
+  win.document.close()
+}
+
+function MessageBubble({ msg, hidePrint }: { msg: Message; hidePrint?: boolean }) {
   const isUser = msg.role === 'user'
+  const ehRelatorio = !isUser && !hidePrint && msg.content.length > 140
   return (
     <div className={cn('flex gap-2 mb-3', isUser ? 'justify-end' : 'justify-start')}>
       {!isUser && (
@@ -103,15 +145,25 @@ function MessageBubble({ msg }: { msg: Message }) {
           <Bot className="w-3.5 h-3.5 text-white" />
         </div>
       )}
-      <div
-        className={cn(
-          'max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed',
-          isUser
-            ? 'bg-indigo-600 text-white rounded-tr-sm whitespace-pre-wrap'
-            : 'bg-gray-100 text-gray-800 rounded-tl-sm'
+      <div className={cn('flex flex-col gap-1', isUser ? 'items-end' : 'items-start', 'max-w-[85%]')}>
+        <div
+          className={cn(
+            'rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed',
+            isUser
+              ? 'bg-indigo-600 text-white rounded-tr-sm whitespace-pre-wrap'
+              : 'bg-gray-100 text-gray-800 rounded-tl-sm'
+          )}
+        >
+          {isUser ? msg.content : <MarkdownLite text={msg.content} />}
+        </div>
+        {ehRelatorio && (
+          <button
+            onClick={() => imprimirRelatorio(msg.content)}
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+          >
+            <Printer className="w-3 h-3" /> Imprimir / PDF
+          </button>
         )}
-      >
-        {isUser ? msg.content : <MarkdownLite text={msg.content} />}
       </div>
     </div>
   )
@@ -325,7 +377,7 @@ export function IAAssistente() {
                 ))}
                 {loading && !streaming && <TypingIndicator />}
                 {streaming && (
-                  <MessageBubble msg={{ role: 'assistant', content: streaming }} />
+                  <MessageBubble msg={{ role: 'assistant', content: streaming }} hidePrint />
                 )}
                 <div ref={messagesEndRef} />
               </>
