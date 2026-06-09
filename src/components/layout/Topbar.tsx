@@ -13,7 +13,7 @@ import {
   ArrowLeftRight, Eye, EyeOff, X, ChevronDown,
   PackageSearch, Truck, CalendarDays, ShoppingCart, Menu,
   Sun, Moon, CheckCheck, Scale, Banknote, Hash,
-  Target, Calculator, AlertTriangle,
+  Target, Calculator, AlertTriangle, Croissant, Wheat,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { useAuthContext } from '@/contexts/AuthContext'
@@ -109,6 +109,15 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/sugestao-pedido',     label: 'Sugestão de Pedido', icon: ShoppingCart,  permission: 'estoque.view' as Permission },
       { href: '/fornecedores',        label: 'Fornecedores',       icon: Truck,         permission: 'estoque.view' as Permission },
       { href: '/rotina-fornecedores', label: 'Rotina de Visitas',  icon: CalendarDays,  permission: 'estoque.view' as Permission },
+    ],
+  },
+  {
+    label: 'Pombal Massas',
+    onlyForRoles: ['master', 'adm_financeiro'],
+    items: [
+      { href: '/pombal-massas',          label: 'Painel',          icon: LayoutDashboard, permission: null },
+      { href: '/pombal-massas/salgados', label: 'Salgados',        icon: Croissant,       permission: null },
+      { href: '/pombal-massas/insumos',  label: 'Matérias-primas', icon: Wheat,           permission: null },
     ],
   },
   {
