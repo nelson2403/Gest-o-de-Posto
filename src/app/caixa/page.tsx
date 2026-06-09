@@ -312,10 +312,12 @@ export default function CaixaPage() {
   function buildCupomHtml(): string {
     // formato compacto sem "R$" para caber as colunas no cupom
     const m = (v: number | null) => (v == null ? '-' : fmt(v).replace('R$', '').trim())
-    const totAS = itens.reduce((s, i) => s + (i.valor_as ?? 0), 0)
+    const totFormas = itens.reduce((s, i) => s + (i.valor_as ?? 0), 0)
     const totFr = itens.reduce((s, i) => s + (parseFloat(i.valor_frentista.replace(',', '.')) || 0), 0)
+    const naoLanc = conferenciaAS ? parseFloat((conferenciaAS.total_entradas - totFormas).toFixed(2)) : 0
+    const totAS  = conferenciaAS ? conferenciaAS.total_entradas : totFormas
     const totDif = totFr - totAS
-    const linhas = itens.map(item => {
+    let linhas = itens.map(item => {
       const vf = parseFloat(item.valor_frentista.replace(',', '.')) || 0
       return `<tr>
         <td>${escapeHtml(item.label)}</td>
@@ -324,6 +326,9 @@ export default function CaixaPage() {
         <td class="r">${m(item.diferenca)}</td>
       </tr>`
     }).join('')
+    if (Math.abs(naoLanc) > 0.02) {
+      linhas += `<tr><td>Nao lancado</td><td class="r">${m(naoLanc)}</td><td class="r">-</td><td class="r">${m(-naoLanc)}</td></tr>`
+    }
     return `<!doctype html><html><head><meta charset="utf-8"><style>
       * { font-family:'Courier New',monospace; font-size:12px; font-weight:bold; color:#000; }
       html,body { width:100%; margin:0; padding:0; }
@@ -921,7 +926,12 @@ export default function CaixaPage() {
 
   const totalAS        = itens.reduce((s, i) => s + (i.valor_as ?? 0), 0)
   const totalFrentista = itens.reduce((s, i) => s + (parseFloat(i.valor_frentista.replace(',', '.')) || 0), 0)
-  const totalDif       = totalFrentista - totalAS
+  // Coluna SISTEMA reconcilia com as ENTRADAS: a diferença (entradas - formas) entra
+  // como "Não lançado", e o total da coluna passa a ser o total de entradas.
+  const entradasAS     = conferenciaAS?.total_entradas ?? totalAS
+  const naoLancado     = parseFloat((entradasAS - totalAS).toFixed(2))
+  const totalSistema   = conferenciaAS ? entradasAS : totalAS
+  const totalDif       = totalFrentista - totalSistema
 
   if (fase === 'conferencia') {
     return (
@@ -986,11 +996,20 @@ export default function CaixaPage() {
                         </tr>
                       )
                     })}
+                    {/* Reconciliação: entradas que não foram lançadas em nenhuma forma */}
+                    {Math.abs(naoLancado) > 0.02 && (
+                      <tr className="bg-amber-50/60">
+                        <td className="px-4 py-3 font-medium text-amber-800">Não lançado <span className="text-[11px] text-amber-600">(AUTOSYSTEM)</span></td>
+                        <td className="px-4 py-3 text-right text-amber-800">{fmt(naoLancado)}</td>
+                        <td className="px-4 py-3 text-right text-gray-400">—</td>
+                        <td className={`px-4 py-3 text-right ${fmtDif(-naoLancado).cls}`}>{fmtDif(-naoLancado).text}</td>
+                      </tr>
+                    )}
                   </tbody>
                   <tfoot>
                     <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
                       <td className="px-4 py-3 text-gray-800">Total</td>
-                      <td className="px-4 py-3 text-right text-gray-800">{fmt(totalAS)}</td>
+                      <td className="px-4 py-3 text-right text-gray-800">{fmt(totalSistema)}</td>
                       <td className="px-4 py-3 text-right text-gray-800">{fmt(totalFrentista)}</td>
                       <td className={`px-4 py-3 text-right ${fmtDif(totalDif).cls}`}>
                         {fmtDif(totalDif).text}
