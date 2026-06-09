@@ -2564,7 +2564,6 @@ export async function buscarDadosCaixaFrentista(
     for (const r of formaRows) {
       const nome = decodeBytea(r.nome_b).trim() || r.conta_debitar
       movto_por_forma[nome] = (movto_por_forma[nome] ?? 0) + Number(r.total)
-      total_formas += Number(r.total)  // saída total = soma das formas (debito não-4.%)
     }
     const pdvRow = formaRows.find(r => r.conta_debitar.startsWith('1.1.2.') || r.conta_debitar.startsWith('1.1.1.'))
     pdvContaCode = pdvRow?.conta_debitar ?? null
@@ -2811,7 +2810,13 @@ export async function buscarDadosCaixaFrentista(
     }
   }
 
-  console.log(`[caixa-frentista] result cartoes=${cartoes.toFixed(2)} frotas=${cartoes_frotas.toFixed(2)} pix=${pix_tef.toFixed(2)} pix_cnpj=${pix_cnpj.toFixed(2)} din=${dinheiro.toFixed(2)} configCoberta=${configCoberta} formas=[${Object.keys(movto_por_forma).join('|')}]`)
+  // Saída total (formas) = soma dos grupos — já exclui o PDV consolidado e keywords excluídas,
+  // batendo com o "Total de saídas" da Conferência de Caixa do AUTOSYSTEM
+  total_formas = parseFloat(
+    (cartoes + cartoes_frotas + pix_tef + pix_cnpj + dinheiro + deposito_cofre + a_prazo + cheque + notas_promissorias).toFixed(2)
+  )
+
+  console.log(`[caixa-frentista] result cartoes=${cartoes.toFixed(2)} frotas=${cartoes_frotas.toFixed(2)} pix=${pix_tef.toFixed(2)} pix_cnpj=${pix_cnpj.toFixed(2)} din=${dinheiro.toFixed(2)} dep_cofre=${deposito_cofre.toFixed(2)} total_formas=${total_formas.toFixed(2)} total_vendas=${total_vendas.toFixed(2)} configCoberta=${configCoberta}`)
 
   return {
     cartoes,
