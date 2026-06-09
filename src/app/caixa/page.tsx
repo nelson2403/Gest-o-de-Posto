@@ -284,7 +284,7 @@ export default function CaixaPage() {
   const [loading,   setLoading]   = useState(false)
   const [erro,      setErro]      = useState('')
   const [fechamentoId, setFechamentoId] = useState('')
-  const [conferenciaAS, setConferenciaAS] = useState<{ total_vendas: number; total_formas: number; diferenca: number } | null>(null)
+  const [conferenciaAS, setConferenciaAS] = useState<{ total_entradas: number; total_formas: number; diferenca: number } | null>(null)
 
   // ── Login ──────────────────────────────────────────────────────────────────
 
@@ -342,14 +342,14 @@ export default function CaixaPage() {
         <div>${fmtData(data)}${turno ? ' - ' + escapeHtml(turno) : ''}</div>
         <div>Operador: ${escapeHtml(frentista?.nome ?? '')}</div>
       </div>
-      ${conferenciaAS && conferenciaAS.total_vendas > 0 ? (() => {
-        const venda = conferenciaAS.total_vendas
-        const difV = parseFloat((totFr - venda).toFixed(2))
+      ${conferenciaAS && conferenciaAS.total_entradas > 0 ? (() => {
+        const entradas = conferenciaAS.total_entradas
+        const difV = parseFloat((totFr - entradas).toFixed(2))
         const ok = Math.abs(difV) < 0.02
         const veredito = ok ? 'CAIXA CERTO' : difV < 0 ? `FALTANDO ${m(Math.abs(difV))}` : `SOBRANDO ${m(Math.abs(difV))}`
         return `<div style="text-align:center;border:1px solid #000;padding:4px;margin-bottom:4px">
           <div style="font-size:14px"><strong>${veredito}</strong></div>
-          <div style="font-size:10px">Venda: ${m(venda)} | Declarado: ${m(totFr)}</div>
+          <div style="font-size:10px">Entradas: ${m(entradas)} | Declarado: ${m(totFr)}</div>
         </div>`
       })() : ''}
       <table>
@@ -357,13 +357,6 @@ export default function CaixaPage() {
         <tbody>${linhas}</tbody>
         <tfoot><tr class="tot"><td>Total</td><td class="r">${m(totAS)}</td><td class="r">${m(totFr)}</td><td class="r">${m(totDif)}</td></tr></tfoot>
       </table>
-      ${conferenciaAS && (conferenciaAS.total_vendas > 0 || conferenciaAS.total_formas > 0) ? `
-      <div style="margin-top:6px;border-top:1px dashed #000;padding-top:4px">
-        <div><strong>Conferencia AUTOSYSTEM</strong></div>
-        <div>Vendas: ${m(conferenciaAS.total_vendas)}</div>
-        <div>Formas: ${m(conferenciaAS.total_formas)}</div>
-        <div>Diferenca: ${m(conferenciaAS.diferenca)} ${Math.abs(conferenciaAS.diferenca) < 0.02 ? '(OK)' : conferenciaAS.diferenca < 0 ? '(FALTOU LANCAR)' : '(A MAIS)'}</div>
-      </div>` : ''}
       ${observacao ? `<div style="margin-top:5px">Obs: ${escapeHtml(observacao)}</div>` : ''}
       ${assinatura ? `<div style="margin-top:6px;border-top:1px dashed #000;padding-top:3px">Assinatura:<br><img src="${assinatura}" style="max-width:50mm"/><br><span>${new Date().toLocaleString('pt-BR')}</span></div>` : ''}
     </body></html>`
@@ -948,12 +941,12 @@ export default function CaixaPage() {
             </div>
 
             <div className="p-6 space-y-5 print:p-4">
-              {/* Veredito: o frentista presta contas da VENDA de produtos */}
-              {conferenciaAS && conferenciaAS.total_vendas > 0 && (() => {
-                const venda  = conferenciaAS.total_vendas
-                const difV   = parseFloat((totalFrentista - venda).toFixed(2))
-                const ok     = Math.abs(difV) < 0.02
-                const faltou = difV < 0
+              {/* Veredito: o frentista presta contas de TODAS as entradas do caixa */}
+              {conferenciaAS && conferenciaAS.total_entradas > 0 && (() => {
+                const entradas = conferenciaAS.total_entradas
+                const difV     = parseFloat((totalFrentista - entradas).toFixed(2))
+                const ok       = Math.abs(difV) < 0.02
+                const faltou   = difV < 0
                 return (
                   <div className={`rounded-xl border-2 px-5 py-4 text-center ${
                     ok ? 'bg-emerald-50 border-emerald-300' : faltou ? 'bg-red-50 border-red-300' : 'bg-amber-50 border-amber-300'
@@ -962,7 +955,7 @@ export default function CaixaPage() {
                       {ok ? '✓ CAIXA CERTO' : faltou ? `FALTANDO ${fmt(Math.abs(difV))}` : `SOBRANDO ${fmt(Math.abs(difV))}`}
                     </p>
                     <div className="flex justify-center gap-5 mt-2 text-sm text-gray-600 flex-wrap">
-                      <span>Venda de Produtos: <span className="font-bold text-gray-800">{fmt(venda)}</span></span>
+                      <span>Total de Entradas: <span className="font-bold text-gray-800">{fmt(entradas)}</span></span>
                       <span>Você declarou: <span className="font-bold text-gray-800">{fmt(totalFrentista)}</span></span>
                     </div>
                   </div>

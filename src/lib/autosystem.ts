@@ -2372,7 +2372,7 @@ export interface DadosCaixaFrentista {
   a_prazo:            number
   cheque:             number
   notas_promissorias: number
-  total_vendas:       number   // entrada: venda de produtos (AUTOSYSTEM)
+  total_entradas:     number   // entrada: tudo que entra no caixa (AUTOSYSTEM)
   total_formas:       number   // saída: soma das formas de pagamento (AUTOSYSTEM)
   lancto_por_conta:   Record<string, number>   // breakdown por conta AS (lancto)
   lancto_por_motivo:  Record<number, number>   // breakdown por motivo_grid AS
@@ -2517,7 +2517,7 @@ export async function buscarDadosCaixaFrentista(
   const lancto_por_conta: Record<string, number>  = {}
   const lancto_por_motivo: Record<number, number> = {}
   const movto_por_forma: Record<string, number>   = {}
-  let total_vendas = 0   // entrada: venda de produtos (lado receita 4.%)
+  let total_entradas = 0 // entrada: tudo que entra no caixa (vendas + recebimentos)
   let total_formas = 0   // saída: soma das formas de pagamento lançadas
   let caixaGrids: number[] = []
   let estrategia = 'nenhuma'
@@ -2528,7 +2528,7 @@ export async function buscarDadosCaixaFrentista(
     return {
       cartoes: 0, cartoes_frotas: 0, pix_tef: 0, pix_cnpj: 0,
       dinheiro: 0, deposito_cofre: 0, a_prazo: 0, cheque: 0, notas_promissorias: 0,
-      total_vendas: 0, total_formas: 0,
+      total_entradas: 0, total_formas: 0,
       lancto_por_conta, lancto_por_motivo, movto_por_forma,
       caixas_encontrados: 0, estrategia,
     }
@@ -2567,21 +2567,13 @@ export async function buscarDadosCaixaFrentista(
     }
     const pdvRow = formaRows.find(r => r.conta_debitar.startsWith('1.1.2.') || r.conta_debitar.startsWith('1.1.1.'))
     pdvContaCode = pdvRow?.conta_debitar ?? null
-    console.log(`[caixa-frentista] formas=[${Object.keys(movto_por_forma).join('|')}] pdv=${pdvContaCode ?? 'null'}`)
+    // Total de ENTRADAS = consolidação do caixa/PDV (1.1.2.x): soma tudo que entra
+    // (venda de produtos + recebimento de faturas + outras entradas)
+    total_entradas = formaRows
+      .filter(r => r.conta_debitar.startsWith('1.1.2.'))
+      .reduce((s, r) => s + Number(r.total), 0)
+    console.log(`[caixa-frentista] formas=[${Object.keys(movto_por_forma).join('|')}] pdv=${pdvContaCode ?? 'null'} total_entradas=${total_entradas.toFixed(2)}`)
   } catch (e: any) { console.log(`[caixa-frentista] movto forma erro: ${e.message}`) }
-
-  // ── 3b. Total de vendas (entrada): lado receita (conta_creditar 4.%) ─────────
-  try {
-    const vendaRows = await query<{ total: number }>(
-      `SELECT COALESCE(SUM(valor), 0)::float AS total
-       FROM movto
-       WHERE empresa = $1 AND data = $2::date AND usuario = $3
-         AND conta_creditar LIKE '4.%'`,
-      [empresaGrid, data, usuarioAS],
-    )
-    total_vendas = Number(vendaRows[0]?.total ?? 0)
-    console.log(`[caixa-frentista] total_vendas(4.%)=${total_vendas.toFixed(2)} total_formas=${total_formas.toFixed(2)} dif=${(total_formas - total_vendas).toFixed(2)}`)
-  } catch (e: any) { console.log(`[caixa-frentista] total_vendas erro: ${e.message}`) }
 
   // ── 4. Lançamentos por conta (lancto) filtrado por usuario ───────────────
   // lancto NÃO tem coluna caixa nem motivo nesta instância — filtra por empresa+data+usuario
@@ -2816,7 +2808,7 @@ export async function buscarDadosCaixaFrentista(
     (cartoes + cartoes_frotas + pix_tef + pix_cnpj + dinheiro + deposito_cofre + a_prazo + cheque + notas_promissorias).toFixed(2)
   )
 
-  console.log(`[caixa-frentista] result cartoes=${cartoes.toFixed(2)} frotas=${cartoes_frotas.toFixed(2)} pix=${pix_tef.toFixed(2)} pix_cnpj=${pix_cnpj.toFixed(2)} din=${dinheiro.toFixed(2)} dep_cofre=${deposito_cofre.toFixed(2)} total_formas=${total_formas.toFixed(2)} total_vendas=${total_vendas.toFixed(2)} configCoberta=${configCoberta}`)
+  console.log(`[caixa-frentista] result cartoes=${cartoes.toFixed(2)} frotas=${cartoes_frotas.toFixed(2)} pix=${pix_tef.toFixed(2)} pix_cnpj=${pix_cnpj.toFixed(2)} din=${dinheiro.toFixed(2)} dep_cofre=${deposito_cofre.toFixed(2)} total_formas=${total_formas.toFixed(2)} total_entradas=${total_entradas.toFixed(2)} configCoberta=${configCoberta}`)
 
   return {
     cartoes,
@@ -2828,7 +2820,7 @@ export async function buscarDadosCaixaFrentista(
     a_prazo,
     cheque,
     notas_promissorias,
-    total_vendas,
+    total_entradas,
     total_formas,
     lancto_por_conta,
     lancto_por_motivo,

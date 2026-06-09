@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     let dadosAS = {
       cartoes: 0, cartoes_frotas: 0, pix_tef: 0, pix_cnpj: 0,
       dinheiro: 0, deposito_cofre: 0, a_prazo: 0, cheque: 0, notas_promissorias: 0,
-      total_vendas: 0, total_formas: 0,
+      total_entradas: 0, total_formas: 0,
       lancto_por_conta:   {} as Record<string, number>,
       lancto_por_motivo:  {} as Record<number, number>,
       movto_por_forma:    {} as Record<string, number>,
@@ -114,11 +114,11 @@ export async function GET(req: NextRequest) {
       data,
       caixas_encontrados: dadosAS.caixas_encontrados,
       as_estrategia:      dadosAS.estrategia,
-      // Conferência interna do AUTOSYSTEM: vendas (entrada) × formas (saída)
+      // Conferência interna do AUTOSYSTEM: entradas × formas (saída)
       conferencia_as: {
-        total_vendas: parseFloat((dadosAS.total_vendas || 0).toFixed(2)),
-        total_formas: parseFloat((dadosAS.total_formas || 0).toFixed(2)),
-        diferenca:    parseFloat(((dadosAS.total_formas || 0) - (dadosAS.total_vendas || 0)).toFixed(2)),
+        total_entradas: parseFloat((dadosAS.total_entradas || 0).toFixed(2)),
+        total_formas:   parseFloat((dadosAS.total_formas || 0).toFixed(2)),
+        diferenca:      parseFloat(((dadosAS.total_formas || 0) - (dadosAS.total_entradas || 0)).toFixed(2)),
       },
     })
   } catch (e: any) {
