@@ -126,6 +126,6 @@ const CAMPOS_PADRAO = [
   { tipo: 'pix_cnpj',           label: 'PIX CNPJ',            ordem: 4, ativo: true  },
   { tipo: 'cartoes',            label: 'Cart. Stone',         ordem: 5, ativo: true  },
   { tipo: 'cartoes_frotas',     label: 'Cart. Frotas',        ordem: 6, ativo: true  },
-  { tipo: 'notas_promissorias', label: 'Notas Promissórias',  ordem: 7, ativo: false },
+  { tipo: 'notas_promissorias', label: 'A Prazo',             ordem: 7, ativo: true  },
   { tipo: 'cheque',             label: 'Cheque',              ordem: 8, ativo: false },
 ]

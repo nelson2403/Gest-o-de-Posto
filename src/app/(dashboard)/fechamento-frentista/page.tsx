@@ -29,7 +29,7 @@ const TIPOS_DISPONIVEIS: { tipo: string; label: string }[] = [
   { tipo: 'pix_cnpj',           label: 'PIX CNPJ' },
   { tipo: 'cartoes',            label: 'Cart. Stone' },
   { tipo: 'cartoes_frotas',     label: 'Cart. Frotas' },
-  { tipo: 'notas_promissorias', label: 'Notas Promissórias' },
+  { tipo: 'notas_promissorias', label: 'A Prazo' },
   { tipo: 'cheque',             label: 'Cheque' },
 ]
 
