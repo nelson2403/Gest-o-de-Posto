@@ -2368,6 +2368,7 @@ export interface DadosCaixaFrentista {
   pix_tef:            number
   pix_cnpj:           number
   dinheiro:           number
+  deposito_cofre:     number
   a_prazo:            number
   cheque:             number
   notas_promissorias: number
@@ -2522,7 +2523,7 @@ export async function buscarDadosCaixaFrentista(
     console.log(`[caixa-frentista] usuario AS não encontrado para codigo=${codigoOperador}`)
     return {
       cartoes: 0, cartoes_frotas: 0, pix_tef: 0, pix_cnpj: 0,
-      dinheiro: 0, a_prazo: 0, cheque: 0, notas_promissorias: 0,
+      dinheiro: 0, deposito_cofre: 0, a_prazo: 0, cheque: 0, notas_promissorias: 0,
       lancto_por_conta, lancto_por_motivo, movto_por_forma,
       caixas_encontrados: 0, estrategia,
     }
@@ -2689,6 +2690,7 @@ export async function buscarDadosCaixaFrentista(
   // 6. Agrega totais por grupo usando movto_por_forma (principal) + config tefGrupos (nome → grupo)
   let cartoes            = 0
   let dinheiro           = 0
+  let deposito_cofre     = 0
   let cartoes_frotas     = 0
   let pix_tef            = 0
   let pix_cnpj           = 0
@@ -2755,6 +2757,7 @@ export async function buscarDadosCaixaFrentista(
         if (grupo === 'pix')                pix_tef            += total
         if (grupo === 'pix_cnpj')           pix_cnpj           += total
         if (grupo === 'dinheiro')           dinheiro           += total
+        if (grupo === 'deposito_cofre')     deposito_cofre     += total
         if (grupo === 'a_prazo')            notas_promissorias += total
         if (grupo === 'cheque')             cheque             += total
         if (grupo === 'notas_promissorias') notas_promissorias += total
@@ -2770,10 +2773,11 @@ export async function buscarDadosCaixaFrentista(
     // Usa mapeamento motivo → grupo (instalações que têm lancto.motivo)
     for (const [mgStr, total] of Object.entries(lancto_por_motivo)) {
       const grupo = motivoGrupos[Number(mgStr)]
-      if (grupo === 'cartoes')  cartoes        += total
-      if (grupo === 'dinheiro') dinheiro       += total
-      if (grupo === 'frotas')   cartoes_frotas += total
-      if (grupo === 'pix')      pix_tef        += total
+      if (grupo === 'cartoes')        cartoes        += total
+      if (grupo === 'dinheiro')       dinheiro       += total
+      if (grupo === 'deposito_cofre') deposito_cofre += total
+      if (grupo === 'frotas')         cartoes_frotas += total
+      if (grupo === 'pix')            pix_tef        += total
     }
   } else {
     // Fallback puro: keyword matching sobre conta.nome
@@ -2796,6 +2800,7 @@ export async function buscarDadosCaixaFrentista(
     pix_tef,
     pix_cnpj,
     dinheiro,
+    deposito_cofre,
     a_prazo,
     cheque,
     notas_promissorias,

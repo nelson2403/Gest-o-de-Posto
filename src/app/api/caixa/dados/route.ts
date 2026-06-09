@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     // Dados do AUTOSYSTEM (formas de pagamento via movto do frentista)
     let dadosAS = {
       cartoes: 0, cartoes_frotas: 0, pix_tef: 0, pix_cnpj: 0,
-      dinheiro: 0, a_prazo: 0, cheque: 0, notas_promissorias: 0,
+      dinheiro: 0, deposito_cofre: 0, a_prazo: 0, cheque: 0, notas_promissorias: 0,
       lancto_por_conta:   {} as Record<string, number>,
       lancto_por_motivo:  {} as Record<number, number>,
       movto_por_forma:    {} as Record<string, number>,
@@ -100,6 +100,7 @@ export async function GET(req: NextRequest) {
       pix:                dadosAS.pix_tef        > 0 ? dadosAS.pix_tef        : null,
       pix_cnpj:           dadosAS.pix_cnpj       > 0 ? dadosAS.pix_cnpj       : null,
       dinheiro:           dadosAS.dinheiro       > 0 ? dadosAS.dinheiro       : null,
+      deposito_cofre:     dadosAS.deposito_cofre > 0 ? dadosAS.deposito_cofre : null,
       notas_promissorias: notasTotal             > 0 ? notasTotal             : null,
       cheque:             dadosAS.cheque         > 0 ? dadosAS.cheque         : null,
     }
@@ -119,11 +120,12 @@ export async function GET(req: NextRequest) {
 }
 
 const CAMPOS_PADRAO = [
-  { tipo: 'dinheiro',           label: 'Dinheiro',            ordem: 1, ativo: true  },
-  { tipo: 'pix',                label: 'PIX',                 ordem: 2, ativo: true  },
-  { tipo: 'pix_cnpj',           label: 'PIX CNPJ',            ordem: 3, ativo: true  },
-  { tipo: 'cartoes',            label: 'Cartões',             ordem: 4, ativo: true  },
-  { tipo: 'cartoes_frotas',     label: 'Cartões Frotas',      ordem: 5, ativo: true  },
-  { tipo: 'notas_promissorias', label: 'Notas Promissórias',  ordem: 6, ativo: false },
-  { tipo: 'cheque',             label: 'Cheque',              ordem: 7, ativo: false },
+  { tipo: 'dinheiro',           label: 'Sangria',             ordem: 1, ativo: true  },
+  { tipo: 'deposito_cofre',     label: 'Dep. Cofre',          ordem: 2, ativo: true  },
+  { tipo: 'pix',                label: 'PIX',                 ordem: 3, ativo: true  },
+  { tipo: 'pix_cnpj',           label: 'PIX CNPJ',            ordem: 4, ativo: true  },
+  { tipo: 'cartoes',            label: 'Cart. Stone',         ordem: 5, ativo: true  },
+  { tipo: 'cartoes_frotas',     label: 'Cart. Frotas',        ordem: 6, ativo: true  },
+  { tipo: 'notas_promissorias', label: 'Notas Promissórias',  ordem: 7, ativo: false },
+  { tipo: 'cheque',             label: 'Cheque',              ordem: 8, ativo: false },
 ]

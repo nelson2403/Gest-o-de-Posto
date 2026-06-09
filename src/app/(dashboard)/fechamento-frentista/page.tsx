@@ -23,31 +23,34 @@ interface FormaRow {
 }
 
 const TIPOS_DISPONIVEIS: { tipo: string; label: string }[] = [
-  { tipo: 'dinheiro',           label: 'Dinheiro' },
+  { tipo: 'dinheiro',           label: 'Sangria' },
+  { tipo: 'deposito_cofre',     label: 'Dep. Cofre' },
   { tipo: 'pix',                label: 'PIX' },
   { tipo: 'pix_cnpj',           label: 'PIX CNPJ' },
-  { tipo: 'cartoes',            label: 'Cartões (TEF)' },
-  { tipo: 'cartoes_frotas',     label: 'Cartões Frotas' },
+  { tipo: 'cartoes',            label: 'Cart. Stone' },
+  { tipo: 'cartoes_frotas',     label: 'Cart. Frotas' },
   { tipo: 'notas_promissorias', label: 'Notas Promissórias' },
   { tipo: 'cheque',             label: 'Cheque' },
 ]
 
 const GRUPOS = [
-  { value: 'dinheiro', label: 'Dinheiro', color: 'bg-green-100 text-green-800 border-green-200' },
-  { value: 'pix',      label: 'PIX',      color: 'bg-cyan-100 text-cyan-800 border-cyan-200'   },
-  { value: 'cartoes',  label: 'Cartões',  color: 'bg-blue-100 text-blue-800 border-blue-200'   },
-  { value: 'frotas',   label: 'Frotas',   color: 'bg-indigo-100 text-indigo-800 border-indigo-200' },
-  { value: 'cheques',  label: 'Cheques',  color: 'bg-purple-100 text-purple-800 border-purple-200' },
-  { value: 'notas',    label: 'Notas/Crédito', color: 'bg-orange-100 text-orange-800 border-orange-200' },
+  { value: 'dinheiro',       label: 'Sangria',       color: 'bg-green-100 text-green-800 border-green-200' },
+  { value: 'deposito_cofre', label: 'Dep. Cofre',    color: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+  { value: 'pix',            label: 'PIX',           color: 'bg-cyan-100 text-cyan-800 border-cyan-200'   },
+  { value: 'cartoes',        label: 'Cart. Stone',   color: 'bg-blue-100 text-blue-800 border-blue-200'   },
+  { value: 'frotas',         label: 'Cart. Frotas',  color: 'bg-indigo-100 text-indigo-800 border-indigo-200' },
+  { value: 'cheques',        label: 'Cheques',       color: 'bg-purple-100 text-purple-800 border-purple-200' },
+  { value: 'notas',          label: 'Notas/Crédito', color: 'bg-orange-100 text-orange-800 border-orange-200' },
 ] as const
 
 // Grupos para mapeamento AUTOSYSTEM → campo do formulário
 const GRUPOS_AS = [
-  { value: 'dinheiro',           label: 'Dinheiro',           color: 'bg-green-100 text-green-800 border-green-200'   },
+  { value: 'dinheiro',           label: 'Sangria',            color: 'bg-green-100 text-green-800 border-green-200'   },
+  { value: 'deposito_cofre',     label: 'Dep. Cofre',         color: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
   { value: 'pix',                label: 'PIX',                color: 'bg-cyan-100 text-cyan-800 border-cyan-200'     },
   { value: 'pix_cnpj',           label: 'PIX CNPJ',           color: 'bg-sky-100 text-sky-800 border-sky-200'        },
-  { value: 'cartoes',            label: 'Cartões',            color: 'bg-blue-100 text-blue-800 border-blue-200'     },
-  { value: 'frotas',             label: 'Frotas',             color: 'bg-indigo-100 text-indigo-800 border-indigo-200' },
+  { value: 'cartoes',            label: 'Cart. Stone',        color: 'bg-blue-100 text-blue-800 border-blue-200'     },
+  { value: 'frotas',             label: 'Cart. Frotas',       color: 'bg-indigo-100 text-indigo-800 border-indigo-200' },
   { value: 'a_prazo',            label: 'A Prazo',            color: 'bg-gray-100 text-gray-600 border-gray-200'     },
   { value: 'cheque',             label: 'Cheque',             color: 'bg-purple-100 text-purple-800 border-purple-200' },
   { value: 'notas_promissorias', label: 'Notas Promissórias', color: 'bg-orange-100 text-orange-800 border-orange-200' },
