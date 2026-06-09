@@ -2372,6 +2372,8 @@ export interface DadosCaixaFrentista {
   a_prazo:            number
   cheque:             number
   notas_promissorias: number
+  total_vendas:       number   // entrada: venda de produtos (AUTOSYSTEM)
+  total_formas:       number   // saída: soma das formas de pagamento (AUTOSYSTEM)
   lancto_por_conta:   Record<string, number>   // breakdown por conta AS (lancto)
   lancto_por_motivo:  Record<number, number>   // breakdown por motivo_grid AS
   movto_por_forma:    Record<string, number>   // conta.nome → total (formas de pagamento do movto)
@@ -2515,6 +2517,8 @@ export async function buscarDadosCaixaFrentista(
   const lancto_por_conta: Record<string, number>  = {}
   const lancto_por_motivo: Record<number, number> = {}
   const movto_por_forma: Record<string, number>   = {}
+  let total_vendas = 0   // entrada: venda de produtos (lado receita 4.%)
+  let total_formas = 0   // saída: soma das formas de pagamento lançadas
   let caixaGrids: number[] = []
   let estrategia = 'nenhuma'
   let pdvContaCode: string | null = null
@@ -2524,6 +2528,7 @@ export async function buscarDadosCaixaFrentista(
     return {
       cartoes: 0, cartoes_frotas: 0, pix_tef: 0, pix_cnpj: 0,
       dinheiro: 0, deposito_cofre: 0, a_prazo: 0, cheque: 0, notas_promissorias: 0,
+      total_vendas: 0, total_formas: 0,
       lancto_por_conta, lancto_por_motivo, movto_por_forma,
       caixas_encontrados: 0, estrategia,
     }
@@ -2559,11 +2564,25 @@ export async function buscarDadosCaixaFrentista(
     for (const r of formaRows) {
       const nome = decodeBytea(r.nome_b).trim() || r.conta_debitar
       movto_por_forma[nome] = (movto_por_forma[nome] ?? 0) + Number(r.total)
+      total_formas += Number(r.total)  // saída total = soma das formas (debito não-4.%)
     }
     const pdvRow = formaRows.find(r => r.conta_debitar.startsWith('1.1.2.') || r.conta_debitar.startsWith('1.1.1.'))
     pdvContaCode = pdvRow?.conta_debitar ?? null
     console.log(`[caixa-frentista] formas=[${Object.keys(movto_por_forma).join('|')}] pdv=${pdvContaCode ?? 'null'}`)
   } catch (e: any) { console.log(`[caixa-frentista] movto forma erro: ${e.message}`) }
+
+  // ── 3b. Total de vendas (entrada): lado receita (conta_creditar 4.%) ─────────
+  try {
+    const vendaRows = await query<{ total: number }>(
+      `SELECT COALESCE(SUM(valor), 0)::float AS total
+       FROM movto
+       WHERE empresa = $1 AND data = $2::date AND usuario = $3
+         AND conta_creditar LIKE '4.%'`,
+      [empresaGrid, data, usuarioAS],
+    )
+    total_vendas = Number(vendaRows[0]?.total ?? 0)
+    console.log(`[caixa-frentista] total_vendas(4.%)=${total_vendas.toFixed(2)} total_formas=${total_formas.toFixed(2)} dif=${(total_formas - total_vendas).toFixed(2)}`)
+  } catch (e: any) { console.log(`[caixa-frentista] total_vendas erro: ${e.message}`) }
 
   // ── 4. Lançamentos por conta (lancto) filtrado por usuario ───────────────
   // lancto NÃO tem coluna caixa nem motivo nesta instância — filtra por empresa+data+usuario
@@ -2804,6 +2823,8 @@ export async function buscarDadosCaixaFrentista(
     a_prazo,
     cheque,
     notas_promissorias,
+    total_vendas,
+    total_formas,
     lancto_por_conta,
     lancto_por_motivo,
     movto_por_forma,

@@ -284,6 +284,7 @@ export default function CaixaPage() {
   const [loading,   setLoading]   = useState(false)
   const [erro,      setErro]      = useState('')
   const [fechamentoId, setFechamentoId] = useState('')
+  const [conferenciaAS, setConferenciaAS] = useState<{ total_vendas: number; total_formas: number; diferenca: number } | null>(null)
 
   // ── Login ──────────────────────────────────────────────────────────────────
 
@@ -346,6 +347,13 @@ export default function CaixaPage() {
         <tbody>${linhas}</tbody>
         <tfoot><tr class="tot"><td>Total</td><td class="r">${m(totAS)}</td><td class="r">${m(totFr)}</td><td class="r">${m(totDif)}</td></tr></tfoot>
       </table>
+      ${conferenciaAS && (conferenciaAS.total_vendas > 0 || conferenciaAS.total_formas > 0) ? `
+      <div style="margin-top:6px;border-top:1px dashed #000;padding-top:4px">
+        <div><strong>Conferencia AUTOSYSTEM</strong></div>
+        <div>Vendas: ${m(conferenciaAS.total_vendas)}</div>
+        <div>Formas: ${m(conferenciaAS.total_formas)}</div>
+        <div>Diferenca: ${m(conferenciaAS.diferenca)} ${Math.abs(conferenciaAS.diferenca) < 0.02 ? '(OK)' : conferenciaAS.diferenca < 0 ? '(FALTOU LANCAR)' : '(A MAIS)'}</div>
+      </div>` : ''}
       ${observacao ? `<div style="margin-top:5px">Obs: ${escapeHtml(observacao)}</div>` : ''}
       ${assinatura ? `<div style="margin-top:6px;border-top:1px dashed #000;padding-top:3px">Assinatura:<br><img src="${assinatura}" style="max-width:50mm"/><br><span>${new Date().toLocaleString('pt-BR')}</span></div>` : ''}
     </body></html>`
@@ -418,6 +426,7 @@ export default function CaixaPage() {
     // Regra: só um fechamento por dia — se já fez hoje, bloqueia
     if (dadosJson.ja_fechado) { setFase('bloqueado'); return false }
     setCampos(dadosJson.campos)
+    setConferenciaAS(dadosJson.conferencia_as ?? null)
     const valAS: Record<string, number | null> = dadosJson.valores_as ?? {}
     setItens(dadosJson.campos.map((c: CampoConfig) => ({
       tipo: c.tipo, label: c.label,
@@ -966,6 +975,32 @@ export default function CaixaPage() {
                   </tfoot>
                 </table>
               </div>
+
+              {/* Conferência AUTOSYSTEM: vendas (entrada) × formas (saída) */}
+              {conferenciaAS && (conferenciaAS.total_vendas > 0 || conferenciaAS.total_formas > 0) && (() => {
+                const dif = conferenciaAS.diferenca
+                const ok  = Math.abs(dif) < 0.02
+                const faltou = dif < 0
+                return (
+                  <div className={`rounded-xl border px-4 py-3 ${
+                    ok ? 'bg-emerald-50 border-emerald-200'
+                       : faltou ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'
+                  }`}>
+                    <p className={`text-sm font-bold ${ok ? 'text-emerald-700' : faltou ? 'text-red-700' : 'text-amber-700'}`}>
+                      {ok
+                        ? '✓ Vendas batem com as formas de pagamento'
+                        : faltou
+                          ? `⚠ Faltou lançar ${fmt(Math.abs(dif))} em formas de pagamento`
+                          : `⚠ Formas de pagamento ${fmt(Math.abs(dif))} acima das vendas`}
+                    </p>
+                    <div className="flex gap-4 mt-1.5 text-xs text-gray-600">
+                      <span>Vendas: <span className="font-semibold">{fmt(conferenciaAS.total_vendas)}</span></span>
+                      <span>Formas: <span className="font-semibold">{fmt(conferenciaAS.total_formas)}</span></span>
+                      <span>Diferença: <span className="font-semibold">{fmt(dif)}</span></span>
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Observação */}
               <div className="print:hidden">
