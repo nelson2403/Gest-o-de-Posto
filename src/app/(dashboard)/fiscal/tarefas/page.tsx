@@ -12,13 +12,19 @@ import { useAuthContext } from '@/contexts/AuthContext'
 import { toast } from '@/hooks/use-toast'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 
-// ─── Fornecedores de combustível ──────────────────────────────────────────────
-const FORNECEDORES_COMBUSTIVEL = ['raizen', 'ipiranga', 'vibra', 'nexta']
+// ─── Fornecedores de combustível / ARLA ───────────────────────────────────────
+const FORNECEDORES_COMBUSTIVEL = ['raizen', 'ipiranga', 'vibra', 'nexta', 'biergai']
 
 function isFornecedorCombustivel(nome: string): boolean {
   const n = (nome ?? '').toLowerCase()
   return FORNECEDORES_COMBUSTIVEL.some(f => n.includes(f))
 }
+
+// Sugestões de produtos descarregados (combustíveis + ARLA)
+const COMBUSTIVEIS_SUGESTOES = [
+  'Gasolina Comum', 'Gasolina Aditivada', 'Gasolina Podium',
+  'Etanol', 'Diesel S10', 'Diesel S500', 'ARLA 32', 'GNV',
+]
 
 const TURNOS_CAIXA = ['1° Turno', '2° Turno', '3° Turno']
 
@@ -372,6 +378,19 @@ function DialogReconhecer({
     setComb(prev => ({ ...prev, [field]: val }))
   }
 
+  // Discriminação dos combustíveis descarregados (produto + litragem + observação)
+  type DescargaItem = { produto: string; litragem: string; observacao: string }
+  const [descarga, setDescarga] = useState<DescargaItem[]>(
+    tarefa.dados_combustivel?.descarga?.length
+      ? tarefa.dados_combustivel.descarga
+      : [{ produto: '', litragem: '', observacao: '' }],
+  )
+  const setDescargaItem = (idx: number, campo: keyof DescargaItem, val: string) =>
+    setDescarga(prev => prev.map((d, i) => i === idx ? { ...d, [campo]: val } : d))
+  const addDescarga = () => setDescarga(prev => [...prev, { produto: '', litragem: '', observacao: '' }])
+  const removeDescarga = (idx: number) => setDescarga(prev => prev.filter((_, i) => i !== idx))
+  const totalLitragem = descarga.reduce((s, d) => s + (parseFloat(d.litragem) || 0), 0)
+
   const nfInputRef      = useRef<HTMLInputElement>(null!)
   const itensCarregados = useRef(false)
 
@@ -490,6 +509,8 @@ function DialogReconhecer({
       if (!comb.quem_recebeu.trim()) return setErro('Informe quem recebeu o combustível')
       if (!comb.hora.trim()) return setErro('Informe a hora do recebimento')
       if (!comb.turno_caixa) return setErro('Selecione o turno do caixa no AUTOSYSTEM')
+      const descargaValida = descarga.filter(d => d.produto.trim() && (parseFloat(d.litragem) || 0) > 0)
+      if (!descargaValida.length) return setErro('Discrimine ao menos um combustível com sua litragem')
     }
 
     setSalvando(true)
@@ -512,7 +533,11 @@ function DialogReconhecer({
         nf_valor_informado: valorNf,
         boletos:            boletosEnvio,
         itens_romaneio:     itens.length ? itens : null,
-        dados_combustivel:  eCombustivel ? comb : null,
+        dados_combustivel:  eCombustivel ? {
+          ...comb,
+          descarga: descarga.filter(d => d.produto.trim() && (parseFloat(d.litragem) || 0) > 0),
+          litragem_descarregada: totalLitragem || comb.litragem_descarregada,
+        } : null,
         is_uso_consumo:     isUsoConsumo,
       }),
     })
@@ -789,29 +814,69 @@ function DialogReconhecer({
                   </div>
                 </div>
 
-                {/* Litragem + Observação */}
-                <div>
-                  <label className="text-[11px] font-semibold text-gray-600">
-                    Litragem descarregada (L)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    placeholder="Ex: 15000"
-                    value={comb.litragem_descarregada}
-                    onChange={e => setCombField('litragem_descarregada', e.target.value)}
-                    className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-amber-400/30 mt-1"
-                  />
+                {/* Discriminação dos combustíveis descarregados */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-semibold text-gray-600">
+                      Combustíveis descarregados <span className="text-red-500">*</span>
+                    </label>
+                    {totalLitragem > 0 && (
+                      <span className="text-[11px] font-semibold text-amber-700">
+                        Total: {totalLitragem.toLocaleString('pt-BR')} L
+                      </span>
+                    )}
+                  </div>
+
+                  <datalist id="combustiveis-sugestoes">
+                    {COMBUSTIVEIS_SUGESTOES.map(c => <option key={c} value={c} />)}
+                  </datalist>
+
+                  {descarga.map((d, idx) => (
+                    <div key={idx} className="bg-white border border-amber-200 rounded-lg p-2.5 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          list="combustiveis-sugestoes"
+                          placeholder="Combustível (ex: Diesel S10, ARLA 32)"
+                          value={d.produto}
+                          onChange={e => setDescargaItem(idx, 'produto', e.target.value)}
+                          className="flex-1 px-2.5 py-2 border border-gray-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+                        />
+                        <input
+                          type="number" min={0} step="0.01"
+                          placeholder="Litros"
+                          value={d.litragem}
+                          onChange={e => setDescargaItem(idx, 'litragem', e.target.value)}
+                          className="w-28 px-2.5 py-2 border border-gray-200 rounded-lg text-[13px] text-right focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+                        />
+                        {descarga.length > 1 && (
+                          <button type="button" onClick={() => removeDescarga(idx)} className="text-gray-300 hover:text-red-500">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Observação deste combustível (opcional)"
+                        value={d.observacao}
+                        onChange={e => setDescargaItem(idx, 'observacao', e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-[12px] focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+                      />
+                    </div>
+                  ))}
+
+                  <button type="button" onClick={addDescarga}
+                    className="flex items-center gap-1 text-[12px] font-medium text-amber-700 hover:text-amber-800">
+                    <Plus className="w-3.5 h-3.5" /> Adicionar combustível
+                  </button>
                 </div>
 
                 <div>
                   <label className="text-[11px] font-semibold text-gray-600">
-                    Observações
+                    Observações gerais
                   </label>
                   <textarea
-                    rows={3}
-                    placeholder="Alguma observação sobre o descarregamento..."
+                    rows={2}
+                    placeholder="Alguma observação geral sobre o descarregamento..."
                     value={comb.observacao}
                     onChange={e => setCombField('observacao', e.target.value)}
                     className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-amber-400/30 resize-none mt-1"
@@ -1139,12 +1204,29 @@ function TarefaRow({
                   {t.dados_combustivel.quem_recebeu && (
                     <div><p className="text-gray-400 text-[10px]">Recebido por</p><p className="text-gray-800 font-medium">{t.dados_combustivel.quem_recebeu}</p></div>
                   )}
-                  {t.dados_combustivel.litragem_descarregada && (
+                  {/* Discriminação por combustível */}
+                  {Array.isArray(t.dados_combustivel.descarga) && t.dados_combustivel.descarga.length > 0 ? (
+                    <div className="col-span-2 sm:col-span-3">
+                      <p className="text-gray-400 text-[10px] mb-1">Combustíveis descarregados</p>
+                      <div className="space-y-1">
+                        {t.dados_combustivel.descarga.map((d: any, i: number) => (
+                          <div key={i} className="flex items-baseline gap-2 text-[12px]">
+                            <span className="font-medium text-gray-800">{d.produto}</span>
+                            <span className="text-amber-700 font-semibold">{Number(d.litragem || 0).toLocaleString('pt-BR')} L</span>
+                            {d.observacao && <span className="text-gray-500">— {d.observacao}</span>}
+                          </div>
+                        ))}
+                      </div>
+                      {t.dados_combustivel.litragem_descarregada > 0 && (
+                        <p className="text-[11px] text-gray-500 mt-1">Total: {Number(t.dados_combustivel.litragem_descarregada).toLocaleString('pt-BR')} L</p>
+                      )}
+                    </div>
+                  ) : t.dados_combustivel.litragem_descarregada && (
                     <div><p className="text-gray-400 text-[10px]">Litragem</p><p className="text-gray-800 font-medium">{Number(t.dados_combustivel.litragem_descarregada).toLocaleString('pt-BR')} L</p></div>
                   )}
                   {t.dados_combustivel.observacao && (
                     <div className="col-span-2 sm:col-span-3">
-                      <p className="text-gray-400 text-[10px]">Observação</p>
+                      <p className="text-gray-400 text-[10px]">Observação geral</p>
                       <p className="text-gray-800">{t.dados_combustivel.observacao}</p>
                     </div>
                   )}
