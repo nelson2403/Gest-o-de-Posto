@@ -83,6 +83,38 @@ export async function POST(req: NextRequest) {
         .eq('id', frentista.id)
     }
 
+    // ── Anti-fraude: 1 acesso por fechamento ────────────────────────────────
+    // (1) Já enviou o fechamento de hoje? bloqueia.
+    const hojeBrasil = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+    const { data: jaFez } = await admin
+      .from('frentista_fechamentos')
+      .select('id')
+      .eq('frentista_id', frentista.id)
+      .eq('data_fechamento', hojeBrasil)
+      .maybeSingle()
+
+    if (jaFez) {
+      return NextResponse.json({
+        error: 'Você já fez o fechamento de hoje. Procure o responsável se precisar refazer.',
+      }, { status: 409 })
+    }
+
+    // (2) Já existe sessão ativa? significa que já iniciou (e recarregou a
+    // página). Bloqueia o re-login para não voltar à tela de valores e refazer.
+    // (A sessão é apagada ao enviar o fechamento; expira sozinha em 12h.)
+    const { data: sessaoAtiva } = await admin
+      .from('frentista_sessoes')
+      .select('id')
+      .eq('frentista_id', frentista.id)
+      .gt('expira_em', new Date().toISOString())
+      .limit(1)
+
+    if (sessaoAtiva && sessaoAtiva.length > 0) {
+      return NextResponse.json({
+        error: 'Você já iniciou o fechamento. Não é possível acessar novamente. Procure o responsável se precisar refazer.',
+      }, { status: 409 })
+    }
+
     const token = await criarSessao(frentista.id)
     return NextResponse.json({
       token,
