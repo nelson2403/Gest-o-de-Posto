@@ -2,14 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+// Padrão único — deve espelhar CAMPOS_PADRAO de /api/caixa/dados
 const CAMPOS_PADRAO = [
-  { tipo: 'dinheiro',           label: 'Dinheiro',            ordem: 1, ativo: true  },
-  { tipo: 'pix',                label: 'PIX',                 ordem: 2, ativo: true  },
-  { tipo: 'pix_cnpj',           label: 'PIX CNPJ',            ordem: 3, ativo: true  },
-  { tipo: 'cartoes',            label: 'Cartões',             ordem: 4, ativo: true  },
-  { tipo: 'cartoes_frotas',     label: 'Cartões Frotas',      ordem: 5, ativo: true  },
-  { tipo: 'notas_promissorias', label: 'Notas Promissórias',  ordem: 6, ativo: false },
-  { tipo: 'cheque',             label: 'Cheque',              ordem: 7, ativo: false },
+  { tipo: 'dinheiro',           label: 'Sangria',             ordem: 1, ativo: true  },
+  { tipo: 'deposito_cofre',     label: 'Dep. Cofre',          ordem: 2, ativo: true  },
+  { tipo: 'pix',                label: 'PIX',                 ordem: 3, ativo: true  },
+  { tipo: 'pix_cnpj',           label: 'PIX CNPJ',            ordem: 4, ativo: true  },
+  { tipo: 'cartoes',            label: 'Cart. Stone',         ordem: 5, ativo: true  },
+  { tipo: 'cartoes_frotas',     label: 'Cart. Frotas',        ordem: 6, ativo: true  },
+  { tipo: 'notas_promissorias', label: 'A Prazo',             ordem: 7, ativo: true  },
+  { tipo: 'cheque',             label: 'Cheque',              ordem: 8, ativo: true  },
 ]
 
 async function checkAuth() {
