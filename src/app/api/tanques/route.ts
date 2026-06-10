@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   if (postoNomeParam) {
     q = q.ilike('posto_nome', postoNomeParam)
-  } else if (['master', 'adm_transpombal'].includes(userRole)) {
+  } else if (['master', 'adm_transpombal', 'adm_fiscal'].includes(userRole)) {
     // vê todos
   } else {
     // Gerente: filtra pelos postos vinculados (1+). Combina posto_id e nome

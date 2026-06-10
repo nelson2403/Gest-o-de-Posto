@@ -392,6 +392,7 @@ export default function TanquesPage() {
   const isGerente     = role === 'gerente'
   const isTranspombal = role === 'adm_transpombal'
   const isAdmin       = role === 'master' || isTranspombal
+  const isFiscalViewer = role === 'adm_fiscal'   // vê tudo, mas só leitura (não edita medições)
 
   const [data,          setData]          = useState(today())
   const [postoFiltro,   setPostoFiltro]   = useState('')
@@ -689,7 +690,7 @@ export default function TanquesPage() {
               className="h-8 px-3 flex items-center gap-1.5 text-[12px] font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50">
               <RefreshCw className={cn('w-3.5 h-3.5', (loading || loadingHist) && 'animate-spin')} />
             </button>
-            {viewMode === 'detalhe' && postoFiltro && (
+            {viewMode === 'detalhe' && postoFiltro && !isFiscalViewer && (
               <button onClick={salvar} disabled={saving || loading}
                 className="h-8 px-4 flex items-center gap-1.5 text-[12px] font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded-lg disabled:opacity-50 transition-colors">
                 {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
@@ -1239,9 +1240,11 @@ export default function TanquesPage() {
                             type="number" min={0} max={tanque.capacidade_litros} step={100}
                             value={medicoes[tanque.id] ?? (tanque.medida_litros !== null ? String(tanque.medida_litros) : '')}
                             onChange={e => setMedicoes(prev => ({ ...prev, [tanque.id]: e.target.value }))}
-                            placeholder="0"
+                            placeholder={isFiscalViewer ? '—' : '0'}
+                            readOnly={isFiscalViewer}
                             className={cn(
-                              'flex-1 h-9 px-3 rounded-lg border bg-white text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-colors',
+                              'flex-1 h-9 px-3 rounded-lg border text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-colors',
+                              isFiscalViewer ? 'bg-gray-50 cursor-default' : 'bg-white',
                               segBorder,
                             )}
                           />
