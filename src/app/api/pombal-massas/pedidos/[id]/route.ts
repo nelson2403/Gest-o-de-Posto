@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getPostosGerente } from '@/lib/postos-gerente'
 
 // Só POMBAL (master/adm) altera status; gerente apenas cancela o próprio
 const ROLES = ['master', 'adm_financeiro', 'gerente']
@@ -12,7 +13,8 @@ async function autorizar() {
   if (!user) return { erro: 'Não autorizado', status: 401 as const }
   const { data: u } = await supabase.from('usuarios').select('role, posto_fechamento_id').eq('id', user.id).single()
   if (!u || !ROLES.includes(u.role)) return { erro: 'Sem permissão', status: 403 as const }
-  return { user, role: u.role, postoId: u.posto_fechamento_id as string | null }
+  const postos = u.role === 'gerente' ? await getPostosGerente(supabase, user.id, u.posto_fechamento_id) : []
+  return { user, role: u.role, postoId: u.posto_fechamento_id as string | null, postos }
 }
 
 // PUT — muda status do pedido. Ao "entregue", dá baixa no estoque dos salgados.
@@ -31,9 +33,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     .single()
   if (!pedido) return NextResponse.json({ error: 'Pedido não encontrado' }, { status: 404 })
 
-  // Gerente só pode cancelar o próprio pedido
+  // Gerente só pode cancelar pedido de um posto dele
   if (auth.role === 'gerente') {
-    if (pedido.posto_id !== auth.postoId) return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
+    if (!auth.postos.includes(pedido.posto_id)) return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
     if (body.status && body.status !== 'cancelado') return NextResponse.json({ error: 'Gerente só pode cancelar' }, { status: 403 })
   }
 

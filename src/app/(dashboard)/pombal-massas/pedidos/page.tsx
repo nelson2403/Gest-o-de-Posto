@@ -18,9 +18,11 @@ const STATUS_INFO: Record<string, { label: string; cls: string }> = {
 }
 
 export default function PedidosPage() {
-  const { usuario } = useAuthContext()
+  const { usuario, postos_gerente } = useAuthContext()
   const isGerente = usuario?.role === 'gerente'
   const isAdmin   = usuario?.role === 'master' || usuario?.role === 'adm_financeiro'
+  // Precisa escolher a loja se for admin, ou gerente com mais de um posto
+  const precisaSelecionarPosto = isAdmin || (isGerente && postos_gerente.length > 1)
 
   const [pedidos, setPedidos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -48,16 +50,20 @@ export default function PedidosPage() {
   async function abrirNovo() {
     setNovo(true); setItens([{ salgado_id: '', quantidade: 0 }]); setObs(''); setPostoId('')
     const reqs: Promise<any>[] = [fetch('/api/pombal-massas/salgados').then(r => r.json())]
-    if (isAdmin) reqs.push(fetch('/api/postos-mapeamento').then(r => r.json()))
+    if (precisaSelecionarPosto) reqs.push(fetch('/api/postos-mapeamento').then(r => r.json()))
     const [rs, rp] = await Promise.all(reqs)
     setSalgados(rs.salgados ?? [])
-    if (rp) setPostos(rp.data ?? [])
+    if (rp) {
+      const todos = rp.data ?? []
+      // Gerente: só os postos dele; admin: todos
+      setPostos(isGerente ? todos.filter((p: any) => postos_gerente.includes(p.id)) : todos)
+    }
   }
 
   async function criarPedido() {
     const validos = itens.filter(i => i.salgado_id && Number(i.quantidade) > 0)
     if (!validos.length) { toast({ variant: 'destructive', title: 'Inclua ao menos um salgado' }); return }
-    if (isAdmin && !postoId) { toast({ variant: 'destructive', title: 'Selecione a loja' }); return }
+    if (precisaSelecionarPosto && !postoId) { toast({ variant: 'destructive', title: 'Selecione a loja' }); return }
     setSalvando(true)
     try {
       const r = await fetch('/api/pombal-massas/pedidos', {
@@ -169,7 +175,7 @@ export default function PedidosPage() {
               <button onClick={() => setNovo(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-6 space-y-3 overflow-y-auto">
-              {isAdmin && (
+              {precisaSelecionarPosto && (
                 <div>
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Loja (posto)</label>
                   <select value={postoId} onChange={e => setPostoId(e.target.value)}

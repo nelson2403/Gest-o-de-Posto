@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { getPostosGerente } from '@/lib/postos-gerente'
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,18 +15,23 @@ export async function GET(req: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    // Gerente: filtro obrigatório pelo próprio posto
+    // Gerente: filtro obrigatório pelos postos dele (1 ou mais)
     // Outros: filtro opcional via query param
     const { searchParams } = new URL(req.url)
-    const posto_id = usuario?.role === 'gerente'
-      ? (usuario.posto_fechamento_id ?? null)
-      : searchParams.get('posto_id')
+    let postoIds: string[] | null = null
+    if (usuario?.role === 'gerente') {
+      postoIds = await getPostosGerente(supabase, user.id, usuario.posto_fechamento_id)
+      if (!postoIds.length) postoIds = ['__none__'] // gerente sem posto não vê nada
+    } else {
+      const p = searchParams.get('posto_id')
+      postoIds = p ? [p] : null
+    }
 
     const hoje = new Date().toISOString().slice(0, 10)
     const em7dias = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
 
     function applyPosto(q: any) {
-      return posto_id ? q.eq('posto_id', posto_id) : q
+      return postoIds ? q.in('posto_id', postoIds) : q
     }
 
     const BOLETO_COLS = 'id, fornecedor_nome, valor_as, boleto_vencimento, boleto_valor, boleto_url, boletos, postos(nome)'

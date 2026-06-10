@@ -141,7 +141,7 @@ export default function UsuariosPage() {
   // Modal posto do gerente (seleção única)
   const [openPostoGerente,    setOpenPostoGerente]    = useState(false)
   const [postosGerente,       setPostosGerente]       = useState<Pick<Posto, 'id' | 'nome'>[]>([])
-  const [postoGerenteSel,     setPostoGerenteSel]     = useState<string>('')
+  const [postosGerenteSel,    setPostosGerenteSel]    = useState<Set<string>>(new Set())
   const [gerenteLoja,         setGerenteLoja]         = useState(false)
   const [loadingPostoGerente, setLoadingPostoGerente] = useState(false)
   const [savingPostoGerente,  setSavingPostoGerente]  = useState(false)
@@ -307,27 +307,45 @@ export default function UsuariosPage() {
     setSelected(u)
     setLoadingPostoGerente(true)
     setOpenPostoGerente(true)
-    setPostoGerenteSel((u as any).posto_fechamento_id ?? '')
     setGerenteLoja(!!(u as any).gerente_loja)
 
-    const { data } = await supabase
-      .from('postos')
-      .select('id, nome')
-      .eq('empresa_id', u.empresa_id)
-      .order('nome')
+    const [{ data: postos }, { data: vinculos }] = await Promise.all([
+      supabase.from('postos').select('id, nome').eq('empresa_id', u.empresa_id).order('nome'),
+      supabase.from('usuario_postos_gerente').select('posto_id').eq('usuario_id', u.id),
+    ])
 
-    setPostosGerente((data ?? []) as Pick<Posto, 'id' | 'nome'>[])
+    setPostosGerente((postos ?? []) as Pick<Posto, 'id' | 'nome'>[])
+    // Carrega da junção; se vazia, usa o posto_fechamento_id legado
+    const ids = (vinculos ?? []).map((v: any) => v.posto_id)
+    const legado = (u as any).posto_fechamento_id
+    setPostosGerenteSel(new Set(ids.length ? ids : (legado ? [legado] : [])))
     setLoadingPostoGerente(false)
+  }
+
+  function togglePostoGerente(id: string) {
+    setPostosGerenteSel(prev => {
+      const s = new Set(prev)
+      s.has(id) ? s.delete(id) : s.add(id)
+      return s
+    })
   }
 
   async function handleSavePostoGerente() {
     if (!selected) return
     setSavingPostoGerente(true)
     try {
+      const ids = Array.from(postosGerenteSel)
+      // posto_fechamento_id = primeiro posto (compatibilidade com código legado)
       await supabase
         .from('usuarios')
-        .update({ posto_fechamento_id: postoGerenteSel || null, gerente_loja: gerenteLoja })
+        .update({ posto_fechamento_id: ids[0] ?? null, gerente_loja: gerenteLoja })
         .eq('id', selected.id)
+      // Reescreve a junção de postos do gerente
+      await supabase.from('usuario_postos_gerente').delete().eq('usuario_id', selected.id)
+      if (ids.length) {
+        await supabase.from('usuario_postos_gerente')
+          .insert(ids.map(posto_id => ({ usuario_id: selected.id, posto_id })))
+      }
       await load()
       setOpenPostoGerente(false)
     } finally {
@@ -1280,7 +1298,7 @@ export default function UsuariosPage() {
 
           <div className="py-1">
             <p className="text-[12px] text-gray-500 mb-3">
-              Selecione o posto que este gerente é responsável. Ele só poderá criar solicitações de marketing para este posto.
+              Selecione os postos que este gerente é responsável ({postosGerenteSel.size} selecionado{postosGerenteSel.size !== 1 ? 's' : ''}). Ele verá os dados desses postos (fiscal, tanques, marketing, pedidos).
             </p>
 
             {loadingPostoGerente ? (
@@ -1291,44 +1309,36 @@ export default function UsuariosPage() {
             ) : postosGerente.length === 0 ? (
               <p className="text-[13px] text-gray-400 text-center py-6">Nenhum posto cadastrado para esta empresa.</p>
             ) : (
-              <div className="space-y-1 max-h-64 overflow-y-auto">
-                {/* Opção nenhum */}
-                <label className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors',
-                  postoGerenteSel === '' ? 'bg-gray-100 border border-gray-300' : 'hover:bg-gray-50 border border-transparent'
-                )}>
-                  <input
-                    type="radio"
-                    name="posto-gerente"
-                    checked={postoGerenteSel === ''}
-                    onChange={() => setPostoGerenteSel('')}
-                    className="w-4 h-4 accent-teal-600"
-                  />
-                  <span className="text-[13px] text-gray-400 italic">— Nenhum posto vinculado</span>
-                </label>
-                {postosGerente.map(posto => (
-                  <label key={posto.id} className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors',
-                    postoGerenteSel === posto.id
-                      ? 'bg-teal-50 border border-teal-200'
-                      : 'hover:bg-gray-50 border border-transparent'
-                  )}>
-                    <input
-                      type="radio"
-                      name="posto-gerente"
-                      checked={postoGerenteSel === posto.id}
-                      onChange={() => setPostoGerenteSel(posto.id)}
-                      className="w-4 h-4 accent-teal-600"
-                    />
-                    <div className="flex items-center gap-2 min-w-0">
-                      <MapPin className={cn('w-3.5 h-3.5 flex-shrink-0', postoGerenteSel === posto.id ? 'text-teal-600' : 'text-gray-400')} />
-                      <span className={cn('text-[13px] truncate', postoGerenteSel === posto.id ? 'font-medium text-gray-800' : 'text-gray-600')}>
-                        {posto.nome}
-                      </span>
-                    </div>
-                  </label>
-                ))}
-              </div>
+              <>
+                <div className="flex gap-2 mb-1.5">
+                  <button className="text-[11px] text-teal-600 hover:underline" onClick={() => setPostosGerenteSel(new Set(postosGerente.map(p => p.id)))}>Selecionar todos</button>
+                  <button className="text-[11px] text-gray-400 hover:underline" onClick={() => setPostosGerenteSel(new Set())}>Limpar</button>
+                </div>
+                <div className="space-y-1 max-h-64 overflow-y-auto">
+                  {postosGerente.map(posto => {
+                    const sel = postosGerenteSel.has(posto.id)
+                    return (
+                      <label key={posto.id} className={cn(
+                        'flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors',
+                        sel ? 'bg-teal-50 border border-teal-200' : 'hover:bg-gray-50 border border-transparent'
+                      )}>
+                        <input
+                          type="checkbox"
+                          checked={sel}
+                          onChange={() => togglePostoGerente(posto.id)}
+                          className="w-4 h-4 accent-teal-600 rounded"
+                        />
+                        <div className="flex items-center gap-2 min-w-0">
+                          <MapPin className={cn('w-3.5 h-3.5 flex-shrink-0', sel ? 'text-teal-600' : 'text-gray-400')} />
+                          <span className={cn('text-[13px] truncate', sel ? 'font-medium text-gray-800' : 'text-gray-600')}>
+                            {posto.nome}
+                          </span>
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+              </>
             )}
           </div>
 

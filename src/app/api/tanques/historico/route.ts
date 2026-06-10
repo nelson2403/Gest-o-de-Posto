@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getPostosGerente } from '@/lib/postos-gerente'
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
@@ -33,16 +34,24 @@ export async function GET(req: NextRequest) {
     .gte('data', dataIni)
     .lte('data', dataFim)
 
-  if (userRole === 'gerente' && usuarioRow?.posto_fechamento_id) {
-    const { data: porId } = await admin
-      .from('tanques_postos').select('id, posto_nome')
-      .eq('ativo', true).eq('posto_id', usuarioRow.posto_fechamento_id)
-
-    if (porId && porId.length > 0) {
-      const postoNome = porId[0].posto_nome
-      qTanques = admin.from('tanques_postos').select('id, posto_nome')
-        .eq('ativo', true).eq('posto_nome', postoNome)
-      qMed = qMed.eq('posto_nome', postoNome)
+  if (userRole === 'gerente') {
+    const postoIds = await getPostosGerente(admin, user.id, usuarioRow?.posto_fechamento_id)
+    let nomes: string[] = []
+    if (postoIds.length) {
+      const { data: tp } = await admin
+        .from('tanques_postos').select('posto_nome').eq('ativo', true).in('posto_id', postoIds)
+      nomes = [...new Set((tp ?? []).map((t: any) => t.posto_nome))]
+      if (!nomes.length) {
+        const { data: postosInfo } = await admin.from('postos').select('nome').in('id', postoIds)
+        nomes = (postosInfo ?? []).map((p: any) => p.nome)
+      }
+    }
+    if (nomes.length) {
+      qTanques = admin.from('tanques_postos').select('id, posto_nome').eq('ativo', true).in('posto_nome', nomes)
+      qMed = qMed.in('posto_nome', nomes)
+    } else {
+      qTanques = admin.from('tanques_postos').select('id, posto_nome').eq('posto_nome', '__none__')
+      qMed = qMed.eq('posto_nome', '__none__')
     }
   }
 

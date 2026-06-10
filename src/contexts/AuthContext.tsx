@@ -9,6 +9,7 @@ interface AuthContextType {
   usuario: Usuario | null
   loading: boolean
   permissoes_efetivas: string[] | null
+  postos_gerente: string[]   // postos vinculados ao gerente (vazio para outros papéis)
   canUser: (permission: Permission) => boolean
   /** Recarrega as permissões do usuário atual do banco (use após alterar overrides de cargo) */
   refreshPermissions: () => Promise<void>
@@ -19,6 +20,7 @@ const AuthContext = createContext<AuthContextType>({
   usuario: null,
   loading: true,
   permissoes_efetivas: null,
+  postos_gerente: [],
   canUser: () => false,
   refreshPermissions: async () => {},
   signOut: async () => {},
@@ -27,6 +29,7 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null)
   const [permissoes_efetivas, setPermissoesEfetivasState] = useState<string[] | null>(null)
+  const [postosGerente, setPostosGerente] = useState<string[]>([])
 
   // Wrapper que atualiza o estado React E a variável global usada por can()
   const setPermissoesEfetivas = (p: string[] | null) => {
@@ -94,6 +97,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data) {
           setUsuario(data as Usuario)
           await loadPermissions(data.role, data.perfil_id ?? null)
+          // Postos vinculados ao gerente (junção; fallback para o posto principal)
+          if (data.role === 'gerente') {
+            const { data: vg } = await supabase
+              .from('usuario_postos_gerente').select('posto_id').eq('usuario_id', data.id)
+            const ids = (vg ?? []).map((v: any) => v.posto_id) // eslint-disable-line @typescript-eslint/no-explicit-any
+            setPostosGerente(ids.length ? ids : (data.posto_fechamento_id ? [data.posto_fechamento_id] : []))
+          } else {
+            setPostosGerente([])
+          }
           setLoading(false)
           return
         }
@@ -195,7 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ usuario, loading, permissoes_efetivas, canUser, refreshPermissions, signOut }}>
+    <AuthContext.Provider value={{ usuario, loading, permissoes_efetivas, postos_gerente: postosGerente, canUser, refreshPermissions, signOut }}>
       {children}
     </AuthContext.Provider>
   )

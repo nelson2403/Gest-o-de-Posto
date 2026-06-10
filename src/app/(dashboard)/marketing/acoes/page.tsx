@@ -61,11 +61,11 @@ const STATUS_POSTO_CFG = {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function AcoesPage() {
-  const { usuario } = useAuthContext()
+  const { usuario, postos_gerente } = useAuthContext()
   const podeCriar   = can(usuario?.role, 'marketing.create_acao')
   const podeAprovar = can(usuario?.role, 'marketing.aprovar')
   const isGerente   = usuario?.role === 'gerente'
-  const postoFixoId = usuario?.posto_fechamento_id ?? null
+  const meusPostos  = new Set(postos_gerente.length ? postos_gerente : (usuario?.posto_fechamento_id ? [usuario.posto_fechamento_id] : []))
 
   const [acoes, setAcoes]         = useState<Acao[]>([])
   const [postos, setPostos]       = useState<PostoOpt[]>([])
@@ -244,7 +244,7 @@ export default function AcoesPage() {
           <div className="space-y-3">
             {/* Gerente vê apenas ações em que seu posto participa */}
             {acoes.filter(a =>
-              !isGerente || a.marketing_acao_postos?.some(ap => ap.posto_id === postoFixoId)
+              !isGerente || a.marketing_acao_postos?.some(ap => meusPostos.has(ap.posto_id))
             ).map(a => {
               const aberto = expandido === a.id
               const cfg    = STATUS_ACAO_CFG[a.status]
@@ -314,7 +314,7 @@ export default function AcoesPage() {
                       )}
                       <div className="divide-y divide-gray-100">
                         {/* Gerente vê apenas seu posto; outros veem todos */}
-                        {a.marketing_acao_postos?.filter(ap => !isGerente || ap.posto_id === postoFixoId).map(ap => {
+                        {a.marketing_acao_postos?.filter(ap => !isGerente || meusPostos.has(ap.posto_id)).map(ap => {
                           const spCfg = STATUS_POSTO_CFG[ap.status]
                           const valorAp = ap.valor ?? a.valor_padrao
                           return (

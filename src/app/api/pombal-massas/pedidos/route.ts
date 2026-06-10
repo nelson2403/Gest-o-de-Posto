@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getPostosGerente } from '@/lib/postos-gerente'
 
 const ROLES = ['master', 'adm_financeiro', 'gerente']
 
@@ -10,7 +11,8 @@ async function autorizar() {
   if (!user) return { erro: 'Não autorizado', status: 401 as const }
   const { data: u } = await supabase.from('usuarios').select('role, posto_fechamento_id').eq('id', user.id).single()
   if (!u || !ROLES.includes(u.role)) return { erro: 'Sem permissão', status: 403 as const }
-  return { user, role: u.role, postoId: u.posto_fechamento_id as string | null }
+  const postos = u.role === 'gerente' ? await getPostosGerente(supabase, user.id, u.posto_fechamento_id) : []
+  return { user, role: u.role, postoId: u.posto_fechamento_id as string | null, postos }
 }
 
 // GET — lista pedidos (gerente vê só seu posto; master/adm veem todos)
@@ -31,7 +33,7 @@ export async function GET(req: NextRequest) {
     .order('data_solicitacao', { ascending: false })
     .limit(300)
 
-  if (auth.role === 'gerente' && auth.postoId) q = q.eq('posto_id', auth.postoId)
+  if (auth.role === 'gerente') q = q.in('posto_id', auth.postos.length ? auth.postos : ['__none__'])
   if (status) q = q.eq('status', status)
 
   const { data, error } = await q
@@ -50,8 +52,16 @@ export async function POST(req: NextRequest) {
     itens: { salgado_id: string; quantidade: number }[]
   }
 
-  // gerente sempre pede para o próprio posto
-  const postoId = auth.role === 'gerente' ? auth.postoId : body.posto_id
+  // gerente pede para um dos postos dele; master/adm escolhe qualquer
+  let postoId: string | null
+  if (auth.role === 'gerente') {
+    postoId = body.posto_id || auth.postos[0] || null
+    if (!postoId || !auth.postos.includes(postoId)) {
+      return NextResponse.json({ error: 'Selecione uma loja válida (um dos seus postos)' }, { status: 400 })
+    }
+  } else {
+    postoId = body.posto_id ?? null
+  }
   if (!postoId) return NextResponse.json({ error: 'Loja (posto) obrigatória' }, { status: 400 })
 
   const itens = (body.itens ?? []).filter(i => i.salgado_id && Number(i.quantidade) > 0)
