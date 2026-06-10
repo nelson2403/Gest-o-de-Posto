@@ -46,20 +46,9 @@ export default function ConsultaFechamentoCaixaPage() {
   const [loading,      setLoading]      = useState(false)
   const [buscou,       setBuscou]       = useState(false)
   const [selectedFech, setSelectedFech] = useState<Fechamento | null>(null)
-  // Entradas recalculadas AO VIVO do AUTOSYSTEM (para o veredito bater com o frentista)
-  const [entradasLive, setEntradasLive] = useState<number | null>(null)
-
-  // Ao selecionar um fechamento, recalcula as entradas reais do AUTOSYSTEM
-  useEffect(() => {
-    setEntradasLive(null)
-    if (!selectedFech) return
-    let cancel = false
-    fetch(`/api/caixa/fechamento-conferencia?id=${selectedFech.id}`)
-      .then(r => r.json())
-      .then(j => { if (!cancel && j?.disponivel) setEntradasLive(j.total_entradas) })
-      .catch(() => {})
-    return () => { cancel = true }
-  }, [selectedFech])
+  // Entradas recalculadas AO VIVO do AUTOSYSTEM por fechamento (id → total_entradas)
+  const [entradasMap, setEntradasMap] = useState<Record<string, number>>({})
+  const [recalcLoading, setRecalcLoading] = useState(false)
 
   // Carrega postos
   useEffect(() => {
@@ -82,8 +71,37 @@ export default function ConsultaFechamentoCaixaPage() {
     if (dataFim) params.set('data_fim', dataFim)
     const res = await fetch(`/api/caixa/fechamentos?${params}`)
     const j   = await res.json()
-    setFechamentos(Array.isArray(j) ? j : [])
+    const lista: Fechamento[] = Array.isArray(j) ? j : []
+    setFechamentos(lista)
+    setEntradasMap({})
     setLoading(false)
+
+    // Recalcula AO VIVO as entradas do AUTOSYSTEM para cada fechamento, em lote,
+    // para a coluna Diferença/Total Sistema da lista bater com o frentista.
+    if (lista.length) {
+      setRecalcLoading(true)
+      try {
+        const ids = lista.map(f => f.id).join(',')
+        const r = await fetch(`/api/caixa/fechamento-conferencia?ids=${ids}`)
+        const jc = await r.json()
+        const map: Record<string, number> = {}
+        for (const item of jc?.resultados ?? []) {
+          if (item.disponivel) map[item.id] = item.total_entradas
+        }
+        setEntradasMap(map)
+      } catch { /* mantém snapshot */ }
+      finally { setRecalcLoading(false) }
+    }
+  }
+
+  // Diferença "real" (declarado − entradas ao vivo); cai no snapshot se indisponível
+  function difReal(f: Fechamento): number | null {
+    const entradas = entradasMap[f.id]
+    if (entradas == null) return f.total_diferenca
+    return parseFloat(((f.total_frentista ?? 0) - entradas).toFixed(2))
+  }
+  function sistemaReal(f: Fechamento): number | null {
+    return entradasMap[f.id] ?? f.total_as
   }
 
   function fmt(v: number | null) {
@@ -176,15 +194,17 @@ export default function ConsultaFechamentoCaixaPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {fechamentos.map(f => {
-                  const dif = fmtDif(f.total_diferenca)
+                  const dif = fmtDif(difReal(f))
                   return (
                     <tr key={f.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-gray-700">{f.data_fechamento?.split('-').reverse().join('/')}</td>
                       <td className="px-4 py-3 font-medium text-gray-800">{f.frentista_nome}</td>
                       <td className="px-4 py-3 text-gray-500 capitalize">{f.turno ?? '—'}</td>
-                      <td className="px-4 py-3 text-right text-gray-700">{fmt(f.total_as)}</td>
+                      <td className="px-4 py-3 text-right text-gray-700">{fmt(sistemaReal(f))}</td>
                       <td className="px-4 py-3 text-right text-gray-700">{fmt(f.total_frentista)}</td>
-                      <td className={`px-4 py-3 text-right font-medium ${dif.cls}`}>{dif.text}</td>
+                      <td className={`px-4 py-3 text-right font-medium ${dif.cls}`}>
+                        {recalcLoading && entradasMap[f.id] == null ? '…' : dif.text}
+                      </td>
                       <td className="px-4 py-3">
                         <button
                           onClick={() => setSelectedFech(selectedFech?.id === f.id ? null : f)}
@@ -215,7 +235,7 @@ export default function ConsultaFechamentoCaixaPage() {
               )
               const sumFormsAS  = baseItens.reduce((s, i) => s + (i.valor_as ?? 0), 0)
               // Entradas reais: ao vivo do AUTOSYSTEM; fallback p/ total salvo
-              const entradas    = entradasLive ?? selectedFech.total_as ?? sumFormsAS
+              const entradas    = entradasMap[selectedFech.id] ?? selectedFech.total_as ?? sumFormsAS
               const naoLancado  = parseFloat((entradas - sumFormsAS).toFixed(2))
               const totalSist   = entradas
               const totalFrent  = selectedFech.total_frentista ?? 0
