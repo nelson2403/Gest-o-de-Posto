@@ -14,7 +14,7 @@ import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils/cn'
 import {
   Plus, Loader2, Megaphone, CheckCircle2, XCircle, Clock,
-  Upload, ChevronDown, ChevronUp, Calendar, MapPin,
+  Upload, ChevronDown, ChevronUp, Calendar, MapPin, Pencil, Trash2,
 } from 'lucide-react'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -72,13 +72,40 @@ export default function AcoesPage() {
   const [loading, setLoading]     = useState(true)
   const [expandido, setExpandido] = useState<string | null>(null)
 
-  // Modal nova ação
+  // Modal nova/editar ação
   const [showModal, setShowModal]   = useState(false)
+  const [editId, setEditId]         = useState<string | null>(null)
   const [saving, setSaving]         = useState(false)
   const [form, setForm]             = useState({
     titulo: '', descricao: '', valor_padrao: '150', data_acao: '', prazo_envio: '',
   })
   const [postosSelec, setPostosSelec] = useState<string[]>([])
+
+  function abrirNova() {
+    setEditId(null)
+    setForm({ titulo: '', descricao: '', valor_padrao: '150', data_acao: '', prazo_envio: '' })
+    setPostosSelec([])
+    setShowModal(true)
+  }
+
+  function abrirEdicao(a: Acao) {
+    setEditId(a.id)
+    setForm({
+      titulo: a.titulo, descricao: a.descricao ?? '', valor_padrao: String(a.valor_padrao),
+      data_acao: a.data_acao, prazo_envio: a.prazo_envio,
+    })
+    setPostosSelec(a.marketing_acao_postos?.map(ap => ap.posto_id) ?? [])
+    setShowModal(true)
+  }
+
+  async function excluirAcao(a: Acao) {
+    if (!confirm(`Excluir a ação "${a.titulo}"?\n\nIsso remove a ação e todos os comprovantes/postos vinculados.`)) return
+    const res = await fetch(`/api/marketing/acoes/${a.id}`, { method: 'DELETE' })
+    const json = await res.json()
+    if (!res.ok) { toast({ title: json.error ?? 'Erro ao excluir', variant: 'destructive' }); return }
+    toast({ title: 'Ação excluída' })
+    load()
+  }
 
   // Modal comprovante (gerente)
   const [showComp, setShowComp]       = useState(false)
@@ -130,15 +157,22 @@ export default function AcoesPage() {
     }
     setSaving(true)
     try {
-      const res = await fetch('/api/marketing/acoes', {
-        method: 'POST',
+      const url = editId ? `/api/marketing/acoes/${editId}` : '/api/marketing/acoes'
+      const res = await fetch(url, {
+        method: editId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, valor_padrao: Number(form.valor_padrao), postos: postosSelec }),
       })
       const json = await res.json()
       if (!res.ok) { toast({ title: json.error, variant: 'destructive' }); return }
-      toast({ title: 'Ação criada com sucesso!' })
+      if (editId) {
+        const extra = json.protegidos ? ` (${json.protegidos} posto(s) mantido(s) por já terem comprovante)` : ''
+        toast({ title: `Ação atualizada${extra}` })
+      } else {
+        toast({ title: 'Ação criada com sucesso!' })
+      }
       setShowModal(false)
+      setEditId(null)
       setForm({ titulo: '', descricao: '', valor_padrao: '150', data_acao: '', prazo_envio: '' })
       setPostosSelec([])
       load()
@@ -193,7 +227,7 @@ export default function AcoesPage() {
         <div className="flex items-center justify-between">
           <p className="text-[13px] text-gray-500">{acoes.length} ação(ões) encontrada(s)</p>
           {podeCriar && (
-            <Button size="sm" onClick={() => setShowModal(true)} className="gap-1.5 text-[13px]">
+            <Button size="sm" onClick={abrirNova} className="gap-1.5 text-[13px]">
               <Plus className="w-4 h-4" /> Nova Ação
             </Button>
           )}
@@ -251,6 +285,24 @@ export default function AcoesPage() {
                         <span className="text-[11px] text-gray-500 shrink-0">{enviados}/{total}</span>
                       </div>
                     </div>
+                    {podeCriar && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); abrirEdicao(a) }}
+                          title="Editar (incluir/remover postos)"
+                          className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); excluirAcao(a) }}
+                          title="Excluir ação"
+                          className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
                     {aberto ? <ChevronUp className="w-4 h-4 text-gray-400 shrink-0" /> : <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />}
                   </div>
 
@@ -343,7 +395,7 @@ export default function AcoesPage() {
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Megaphone className="w-4 h-4" /> Nova Ação de Marketing
+              <Megaphone className="w-4 h-4" /> {editId ? 'Editar Ação de Marketing' : 'Nova Ação de Marketing'}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -398,7 +450,7 @@ export default function AcoesPage() {
             <Button variant="outline" size="sm" onClick={() => setShowModal(false)}>Cancelar</Button>
             <Button size="sm" onClick={salvarAcao} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-              Criar Ação
+              {editId ? 'Salvar Alterações' : 'Criar Ação'}
             </Button>
           </DialogFooter>
         </DialogContent>
