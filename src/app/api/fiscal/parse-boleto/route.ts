@@ -58,7 +58,7 @@ function extractLargestJpegFromPdf(buf: Buffer): Buffer | null {
 }
 
 // ─── Parse dos dados do boleto no texto extraído ──────────────────────────────
-function extractBoletoData(text: string): { vencimento: string; valor: string } {
+function extractBoletoData(text: string, valorRef?: number): { vencimento: string; valor: string } {
   const strs: string[] = []
   const re = /\(([^()]{0,500})\)/g
   let m: RegExpExecArray | null
@@ -94,7 +94,11 @@ function extractBoletoData(text: string): { vencimento: string; valor: string } 
     return null
   }
 
-  // 1. Linha digitável (47 dígitos com separadores variados)
+  // ── 1. Valor + vencimento pelo código de barras / linha digitável ───────────
+  // (não retorna direto: o valor do código de barras pode vir errado em PDFs
+  //  escaneados via OCR — será cruzado com o valor impresso abaixo)
+  let vencBarcode  = ''
+  let valorBarcode = ''
   const linhaMatch = combined.match(
     /(\d{5})[.\- ]?(\d{5})\s{0,6}(\d{5})[.\- ]?(\d{6})\s{0,6}(\d{5})[.\- ]?(\d{6})\s{0,6}(\d)\s{0,6}(\d{14})/,
   )
@@ -102,54 +106,72 @@ function extractBoletoData(text: string): { vencimento: string; valor: string } 
     const f5    = linhaMatch[8]
     const fator = parseInt(f5.slice(0, 4), 10)
     const cts   = parseInt(f5.slice(4), 10)
-    console.log(`[parse-boleto] linhaDigitavel fator=${fator} cts=${cts}`)
     const venc = fatorToDate(fator)
-    if (venc && cts > 0) return { vencimento: venc, valor: (cts / 100).toFixed(2) }
+    if (venc) vencBarcode = venc
+    if (cts > 0) valorBarcode = (cts / 100).toFixed(2)
   }
-
-  // 1b. Sequência de 47 dígitos sem separadores
-  for (const m47 of combined.matchAll(/\b(\d{47})\b/g)) {
-    const seq   = m47[1]
-    const c5    = seq.slice(32, 46)
-    const fator = parseInt(c5.slice(0, 4), 10)
-    const cts   = parseInt(c5.slice(4), 10)
-    const venc  = fatorToDate(fator)
-    if (venc && cts > 0) return { vencimento: venc, valor: (cts / 100).toFixed(2) }
+  if (!valorBarcode) {
+    for (const m47 of combined.matchAll(/\b(\d{47})\b/g)) {
+      const seq   = m47[1]
+      const c5    = seq.slice(32, 46)
+      const fator = parseInt(c5.slice(0, 4), 10)
+      const cts   = parseInt(c5.slice(4), 10)
+      const venc  = fatorToDate(fator)
+      if (venc && cts > 0) { vencBarcode = venc; valorBarcode = (cts / 100).toFixed(2); break }
+    }
   }
 
   const lower = combined.toLowerCase()
 
-  // 2. "Vencimento DD/MM/AAAA" ou "DD.MM.AAAA"
-  let vencimento = ''
+  // ── 2. Vencimento por texto (fallback) ──────────────────────────────────────
+  let vencData = ''
   const dateRe = /(\d{2})[\/.](\d{2})[\/.](\d{4})/
   const dateReG = /(\d{2})[\/.](\d{2})[\/.](\d{4})/g
   const vIdx = Math.max(lower.indexOf('vencimento'), lower.indexOf('vencto'))
   if (vIdx >= 0) {
     const janela = combined.slice(vIdx, vIdx + 300)
     const dm = janela.match(dateRe)
-    if (dm) vencimento = `${dm[3]}-${dm[2]}-${dm[1]}`
+    if (dm) vencData = `${dm[3]}-${dm[2]}-${dm[1]}`
   }
-  if (!vencimento) {
+  if (!vencData) {
     for (const dm of combined.matchAll(dateReG)) {
       const ano = +dm[3]
       if (ano >= 2024 && ano <= 2035) {
         const d = Date.UTC(ano, +dm[2] - 1, +dm[1])
-        if (d >= Date.now() - 86_400_000 * 30) { vencimento = `${dm[3]}-${dm[2]}-${dm[1]}`; break }
+        if (d >= Date.now() - 86_400_000 * 30) { vencData = `${dm[3]}-${dm[2]}-${dm[1]}`; break }
       }
     }
   }
 
-  // 3. Valor
-  let valor = ''
-  for (const label of ['valor do documento', 'valor cobrado', '(=) valor cobrado', 'valor']) {
+  // ── 3. Valor impresso ("VALOR DO DOCUMENTO / VALOR COBRADO") ─────────────────
+  let valorLabel = ''
+  for (const label of ['valor do documento', 'valor cobrado', '(=) valor cobrado']) {
     const vi = lower.indexOf(label)
     if (vi < 0) continue
     const janela = combined.slice(vi, vi + 200)
     const vm = janela.match(/(\d{1,3}(?:[.\s]\d{3})*,\d{2})/)
-    if (vm) { valor = vm[1].replace(/[.\s]/g, '').replace(',', '.'); break }
+    if (vm) { valorLabel = vm[1].replace(/[.\s]/g, '').replace(',', '.'); break }
   }
 
-  console.log(`[parse-boleto] resultado: vencimento="${vencimento}" valor="${valor}"`)
+  // ── 4. Decide o valor cruzando código de barras × valor impresso ────────────
+  let valor = ''
+  const vb = valorBarcode ? Number(valorBarcode) : null
+  const vl = valorLabel   ? Number(valorLabel)   : null
+  if (vb != null && vl != null) {
+    if (Math.abs(vb - vl) <= 0.02) {
+      valor = valorBarcode                 // batem → confiável
+    } else if (valorRef && valorRef > 0) {
+      // divergem → usa o candidato mais próximo do valor da NF (referência)
+      valor = Math.abs(vb - valorRef) <= Math.abs(vl - valorRef) ? valorBarcode : valorLabel
+    } else {
+      valor = valorLabel                   // divergem sem referência → impresso é mais confiável no OCR
+    }
+  } else {
+    valor = valorLabel || valorBarcode || ''
+  }
+
+  const vencimento = vencBarcode || vencData
+  console.log(`[parse-boleto] resultado: venc="${vencimento}" valor="${valor}" (barcode=${valorBarcode || '-'} label=${valorLabel || '-'} ref=${valorRef ?? '-'})`)
   return { vencimento, valor }
 }
 
@@ -174,8 +196,9 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
   try {
-    const { url } = await req.json()
+    const { url, valorReferencia } = await req.json()
     if (!url || typeof url !== 'string') return NextResponse.json({ vencimento: '', valor: '' })
+    const valorRef = typeof valorReferencia === 'number' && valorReferencia > 0 ? valorReferencia : undefined
 
     console.log('[parse-boleto] fetching:', url.slice(0, 80))
 
@@ -201,7 +224,7 @@ export async function POST(req: NextRequest) {
 
     // 1. Tenta extração de texto direto (PDF text-based)
     const textContent = extractPdfTextStreams(buffer)
-    let result = extractBoletoData(textContent)
+    let result = extractBoletoData(textContent, valorRef)
     if (result.vencimento || result.valor) {
       return NextResponse.json(result)
     }
@@ -211,7 +234,7 @@ export async function POST(req: NextRequest) {
     if (jpeg) {
       console.log('[parse-boleto] iniciando OCR...')
       const ocrText = await ocrImage(jpeg)
-      result = extractBoletoData(ocrText)
+      result = extractBoletoData(ocrText, valorRef)
     }
 
     return NextResponse.json(result)

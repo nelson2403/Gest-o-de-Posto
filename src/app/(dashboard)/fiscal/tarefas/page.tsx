@@ -29,12 +29,12 @@ const COMBUSTIVEIS_SUGESTOES = [
 const TURNOS_CAIXA = ['1° Turno', '2° Turno', '3° Turno']
 
 // ─── Leitor automático de boleto PDF (server-side via API) ───────────────────
-async function parseBoleto(publicUrl: string): Promise<{ vencimento: string; valor: string }> {
+async function parseBoleto(publicUrl: string, valorReferencia?: number): Promise<{ vencimento: string; valor: string }> {
   try {
     const r = await fetch('/api/fiscal/parse-boleto', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ url: publicUrl }),
+      body:    JSON.stringify({ url: publicUrl, valorReferencia }),
     })
     if (!r.ok) return { vencimento: '', valor: '' }
     return await r.json()
@@ -163,15 +163,16 @@ interface BoletoItem {
 }
 
 function BoletoCard({
-  boleto, idx, tarefaId, onChange, onRemove, onAutoFill, onResetAuto,
+  boleto, idx, tarefaId, valorReferencia, onChange, onRemove, onAutoFill, onResetAuto,
 }: {
-  boleto:       BoletoItem
-  idx:          number
-  tarefaId:     string
-  onChange:     (idx: number, field: keyof BoletoItem, val: string) => void
-  onRemove:     (idx: number) => void
-  onAutoFill:   (idx: number, vencimento: string, valor: string) => void
-  onResetAuto:  (idx: number) => void
+  boleto:          BoletoItem
+  idx:             number
+  tarefaId:        string
+  valorReferencia?: number
+  onChange:        (idx: number, field: keyof BoletoItem, val: string) => void
+  onRemove:        (idx: number) => void
+  onAutoFill:      (idx: number, vencimento: string, valor: string) => void
+  onResetAuto:     (idx: number) => void
 }) {
   const inputRef              = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -204,7 +205,7 @@ function BoletoCard({
     // Lê os dados do boleto no servidor após upload concluir
     setParsing(true)
     try {
-      const { vencimento, valor } = await parseBoleto(publicUrl)
+      const { vencimento, valor } = await parseBoleto(publicUrl, valorReferencia)
       if (vencimento || valor) {
         onAutoFill(idx, vencimento, valor)
       }
@@ -624,6 +625,7 @@ function DialogReconhecer({
                 boleto={b}
                 idx={idx}
                 tarefaId={tarefa.id}
+                valorReferencia={tarefa.valor_as}
                 onChange={updateBoleto}
                 onRemove={removeBoleto}
                 onAutoFill={autoBoleto}
