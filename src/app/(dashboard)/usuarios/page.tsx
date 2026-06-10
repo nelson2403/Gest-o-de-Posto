@@ -142,6 +142,7 @@ export default function UsuariosPage() {
   const [openPostoGerente,    setOpenPostoGerente]    = useState(false)
   const [postosGerente,       setPostosGerente]       = useState<Pick<Posto, 'id' | 'nome'>[]>([])
   const [postoGerenteSel,     setPostoGerenteSel]     = useState<string>('')
+  const [gerenteLoja,         setGerenteLoja]         = useState(false)
   const [loadingPostoGerente, setLoadingPostoGerente] = useState(false)
   const [savingPostoGerente,  setSavingPostoGerente]  = useState(false)
 
@@ -307,6 +308,7 @@ export default function UsuariosPage() {
     setLoadingPostoGerente(true)
     setOpenPostoGerente(true)
     setPostoGerenteSel((u as any).posto_fechamento_id ?? '')
+    setGerenteLoja(!!(u as any).gerente_loja)
 
     const { data } = await supabase
       .from('postos')
@@ -324,7 +326,7 @@ export default function UsuariosPage() {
     try {
       await supabase
         .from('usuarios')
-        .update({ posto_fechamento_id: postoGerenteSel || null })
+        .update({ posto_fechamento_id: postoGerenteSel || null, gerente_loja: gerenteLoja })
         .eq('id', selected.id)
       await load()
       setOpenPostoGerente(false)
@@ -1329,6 +1331,20 @@ export default function UsuariosPage() {
               </div>
             )}
           </div>
+
+          {/* Tipo do gerente: loja (conveniência) não vê Medição de Tanques */}
+          <label className="flex items-start gap-2.5 mt-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+            <input
+              type="checkbox"
+              checked={gerenteLoja}
+              onChange={e => setGerenteLoja(e.target.checked)}
+              className="mt-0.5 rounded"
+            />
+            <span>
+              <span className="text-[13px] font-medium text-gray-800 block">Gerente de Loja (conveniência)</span>
+              <span className="text-[11px] text-gray-500">Marque se for gerente de loja — ele <b>não verá a Medição de Tanques</b>.</span>
+            </span>
+          </label>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenPostoGerente(false)} disabled={savingPostoGerente}>Cancelar</Button>

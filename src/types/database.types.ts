@@ -41,6 +41,7 @@ export interface Usuario {
   role: Role
   perfil_id: string | null
   posto_fechamento_id: string | null
+  gerente_loja?: boolean        // gerente de loja (conveniência) — sem Medição de Tanques
   ativo: boolean
   criado_em: string
   atualizado_em: string

@@ -178,6 +178,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const canUser = useCallback((permission: Permission): boolean => {
+    // Gerente de LOJA (conveniência) não acessa a Medição de Tanques
+    if (usuario?.role === 'gerente' && usuario?.gerente_loja &&
+        (permission === 'tanques.view' || permission === 'tanques.edit')) {
+      return false
+    }
     if (permissoes_efetivas != null) return permissoes_efetivas.includes(permission)
     return can(usuario?.role ?? null, permission)
   }, [usuario, permissoes_efetivas])

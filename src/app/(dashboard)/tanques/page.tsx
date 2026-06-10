@@ -387,7 +387,7 @@ function HeatMapHistorico({
 // ── Página Principal ───────────────────────────────────────────────────────────
 
 export default function TanquesPage() {
-  const { usuario } = useAuthContext()
+  const { usuario, canUser } = useAuthContext()
   const role          = usuario?.role as Role | undefined
   const isGerente     = role === 'gerente'
   const isTranspombal = role === 'adm_transpombal'
@@ -658,6 +658,16 @@ export default function TanquesPage() {
         { key: 'historico', label: 'Controle de Dias' },
         ...(role === 'master' ? [{ key: 'admin', label: 'Gerenciar Tanques' }] : []),
       ]
+
+  // Gerente de loja (conveniência) não acessa a Medição de Tanques
+  if (usuario && !canUser('tanques.view')) {
+    return (
+      <div className="animate-fade-in">
+        <Header title="Medição de Tanques" />
+        <div className="p-6 text-center text-gray-400 text-sm">Você não tem acesso à Medição de Tanques.</div>
+      </div>
+    )
+  }
 
   return (
     <div className="animate-fade-in">
