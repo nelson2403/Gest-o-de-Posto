@@ -475,6 +475,7 @@ export default function FiscalPainelPage() {
                   <th className="text-left py-2.5 px-4 font-medium text-gray-500 text-[10px] uppercase tracking-wide">Emissão</th>
                   <th className="text-right py-2.5 px-4 font-medium text-gray-500 text-[10px] uppercase tracking-wide">Valor</th>
                   <th className="text-center py-2.5 px-4 font-medium text-gray-500 text-[10px] uppercase tracking-wide">Venc. Boleto</th>
+                  <th className="text-center py-2.5 px-4 font-medium text-gray-500 text-[10px] uppercase tracking-wide">Ação</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -501,11 +502,26 @@ export default function FiscalPainelPage() {
                           <span className="text-xs text-gray-400">Sem boleto</span>
                         )}
                       </td>
+                      <td className="py-2.5 px-4 text-center">
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Marcar como lançada/concluída?\n\n${row.fornecedor_nome} — ${fmtBRL(row.valor_as)}\n\nUse quando o fiscal JÁ lançou esta nota no AUTOSYSTEM mas o sistema não baixou automaticamente.`)) return
+                            const r = await fetch(`/api/fiscal/tarefas/${row.id}/concluir`, { method: 'PATCH' })
+                            const j = await r.json()
+                            if (!r.ok) { toast({ title: j.error ?? 'Erro ao concluir', variant: 'destructive' }); return }
+                            toast({ title: 'Nota concluída' })
+                            carregar()
+                          }}
+                          className="text-xs px-2.5 py-1 rounded-lg bg-emerald-500 text-white font-medium hover:bg-emerald-600"
+                        >
+                          Concluir
+                        </button>
+                      </td>
                     </tr>
                   )
                 })}
                 {!data?.aguardando_fiscal?.length && (
-                  <tr><td colSpan={5} className="py-8 text-center text-gray-400 text-sm">Nenhuma nota aguardando lançamento</td></tr>
+                  <tr><td colSpan={6} className="py-8 text-center text-gray-400 text-sm">Nenhuma nota aguardando lançamento</td></tr>
                 )}
               </tbody>
             </table>
