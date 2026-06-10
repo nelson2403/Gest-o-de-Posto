@@ -9,6 +9,7 @@ import { useAuthContext } from '@/contexts/AuthContext'
 interface PostoRow { id: string; nome: string }
 
 interface ItemFechamento {
+  tipo?:           string
   label:           string
   valor_as:        number | null
   valor_frentista: number | null
@@ -45,6 +46,20 @@ export default function ConsultaFechamentoCaixaPage() {
   const [loading,      setLoading]      = useState(false)
   const [buscou,       setBuscou]       = useState(false)
   const [selectedFech, setSelectedFech] = useState<Fechamento | null>(null)
+  // Entradas recalculadas AO VIVO do AUTOSYSTEM (para o veredito bater com o frentista)
+  const [entradasLive, setEntradasLive] = useState<number | null>(null)
+
+  // Ao selecionar um fechamento, recalcula as entradas reais do AUTOSYSTEM
+  useEffect(() => {
+    setEntradasLive(null)
+    if (!selectedFech) return
+    let cancel = false
+    fetch(`/api/caixa/fechamento-conferencia?id=${selectedFech.id}`)
+      .then(r => r.json())
+      .then(j => { if (!cancel && j?.disponivel) setEntradasLive(j.total_entradas) })
+      .catch(() => {})
+    return () => { cancel = true }
+  }, [selectedFech])
 
   // Carrega postos
   useEffect(() => {
@@ -193,61 +208,82 @@ export default function ConsultaFechamentoCaixaPage() {
               Fechamento — {selectedFech.frentista_nome} — {selectedFech.data_fechamento?.split('-').reverse().join('/')}
             </h3>
 
-            {/* Veredito — igual ao que o frentista vê na conferência */}
             {(() => {
-              const difV   = selectedFech.total_diferenca ?? 0
-              const ok     = Math.abs(difV) < 0.02
-              const faltou = difV < 0
+              // Itens das formas (exclui linha de reconciliação para recompor do zero)
+              const baseItens   = (selectedFech.itens ?? []).filter(
+                i => i.tipo !== 'nao_lancado' && !(i.label ?? '').startsWith('Não lançado'),
+              )
+              const sumFormsAS  = baseItens.reduce((s, i) => s + (i.valor_as ?? 0), 0)
+              // Entradas reais: ao vivo do AUTOSYSTEM; fallback p/ total salvo
+              const entradas    = entradasLive ?? selectedFech.total_as ?? sumFormsAS
+              const naoLancado  = parseFloat((entradas - sumFormsAS).toFixed(2))
+              const totalSist   = entradas
+              const totalFrent  = selectedFech.total_frentista ?? 0
+              const totalDif    = parseFloat((totalFrent - totalSist).toFixed(2))
+              const ok          = Math.abs(totalDif) < 0.02
+              const faltou      = totalDif < 0
+
               return (
-                <div className={`rounded-xl border-2 px-5 py-4 text-center ${
-                  ok ? 'bg-emerald-50 border-emerald-300' : faltou ? 'bg-red-50 border-red-300' : 'bg-amber-50 border-amber-300'
-                }`}>
-                  <p className={`text-2xl font-extrabold ${ok ? 'text-emerald-700' : faltou ? 'text-red-700' : 'text-amber-700'}`}>
-                    {ok ? '✓ CAIXA CERTO' : faltou ? `FALTANDO ${fmt(Math.abs(difV))}` : `SOBRANDO ${fmt(Math.abs(difV))}`}
-                  </p>
-                  <div className="flex justify-center gap-5 mt-2 text-sm text-gray-600 flex-wrap">
-                    <span>Total de Entradas: <span className="font-bold text-gray-800">{fmt(selectedFech.total_as)}</span></span>
-                    <span>Frentista declarou: <span className="font-bold text-gray-800">{fmt(selectedFech.total_frentista)}</span></span>
+                <>
+                  {/* Veredito — igual ao que o frentista vê na conferência */}
+                  <div className={`rounded-xl border-2 px-5 py-4 text-center ${
+                    ok ? 'bg-emerald-50 border-emerald-300' : faltou ? 'bg-red-50 border-red-300' : 'bg-amber-50 border-amber-300'
+                  }`}>
+                    <p className={`text-2xl font-extrabold ${ok ? 'text-emerald-700' : faltou ? 'text-red-700' : 'text-amber-700'}`}>
+                      {ok ? '✓ CAIXA CERTO' : faltou ? `FALTANDO ${fmt(Math.abs(totalDif))}` : `SOBRANDO ${fmt(Math.abs(totalDif))}`}
+                    </p>
+                    <div className="flex justify-center gap-5 mt-2 text-sm text-gray-600 flex-wrap">
+                      <span>Total de Entradas: <span className="font-bold text-gray-800">{fmt(totalSist)}</span></span>
+                      <span>Frentista declarou: <span className="font-bold text-gray-800">{fmt(totalFrent)}</span></span>
+                    </div>
                   </div>
-                </div>
+
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                          <th className="text-left px-4 py-2 font-medium text-gray-600">Campo</th>
+                          <th className="text-right px-4 py-2 font-medium text-gray-600">Sistema</th>
+                          <th className="text-right px-4 py-2 font-medium text-gray-600">Frentista</th>
+                          <th className="text-right px-4 py-2 font-medium text-gray-600">Diferença</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {baseItens.map((item, idx) => {
+                          const d = fmtDif(item.diferenca)
+                          return (
+                            <tr key={idx} className={idx % 2 === 0 ? '' : 'bg-gray-50'}>
+                              <td className="px-4 py-2 font-medium text-gray-800">{item.label}</td>
+                              <td className="px-4 py-2 text-right text-gray-700">{fmt(item.valor_as)}</td>
+                              <td className="px-4 py-2 text-right text-gray-700">{fmt(item.valor_frentista)}</td>
+                              <td className={`px-4 py-2 text-right ${d.cls}`}>{d.text}</td>
+                            </tr>
+                          )
+                        })}
+                        {Math.abs(naoLancado) > 0.02 && (
+                          <tr className="bg-amber-50/60">
+                            <td className="px-4 py-2 font-medium text-amber-800">Não lançado <span className="text-[11px] text-amber-600">(AUTOSYSTEM)</span></td>
+                            <td className="px-4 py-2 text-right text-amber-800">{fmt(naoLancado)}</td>
+                            <td className="px-4 py-2 text-right text-gray-400">—</td>
+                            <td className={`px-4 py-2 text-right ${fmtDif(-naoLancado).cls}`}>{fmtDif(-naoLancado).text}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-gray-300 font-bold bg-gray-50">
+                          <td className="px-4 py-2">Total</td>
+                          <td className="px-4 py-2 text-right">{fmt(totalSist)}</td>
+                          <td className="px-4 py-2 text-right">{fmt(totalFrent)}</td>
+                          <td className={`px-4 py-2 text-right ${fmtDif(totalDif).cls}`}>
+                            {fmtDif(totalDif).text}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </>
               )
             })()}
-
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left px-4 py-2 font-medium text-gray-600">Campo</th>
-                    <th className="text-right px-4 py-2 font-medium text-gray-600">Sistema</th>
-                    <th className="text-right px-4 py-2 font-medium text-gray-600">Frentista</th>
-                    <th className="text-right px-4 py-2 font-medium text-gray-600">Diferença</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(selectedFech.itens ?? []).map((item, idx) => {
-                    const d = fmtDif(item.diferenca)
-                    return (
-                      <tr key={idx} className={idx % 2 === 0 ? '' : 'bg-gray-50'}>
-                        <td className="px-4 py-2 font-medium text-gray-800">{item.label}</td>
-                        <td className="px-4 py-2 text-right text-gray-700">{fmt(item.valor_as)}</td>
-                        <td className="px-4 py-2 text-right text-gray-700">{fmt(item.valor_frentista)}</td>
-                        <td className={`px-4 py-2 text-right ${d.cls}`}>{d.text}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-gray-300 font-bold bg-gray-50">
-                    <td className="px-4 py-2">Total</td>
-                    <td className="px-4 py-2 text-right">{fmt(selectedFech.total_as)}</td>
-                    <td className="px-4 py-2 text-right">{fmt(selectedFech.total_frentista)}</td>
-                    <td className={`px-4 py-2 text-right ${fmtDif(selectedFech.total_diferenca).cls}`}>
-                      {fmtDif(selectedFech.total_diferenca).text}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
             {selectedFech.assinatura_img && (
               <div>
                 <p className="text-xs text-gray-500 mb-1">Assinatura:</p>
