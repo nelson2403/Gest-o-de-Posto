@@ -536,6 +536,22 @@ export default function CaixaPage() {
         diferenca:       i.diferenca,
       }))
 
+      // Reconciliação: entradas que não foram lançadas em nenhuma forma.
+      // Persistir esta linha faz o snapshot do financeiro bater com o que o
+      // frentista vê (Total Sistema = total de entradas do AUTOSYSTEM).
+      const totFormasAS = itens.reduce((s, i) => s + (i.valor_as ?? 0), 0)
+      const entradasReais = conferenciaAS?.total_entradas ?? totFormasAS
+      const naoLanc = parseFloat((entradasReais - totFormasAS).toFixed(2))
+      if (Math.abs(naoLanc) > 0.02) {
+        itensSalvar.push({
+          tipo:            'nao_lancado',
+          label:           'Não lançado (AUTOSYSTEM)',
+          valor_as:        naoLanc,
+          valor_frentista: 0,
+          diferenca:       -naoLanc,
+        })
+      }
+
       const res  = await fetch('/api/caixa/salvar', {
         method:  'POST',
         headers: {

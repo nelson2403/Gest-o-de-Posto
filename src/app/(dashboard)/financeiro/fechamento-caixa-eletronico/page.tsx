@@ -192,6 +192,27 @@ export default function ConsultaFechamentoCaixaPage() {
             <h3 className="font-semibold text-gray-800">
               Fechamento — {selectedFech.frentista_nome} — {selectedFech.data_fechamento?.split('-').reverse().join('/')}
             </h3>
+
+            {/* Veredito — igual ao que o frentista vê na conferência */}
+            {(() => {
+              const difV   = selectedFech.total_diferenca ?? 0
+              const ok     = Math.abs(difV) < 0.02
+              const faltou = difV < 0
+              return (
+                <div className={`rounded-xl border-2 px-5 py-4 text-center ${
+                  ok ? 'bg-emerald-50 border-emerald-300' : faltou ? 'bg-red-50 border-red-300' : 'bg-amber-50 border-amber-300'
+                }`}>
+                  <p className={`text-2xl font-extrabold ${ok ? 'text-emerald-700' : faltou ? 'text-red-700' : 'text-amber-700'}`}>
+                    {ok ? '✓ CAIXA CERTO' : faltou ? `FALTANDO ${fmt(Math.abs(difV))}` : `SOBRANDO ${fmt(Math.abs(difV))}`}
+                  </p>
+                  <div className="flex justify-center gap-5 mt-2 text-sm text-gray-600 flex-wrap">
+                    <span>Total de Entradas: <span className="font-bold text-gray-800">{fmt(selectedFech.total_as)}</span></span>
+                    <span>Frentista declarou: <span className="font-bold text-gray-800">{fmt(selectedFech.total_frentista)}</span></span>
+                  </div>
+                </div>
+              )
+            })()}
+
             <div className="overflow-x-auto rounded-lg border border-gray-200">
               <table className="w-full text-sm">
                 <thead>
