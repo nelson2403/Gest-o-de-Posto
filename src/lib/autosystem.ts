@@ -2734,7 +2734,10 @@ export async function buscarDadosCaixaFrentista(
   function applyKeyword(nome: string, total: number): boolean {
     const c = nome.toLowerCase()
     if (EXCLUIR_KW.some(ex => c.startsWith(ex) || c.includes(ex))) return true // excluído
-    if (c.startsWith('caixa adm') || c === 'dinheiro' || c.startsWith('deposito em dinheiro')) {
+    // Depósitos (cofre, brinks, depósito em dinheiro) → DEP. COFRE
+    if (c.includes('cofre') || c.includes('brink') || c.includes('deposito') || c.includes('depósito')) {
+      deposito_cofre += total
+    } else if (c.startsWith('caixa adm') || c === 'dinheiro' || c.includes('sangria')) {
       dinheiro += total
     } else if ((c.includes('pix') || c.includes('qrlinx')) && c.includes('cnpj')) {
       pix_cnpj += total
