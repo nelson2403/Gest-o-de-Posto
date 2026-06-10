@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { Header } from '@/components/layout/Header'
-import { Plus, Pencil, Trash2, X, Croissant, RefreshCw } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Croissant, RefreshCw, ListChecks } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 
 interface Salgado {
@@ -15,6 +15,9 @@ interface Salgado {
   ativo: boolean
 }
 
+interface Insumo { id: string; nome: string; unidade: string; custo_unitario: number }
+interface FichaItem { insumo_id: string; quantidade: number }
+
 const UNIDADES = ['un', 'cento', 'kg']
 
 const fmtBRL = (v: number) => (v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -24,6 +27,45 @@ export default function SalgadosPage() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal]   = useState<Partial<Salgado> | null>(null)
   const [salvando, setSalvando] = useState(false)
+
+  // Ficha técnica
+  const [fichaDe, setFichaDe]       = useState<Salgado | null>(null)
+  const [fichaItens, setFichaItens] = useState<FichaItem[]>([])
+  const [insumos, setInsumos]       = useState<Insumo[]>([])
+  const [salvandoFicha, setSalvandoFicha] = useState(false)
+
+  async function abrirFicha(s: Salgado) {
+    setFichaDe(s)
+    setFichaItens([])
+    const [ri, rf] = await Promise.all([
+      fetch('/api/pombal-massas/insumos').then(r => r.json()),
+      fetch(`/api/pombal-massas/salgados/${s.id}/ficha`).then(r => r.json()),
+    ])
+    setInsumos(ri.insumos ?? [])
+    setFichaItens((rf.ficha ?? []).map((f: any) => ({ insumo_id: f.insumo_id, quantidade: Number(f.quantidade) })))
+  }
+
+  async function salvarFicha() {
+    if (!fichaDe) return
+    setSalvandoFicha(true)
+    try {
+      const r = await fetch(`/api/pombal-massas/salgados/${fichaDe.id}/ficha`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itens: fichaItens.filter(i => i.insumo_id && i.quantidade > 0) }),
+      })
+      const j = await r.json()
+      if (!r.ok) { toast({ variant: 'destructive', title: j.error ?? 'Erro' }); return }
+      toast({ title: `Ficha salva — custo recalculado: ${fmtBRL(j.custo)}` })
+      setFichaDe(null)
+      carregar()
+    } finally { setSalvandoFicha(false) }
+  }
+
+  const custoFicha = fichaItens.reduce((s, it) => {
+    const ins = insumos.find(i => i.id === it.insumo_id)
+    return s + (ins ? Number(ins.custo_unitario) * Number(it.quantidade || 0) : 0)
+  }, 0)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -114,8 +156,9 @@ export default function SalgadosPage() {
                     <td className="px-4 py-3 text-right tabular-nums">{Number(s.estoque).toLocaleString('pt-BR')}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => setModal(s)} className="p-1.5 text-gray-400 hover:text-orange-500 rounded-lg hover:bg-orange-50"><Pencil className="w-4 h-4" /></button>
-                        <button onClick={() => excluir(s)} className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => abrirFicha(s)} title="Ficha técnica (receita)" className="p-1.5 text-gray-400 hover:text-indigo-500 rounded-lg hover:bg-indigo-50"><ListChecks className="w-4 h-4" /></button>
+                        <button onClick={() => setModal(s)} title="Editar" className="p-1.5 text-gray-400 hover:text-orange-500 rounded-lg hover:bg-orange-50"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => excluir(s)} title="Excluir" className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </td>
                   </tr>
@@ -169,6 +212,60 @@ export default function SalgadosPage() {
             <div className="flex gap-2 px-6 py-4 border-t border-gray-100 dark:border-gray-800">
               <button onClick={() => setModal(null)} className="flex-1 py-2 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800">Cancelar</button>
               <button onClick={salvar} disabled={salvando} className="flex-1 py-2 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 disabled:opacity-50">{salvando ? 'Salvando…' : 'Salvar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Ficha Técnica */}
+      {fichaDe && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800">
+              <div>
+                <h2 className="font-semibold text-gray-900 dark:text-gray-100">Ficha Técnica — {fichaDe.nome}</h2>
+                <p className="text-[11px] text-gray-400">Insumos por 1 {fichaDe.unidade} — define o custo e a baixa de estoque</p>
+              </div>
+              <button onClick={() => setFichaDe(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="p-6 space-y-2 overflow-y-auto">
+              {insumos.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">Cadastre matérias-primas primeiro.</p>
+              ) : fichaItens.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-2">Nenhum insumo na ficha. Adicione abaixo.</p>
+              ) : fichaItens.map((it, idx) => {
+                const ins = insumos.find(i => i.id === it.insumo_id)
+                return (
+                  <div key={idx} className="flex items-center gap-2">
+                    <select value={it.insumo_id} onChange={e => setFichaItens(p => p.map((x, i) => i === idx ? { ...x, insumo_id: e.target.value } : x))}
+                      className="flex-1 border border-gray-200 dark:border-gray-700 dark:bg-gray-800 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400">
+                      <option value="">— insumo —</option>
+                      {insumos.map(i => <option key={i.id} value={i.id}>{i.nome} ({i.unidade})</option>)}
+                    </select>
+                    <input type="number" step="0.0001" value={it.quantidade || ''} placeholder="qtd"
+                      onChange={e => setFichaItens(p => p.map((x, i) => i === idx ? { ...x, quantidade: parseFloat(e.target.value) } : x))}
+                      className="w-24 border border-gray-200 dark:border-gray-700 dark:bg-gray-800 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                    <span className="w-10 text-[11px] text-gray-400">{ins?.unidade}</span>
+                    <button onClick={() => setFichaItens(p => p.filter((_, i) => i !== idx))} className="text-gray-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                )
+              })}
+
+              {insumos.length > 0 && (
+                <button onClick={() => setFichaItens(p => [...p, { insumo_id: '', quantidade: 0 }])}
+                  className="mt-2 flex items-center gap-1 text-[13px] text-orange-600 font-medium hover:text-orange-700">
+                  <Plus className="w-4 h-4" /> Adicionar insumo
+                </button>
+              )}
+            </div>
+
+            <div className="px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-gray-800/50">
+              <span className="text-sm text-gray-600 dark:text-gray-300">Custo calculado: <span className="font-bold text-gray-900 dark:text-gray-100">{fmtBRL(custoFicha)}</span></span>
+            </div>
+            <div className="flex gap-2 px-6 py-4 border-t border-gray-100 dark:border-gray-800">
+              <button onClick={() => setFichaDe(null)} className="flex-1 py-2 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800">Fechar</button>
+              <button onClick={salvarFicha} disabled={salvandoFicha} className="flex-1 py-2 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 disabled:opacity-50">{salvandoFicha ? 'Salvando…' : 'Salvar Ficha'}</button>
             </div>
           </div>
         </div>

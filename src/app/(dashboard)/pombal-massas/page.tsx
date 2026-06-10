@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
-import { Croissant, Wheat, Package, ChevronRight, ClipboardList } from 'lucide-react'
+import { Croissant, Wheat, Package, ChevronRight, ClipboardList, Factory, FileText } from 'lucide-react'
 
 const fmtBRL = (v: number) => (v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -32,9 +32,11 @@ export default function PombalMassasPainel() {
   ]
 
   const atalhos = [
-    { href: '/pombal-massas/salgados', label: 'Salgados', desc: 'Cadastro, custo, preço e estoque', icon: Croissant },
-    { href: '/pombal-massas/insumos',  label: 'Matérias-primas', desc: 'Insumos, custo e estoque', icon: Wheat },
-    { href: '/pombal-massas/pedidos',  label: 'Pedidos das lojas', desc: 'Em breve (Fase 3)', icon: ClipboardList, breve: true },
+    { href: '/pombal-massas/salgados',   label: 'Salgados', desc: 'Cadastro, ficha técnica, custo e preço', icon: Croissant },
+    { href: '/pombal-massas/insumos',    label: 'Matérias-primas', desc: 'Insumos, custo e estoque', icon: Wheat },
+    { href: '/pombal-massas/producao',   label: 'Produção', desc: 'Registrar produção (baixa insumos)', icon: Factory },
+    { href: '/pombal-massas/pedidos',    label: 'Pedidos das lojas', desc: 'Solicitar, aprovar e entregar', icon: ClipboardList },
+    { href: '/pombal-massas/relatorios', label: 'Relatórios', desc: 'Custo, margem, consumo e vendas', icon: FileText },
   ]
 
   return (
@@ -60,31 +62,19 @@ export default function PombalMassasPainel() {
         {/* Atalhos */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {atalhos.map(a => (
-            a.breve ? (
-              <div key={a.href} className="bg-white dark:bg-gray-900 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 opacity-60">
-                <div className="flex items-center gap-3">
-                  <a.icon className="w-5 h-5 text-gray-400" />
-                  <div>
-                    <p className="font-semibold text-gray-700 dark:text-gray-300">{a.label}</p>
-                    <p className="text-[12px] text-gray-400">{a.desc}</p>
-                  </div>
+            <Link key={a.href} href={a.href}
+              className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 hover:border-orange-300 hover:shadow-sm transition-all group">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
+                  <a.icon className="w-5 h-5 text-orange-500" />
                 </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-800 dark:text-gray-200">{a.label}</p>
+                  <p className="text-[12px] text-gray-500">{a.desc}</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-orange-400" />
               </div>
-            ) : (
-              <Link key={a.href} href={a.href}
-                className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4 hover:border-orange-300 hover:shadow-sm transition-all group">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-                    <a.icon className="w-5 h-5 text-orange-500" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-800 dark:text-gray-200">{a.label}</p>
-                    <p className="text-[12px] text-gray-500">{a.desc}</p>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-orange-400" />
-                </div>
-              </Link>
-            )
+            </Link>
           ))}
         </div>
       </div>

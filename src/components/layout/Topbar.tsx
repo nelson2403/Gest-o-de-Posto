@@ -13,7 +13,7 @@ import {
   ArrowLeftRight, Eye, EyeOff, X, ChevronDown,
   PackageSearch, Truck, CalendarDays, ShoppingCart, Menu,
   Sun, Moon, CheckCheck, Scale, Banknote, Hash,
-  Target, Calculator, AlertTriangle, Croissant, Wheat,
+  Target, Calculator, AlertTriangle, Croissant, Wheat, Factory,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { useAuthContext } from '@/contexts/AuthContext'
@@ -113,11 +113,14 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'Pombal Massas',
-    onlyForRoles: ['master', 'adm_financeiro'],
+    onlyForRoles: ['master', 'adm_financeiro', 'gerente'],
     items: [
-      { href: '/pombal-massas',          label: 'Painel',          icon: LayoutDashboard, permission: null },
-      { href: '/pombal-massas/salgados', label: 'Salgados',        icon: Croissant,       permission: null },
-      { href: '/pombal-massas/insumos',  label: 'Matérias-primas', icon: Wheat,           permission: null },
+      { href: '/pombal-massas',           label: 'Painel',          icon: LayoutDashboard, permission: null, hideForRoles: ['gerente'] },
+      { href: '/pombal-massas/salgados',  label: 'Salgados',        icon: Croissant,       permission: null, hideForRoles: ['gerente'] },
+      { href: '/pombal-massas/insumos',   label: 'Matérias-primas', icon: Wheat,           permission: null, hideForRoles: ['gerente'] },
+      { href: '/pombal-massas/producao',  label: 'Produção',        icon: Factory,         permission: null, hideForRoles: ['gerente'] },
+      { href: '/pombal-massas/pedidos',   label: 'Pedidos',         icon: ClipboardList,   permission: null },
+      { href: '/pombal-massas/relatorios', label: 'Relatórios',     icon: FileText,        permission: null, hideForRoles: ['gerente'] },
     ],
   },
   {
