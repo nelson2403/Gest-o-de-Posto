@@ -1,6 +1,20 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Cache em memória do resultado de getUser por sessão (cookie), para não
+// validar o JWT no servidor de auth a CADA requisição (evita rate limit 429
+// e reduz latência). O processo Node persiste (PM2/dev), então o cache vale
+// entre requisições. TTL curto — o refresh de token ainda ocorre a cada ciclo.
+const userCache = new Map<string, { user: any; ts: number }>() // eslint-disable-line @typescript-eslint/no-explicit-any
+const USER_TTL_MS = 30_000
+
+function chaveSessao(request: NextRequest): string {
+  return request.cookies.getAll()
+    .filter(c => c.name.startsWith('sb-'))
+    .map(c => `${c.name}=${c.value}`)
+    .join('|')
+}
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
@@ -51,21 +65,37 @@ export async function middleware(request: NextRequest) {
   // `setAll` acima. Sem isso, a sessão "vence em silêncio" e o front
   // continua navegando, mas as APIs retornam 401.
   let user = null
-  try {
-    const getUserWithTimeout = Promise.race([
-      supabase.auth.getUser(),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
-    ])
-    const { data } = await getUserWithTimeout as Awaited<ReturnType<typeof supabase.auth.getUser>>
-    user = data.user ?? null
-  } catch {
-    // Supabase indisponível ou timeout
-    // Para APIs protegidas: retorna 503 para evitar exposição de dados
-    // Para páginas públicas: permite passar
-    if (pathname.startsWith('/api/') && !isPublic) {
-      return NextResponse.json({ error: 'Serviço indisponível' }, { status: 503 })
+  const ckey = chaveSessao(request)
+  const cached = ckey ? userCache.get(ckey) : null
+
+  if (cached && Date.now() - cached.ts < USER_TTL_MS) {
+    // Usa o usuário validado recentemente — não chama o servidor de auth
+    user = cached.user
+  } else {
+    try {
+      const getUserWithTimeout = Promise.race([
+        supabase.auth.getUser(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
+      ])
+      const { data } = await getUserWithTimeout as Awaited<ReturnType<typeof supabase.auth.getUser>>
+      user = data.user ?? null
+      if (ckey) {
+        userCache.set(ckey, { user, ts: Date.now() })
+        // poda entradas expiradas para não crescer indefinidamente
+        if (userCache.size > 500) {
+          const agoraMs = Date.now()
+          for (const [k, v] of userCache) if (agoraMs - v.ts > USER_TTL_MS) userCache.delete(k)
+        }
+      }
+    } catch {
+      // Supabase indisponível ou timeout
+      // Para APIs protegidas: retorna 503 para evitar exposição de dados
+      // Para páginas públicas: permite passar
+      if (pathname.startsWith('/api/') && !isPublic) {
+        return NextResponse.json({ error: 'Serviço indisponível' }, { status: 503 })
+      }
+      return supabaseResponse
     }
-    return supabaseResponse
   }
 
   if (!user && !isPublic) {
