@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
       id, titulo, banco, conta_bancaria_id,
       usuario_id,
       extrato_data, extrato_movimento, extrato_saldo_externo, extrato_status,
-      extrato_diferenca_notificada,
+      extrato_diferenca_notificada, extrato_datas_as,
       posto_id,
       posto:postos(id, nome, codigo_empresa_externo),
       recorrente:tarefas_recorrentes(usuario_id,
@@ -74,11 +74,14 @@ export async function POST(req: NextRequest) {
       ?? (postoId ? (contaMapPosto[postoId] ?? null) : null)
 
     const dataFim = t.extrato_data as string
+    const datasAS: string[] = Array.isArray((t as any).extrato_datas_as) && (t as any).extrato_datas_as.length
+      ? (t as any).extrato_datas_as
+      : [dataFim]
 
     // ── 4. Busca movimento ATUAL no AUTOSYSTEM ─────────────────────────────
     let movAtual: number
     try {
-      const movtos = await buscarMovtosAutosystem(empresaId, [dataFim])
+      const movtos = await buscarMovtosAutosystem(empresaId, datasAS)
       if (contaCodigo) {
         const entradas = movtos.filter(m => m.conta_debitar  === contaCodigo).reduce((s, m) => s + m.valor, 0)
         const saidas   = movtos.filter(m => m.conta_creditar === contaCodigo).reduce((s, m) => s + m.valor, 0)

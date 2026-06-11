@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       .select(`
         id, titulo,
         extrato_data, extrato_movimento, extrato_status,
-        extrato_diferenca,
+        extrato_diferenca, extrato_datas_as,
         posto_id, banco, conta_bancaria_id,
         posto:postos(id, nome, codigo_empresa_externo),
         recorrente:tarefas_recorrentes(usuario_id, posto:postos(id, nome, codigo_empresa_externo)),
@@ -116,11 +116,16 @@ export async function POST(req: NextRequest) {
         ?? (postoId ? (contaMapPosto[postoId] ?? null) : null)
 
       const dataFim = t.extrato_data as string
+      // Mesmo intervalo usado no upload (feriado/fim de semana → vários dias).
+      // Tarefas antigas sem o intervalo gravado caem no comportamento de 1 dia.
+      const datasAS: string[] = Array.isArray((t as any).extrato_datas_as) && (t as any).extrato_datas_as.length
+        ? (t as any).extrato_datas_as
+        : [dataFim]
 
       // Buscar movimento ATUAL do AUTOSYSTEM
       let movAtual: number
       try {
-        const movtos = await buscarMovtosAutosystem(empresaId, [dataFim])
+        const movtos = await buscarMovtosAutosystem(empresaId, datasAS)
         if (contaCodigo) {
           const entradas = movtos.filter(m => m.conta_debitar === contaCodigo).reduce((s, m) => s + m.valor, 0)
           const saidas = movtos.filter(m => m.conta_creditar === contaCodigo).reduce((s, m) => s + m.valor, 0)

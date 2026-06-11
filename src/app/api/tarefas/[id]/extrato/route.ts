@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buscarMovtosAutosystem, calcularMovimento } from '@/lib/autosystem'
+import { datasConciliacao, intervaloDatas } from '@/lib/feriados'
 import * as XLSX from 'xlsx'
 
 // ─── Converte valor BR do Excel preservando o sinal ──────────────────────────
@@ -135,19 +136,29 @@ export async function POST(
       if (!targetDate) return NextResponse.json({ error: 'Extrato Stone vazio ou inválido.' }, { status: 422 })
     }
 
-    const rowsForDate = dataRows.filter(r => parseDataStone(r[6]) === targetDate)
+    // Feriado/fim de semana: o banco liquida no próximo dia útil. Agregamos o
+    // dia-alvo + os dias não-úteis anteriores QUE EXISTEM no arquivo, somando o
+    // movimento dos dois lados (extrato e AUTOSYSTEM) no mesmo intervalo.
+    const datasAgregadas = datasConciliacao(targetDate)
+      .filter(d => d === targetDate || datasNoArquivo.includes(d))
+
+    const rowsForDate = dataRows.filter(r => {
+      const d = parseDataStone(r[6])
+      return d !== null && datasAgregadas.includes(d)
+    })
+    const rowsTargetDate = dataRows.filter(r => parseDataStone(r[6]) === targetDate)
 
     movimentoExtrato = parseFloat(
       rowsForDate.reduce((sum, r) => sum + parseValorBRSigned(r[2]), 0).toFixed(2)
     )
 
-    const lastRow   = rowsForDate[rowsForDate.length - 1]
+    const lastRow   = rowsTargetDate[rowsTargetDate.length - 1]
     const credorFim  = parseValorBRSigned(lastRow[4])
     const devedorFim = parseValorBRSigned(lastRow[3])
     saldoDia      = parseFloat((credorFim - devedorFim).toFixed(2))
     saldoAnterior = parseFloat((saldoDia - movimentoExtrato).toFixed(2))
     extratoData   = targetDate
-    datasAS       = [targetDate]
+    datasAS       = datasAgregadas
 
   } else {
     // ── Parser Sicoob Excel ───────────────────────────────────────────────
@@ -184,13 +195,15 @@ export async function POST(
       extratoData   = dataEsperada
       saldoDia      = saldosDia[idx].valor
       saldoAnterior = idx > 0 ? saldosDia[idx - 1].valor : saldoAnteriorArquivo
-      datasAS       = [dataEsperada]
+      // O movimento (saldoDia − saldoAnterior) cobre o intervalo entre o saldo
+      // anterior e este dia — inclui feriados/fins de semana sem linha de saldo.
+      datasAS       = idx > 0 ? intervaloDatas(saldosDia[idx - 1].data, extratoData) : datasConciliacao(extratoData)
     } else {
       const last    = saldosDia[saldosDia.length - 1]
       extratoData   = last.data
       saldoDia      = last.valor
       saldoAnterior = saldosDia.length > 1 ? saldosDia[saldosDia.length - 2].valor : saldoAnteriorArquivo
-      datasAS       = [extratoData]
+      datasAS       = saldosDia.length > 1 ? intervaloDatas(saldosDia[saldosDia.length - 2].data, extratoData) : datasConciliacao(extratoData)
     }
 
     movimentoExtrato = parseFloat((saldoDia - saldoAnterior).toFixed(2))
@@ -274,6 +287,13 @@ export async function POST(
   }
 
   await supabase.from('tarefas').update(updates).eq('id', id)
+
+  // Guarda o intervalo de datas do AUTOSYSTEM usado (feriados/fins de semana),
+  // para a re-sincronização comparar o mesmo período. Resiliente caso a
+  // migration 117 ainda não tenha sido aplicada (erro é ignorado).
+  if (datasAS.length > 1) {
+    await supabase.from('tarefas').update({ extrato_datas_as: datasAS }).eq('id', id)
+  }
 
   return NextResponse.json({
     ok:               true,
