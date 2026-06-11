@@ -2499,6 +2499,21 @@ export async function buscarDadosCaixaFrentista(
       if (rows.length) usuarioAS = String(rows[0].usuario ?? '').trim()
     } catch (e: any) { console.log(`[caixa-frentista] caixa usuario check erro: ${e.message}`) }
 
+    // Fallback: confirma pelo movto.usuario. O caixa pode ter sido aberto sob um
+    // login genérico (ex.: "PDV") enquanto as transações ficam sob o nome do
+    // operador — nesse caso o caixa.usuario não bate, mas o movto.usuario sim.
+    if (!usuarioAS) {
+      try {
+        const rows = await query<{ usuario: string }>(
+          `SELECT usuario::text AS usuario, COUNT(*) AS n FROM movto
+           WHERE empresa = $1 AND data = $2::date AND usuario = ANY($3::text[])
+           GROUP BY usuario ORDER BY n DESC LIMIT 1`,
+          [empresaGrid, data, candidatos],
+        )
+        if (rows.length) usuarioAS = String(rows[0].usuario ?? '').trim()
+      } catch (e: any) { console.log(`[caixa-frentista] movto usuario check erro: ${e.message}`) }
+    }
+
     // Fallback: testa na tabela usuario (quando existe) para dias sem caixa aberto
     if (!usuarioAS) {
       for (const cand of candidatos) {
