@@ -36,9 +36,43 @@ export default function ConsultaFechamentoCaixaPage() {
   const { usuario } = useAuthContext()
   const role = usuario?.role
   const podeAcessar = ['master', 'adm_financeiro', 'gerente', 'operador_caixa'].includes(role ?? '')
+  const podeLiberar = ['master', 'adm_financeiro'].includes(role ?? '')
 
   const [postos,  setPostos]  = useState<PostoRow[]>([])
   const [postoId, setPostoId] = useState('')
+
+  // Liberar frentista para refazer o fechamento de hoje
+  const [liberarCodigo, setLiberarCodigo] = useState('')
+  const [liberarMsg,    setLiberarMsg]    = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null)
+  const [liberando,     setLiberando]     = useState(false)
+
+  async function liberarFrentista() {
+    const cod = liberarCodigo.trim()
+    if (!cod) return
+    setLiberando(true)
+    setLiberarMsg(null)
+    try {
+      const res = await fetch('/api/caixa/liberar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codigo: cod }),
+      })
+      const j = await res.json()
+      if (!res.ok) {
+        setLiberarMsg({ tipo: 'erro', texto: j.error ?? 'Erro ao liberar' })
+      } else {
+        const txt = (j.liberados ?? [])
+          .map((l: any) => `${l.nome}${l.posto ? ` (${l.posto})` : ''} — ${l.fechamento_removido ? 'fechamento removido' : 'sem fechamento hoje'}, ${l.sessoes_removidas} sessão(ões) liberada(s)`)
+          .join(' | ')
+        setLiberarMsg({ tipo: 'ok', texto: `Liberado: ${txt || 'nada a remover'}` })
+        setLiberarCodigo('')
+      }
+    } catch (e: any) {
+      setLiberarMsg({ tipo: 'erro', texto: e.message })
+    } finally {
+      setLiberando(false)
+    }
+  }
 
   const [fechamentos,  setFechamentos]  = useState<Fechamento[]>([])
   const [dataIni,      setDataIni]      = useState('')
@@ -168,6 +202,43 @@ export default function ConsultaFechamentoCaixaPage() {
             </div>
           </div>
         </div>
+
+        {/* Liberar frentista para refazer o fechamento de hoje */}
+        {podeLiberar && (
+          <div className="bg-white rounded-xl border border-amber-200 px-5 py-4 space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-800">Liberar frentista</h3>
+              <p className="text-xs text-gray-500">
+                Digite o código do frentista para liberá-lo a refazer o fechamento de hoje
+                (remove a sessão em aberto e o fechamento de hoje, se houver).
+              </p>
+            </div>
+            <div className="flex items-end gap-3 flex-wrap">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Código do frentista</label>
+                <input
+                  value={liberarCodigo}
+                  onChange={e => setLiberarCodigo(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') liberarFrentista() }}
+                  placeholder="Ex.: 58898"
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 w-40"
+                />
+              </div>
+              <button
+                onClick={liberarFrentista}
+                disabled={liberando || !liberarCodigo.trim()}
+                className="px-5 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50"
+              >
+                {liberando ? 'Liberando…' : 'Liberar'}
+              </button>
+            </div>
+            {liberarMsg && (
+              <p className={`text-sm ${liberarMsg.tipo === 'ok' ? 'text-emerald-600' : 'text-red-600'}`}>
+                {liberarMsg.texto}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Tabela */}
         {fechamentos.length === 0 ? (
