@@ -154,12 +154,29 @@ function extractBoletoData(text: string, valorRef?: number): { vencimento: strin
   }
 
   // ── 4. Decide o valor cruzando código de barras × valor impresso ────────────
+  // Detecta "dígito a mais à esquerda" (erro clássico de leitura): o maior valor
+  // é o menor com dígito(s) prefixado(s). Ex.: 2.450,70 = "2"+450,70.
+  function digitoExtra(maior: number, menor: number): boolean {
+    const dM = Math.round(maior * 100).toString()
+    const dm = Math.round(menor * 100).toString()
+    return dM.length > dm.length && dM.endsWith(dm)
+  }
+
   let valor = ''
   const vb = valorBarcode ? Number(valorBarcode) : null
   const vl = valorLabel   ? Number(valorLabel)   : null
   if (vb != null && vl != null) {
+    const menor = Math.min(vb, vl)
+    const maior = Math.max(vb, vl)
     if (Math.abs(vb - vl) <= 0.02) {
       valor = valorBarcode                 // batem → confiável
+    } else if (digitoExtra(maior, menor)) {
+      // um é o outro com dígito a mais na frente → leitura errada.
+      // Usa o menor, a menos que a referência (NF) confirme claramente o maior.
+      const refConfirmaMaior = !!valorRef && valorRef > 0 &&
+        Math.abs(maior - valorRef) + 0.02 < Math.abs(menor - valorRef)
+      const escolhido = refConfirmaMaior ? maior : menor
+      valor = escolhido === vb ? valorBarcode : valorLabel
     } else if (valorRef && valorRef > 0) {
       // divergem → usa o candidato mais próximo do valor da NF (referência)
       valor = Math.abs(vb - valorRef) <= Math.abs(vl - valorRef) ? valorBarcode : valorLabel
