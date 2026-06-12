@@ -98,7 +98,9 @@ export async function GET(req: NextRequest) {
       .not('extrato_arquivo_path', 'is', null)
       .not('extrato_data', 'is', null)
       .not('extrato_diferenca', 'is', null)
-      .gt('extrato_diferenca', 0.02) // diferença significativa
+      // diferença significativa em QUALQUER sentido (banco > AS ou banco < AS).
+      // Antes usava só .gt(0.02), escondendo as divergências negativas.
+      .or('extrato_diferenca.gt.0.02,extrato_diferenca.lt.-0.02')
       .order('extrato_diferenca', { ascending: false })
 
     // Filtrar por posto: conciliadores veem só seu(s) posto(s), admin_financeiro/master veem tudo
