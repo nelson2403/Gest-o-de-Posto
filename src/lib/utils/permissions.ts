@@ -7,7 +7,9 @@ export function setPermissoesEfetivasGlobal(p: string[] | null) {
   _permissoesEfetivas = p
 }
 
-const ADM_ALL = ['master', 'adm_financeiro', 'adm_fiscal', 'adm_marketing', 'adm_transpombal', 'adm_contas_pagar'] as const
+// adm_marketing é restrito (só Marketing + cadastro de Postos), por isso NÃO entra
+// nas macros amplas. As permissões dele são concedidas explicitamente abaixo.
+const ADM_ALL = ['master', 'adm_financeiro', 'adm_fiscal', 'adm_transpombal', 'adm_contas_pagar'] as const
 const ACESSO_ALL = [...ADM_ALL, 'operador_caixa', 'operador_conciliador'] as const
 
 export const PERMISSIONS = {
@@ -15,13 +17,13 @@ export const PERMISSIONS = {
   'dashboard.view':  ['master'],
 
   // Analítico — master vê tudo; ADMs veem o analítico da sua área
-  'analitico.view':  ['master', 'adm_financeiro', 'adm_fiscal', 'adm_marketing', 'adm_transpombal', 'adm_contas_pagar'],
+  'analitico.view':  ['master', 'adm_financeiro', 'adm_fiscal', 'adm_transpombal', 'adm_contas_pagar'],
 
-  // Empresas — master + ADMs fiscais/marketing/transpombal/contas a pagar
-  'empresas.view':    ['master', 'adm_fiscal', 'adm_marketing', 'adm_transpombal', 'adm_contas_pagar'],
-  'empresas.create':  ['master', 'adm_fiscal', 'adm_marketing', 'adm_transpombal', 'adm_contas_pagar'],
-  'empresas.edit':    ['master', 'adm_fiscal', 'adm_marketing', 'adm_transpombal', 'adm_contas_pagar'],
-  'empresas.delete':  ['master', 'adm_fiscal', 'adm_marketing', 'adm_transpombal', 'adm_contas_pagar'],
+  // Empresas — master + ADMs fiscais/transpombal/contas a pagar
+  'empresas.view':    ['master', 'adm_fiscal', 'adm_transpombal', 'adm_contas_pagar'],
+  'empresas.create':  ['master', 'adm_fiscal', 'adm_transpombal', 'adm_contas_pagar'],
+  'empresas.edit':    ['master', 'adm_fiscal', 'adm_transpombal', 'adm_contas_pagar'],
+  'empresas.delete':  ['master', 'adm_fiscal', 'adm_transpombal', 'adm_contas_pagar'],
 
   // Usuários — somente master
   'usuarios.view':    ['master'],
@@ -29,11 +31,11 @@ export const PERMISSIONS = {
   'usuarios.edit':    ['master'],
   'usuarios.delete':  ['master'],
 
-  // Postos
-  'postos.view':      [...ACESSO_ALL, 'gerente', 'rh'],
-  'postos.create':    [...ADM_ALL],
-  'postos.edit':      [...ADM_ALL],
-  'postos.delete':    [...ADM_ALL],
+  // Postos — adm_marketing também (cadastro dos postos)
+  'postos.view':      [...ACESSO_ALL, 'adm_marketing', 'gerente', 'rh'],
+  'postos.create':    [...ADM_ALL, 'adm_marketing'],
+  'postos.edit':      [...ADM_ALL, 'adm_marketing'],
+  'postos.delete':    [...ADM_ALL, 'adm_marketing'],
 
   // Adquirentes — master + adm_financeiro
   'adquirentes.view':   ['master', 'adm_financeiro'],

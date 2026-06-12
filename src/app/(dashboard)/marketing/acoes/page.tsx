@@ -71,6 +71,7 @@ export default function AcoesPage() {
   const [postos, setPostos]       = useState<PostoOpt[]>([])
   const [loading, setLoading]     = useState(true)
   const [expandido, setExpandido] = useState<string | null>(null)
+  const [enviandoCP, setEnviandoCP] = useState<string | null>(null)
 
   // Modal nova/editar ação
   const [showModal, setShowModal]   = useState(false)
@@ -216,6 +217,38 @@ export default function AcoesPage() {
       load()
     } finally {
       setAprovandoPosto(false)
+    }
+  }
+
+  // Envia os comprovantes (anexos) aprovados de um posto para o Contas a Pagar,
+  // criando uma solicitação de pagamento por anexo (setor = marketing).
+  async function enviarParaContasPagar(acao: Acao, ap: AcaoPosto) {
+    const comps = ap.marketing_comprovantes ?? []
+    if (!comps.length) { toast({ title: 'Nenhum anexo para enviar', variant: 'destructive' }); return }
+    if (!confirm(`Enviar ${comps.length} anexo(s) do posto ${ap.postos?.nome} para o Contas a Pagar efetuar o pagamento?`)) return
+    setEnviandoCP(ap.id)
+    try {
+      for (const c of comps) {
+        const res = await fetch('/api/solicitacoes-pagamento', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            setor:        'marketing',
+            titulo:       `Marketing — ${acao.titulo} — ${ap.postos?.nome}`,
+            descricao:    `Ação de marketing "${acao.titulo}" — posto ${ap.postos?.nome}`,
+            valor:        c.valor ?? ap.valor ?? acao.valor_padrao,
+            arquivo_url:  c.arquivo_url,
+            arquivo_nome: c.arquivo_nome,
+            posto_id:     ap.posto_id,
+          }),
+        })
+        if (!res.ok) { const j = await res.json(); throw new Error(j.error ?? 'Erro ao enviar') }
+      }
+      toast({ title: 'Enviado para o Contas a Pagar!' })
+    } catch (e: any) {
+      toast({ title: e.message ?? 'Erro ao enviar', variant: 'destructive' })
+    } finally {
+      setEnviandoCP(null)
     }
   }
 
@@ -376,6 +409,19 @@ export default function AcoesPage() {
                                     <XCircle className="w-3 h-3 mr-1" /> Reprovar
                                   </Button>
                                 </div>
+                              )}
+                              {/* Botão marketing: enviar anexos aprovados ao Contas a Pagar */}
+                              {podeAprovar && ap.status === 'aprovado' && (ap.marketing_comprovantes?.length ?? 0) > 0 && (
+                                <Button size="sm" variant="outline"
+                                  className="text-[11px] h-7 border-purple-300 text-purple-700 hover:bg-purple-50"
+                                  disabled={enviandoCP === ap.id}
+                                  onClick={() => enviarParaContasPagar(a, ap)}
+                                >
+                                  {enviandoCP === ap.id
+                                    ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                    : <Upload className="w-3 h-3 mr-1" />}
+                                  Enviar p/ Contas a Pagar
+                                </Button>
                               )}
                             </div>
                           )
