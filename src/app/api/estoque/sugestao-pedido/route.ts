@@ -19,10 +19,15 @@ export async function GET(req: NextRequest) {
   const grupos = tipo === 'combustivel' ? [GRUPO_COMBUSTIVEL] : [GRUPO_CONVENIENCIA]
 
   const admin = createAdminClient()
-  const { data: postos } = await admin
+  let postosQuery = admin
     .from('postos')
-    .select('id, nome, codigo_empresa_externo')
+    .select('id, nome, codigo_empresa_externo, conveniencia')
     .not('codigo_empresa_externo', 'is', null)
+
+  // Sugestão de COMBUSTÍVEL não se aplica a lojas de conveniência (sem combustível)
+  if (tipo === 'combustivel') postosQuery = postosQuery.eq('conveniencia', false)
+
+  const { data: postos } = await postosQuery
 
   const postoMap: Record<string, { id: string; nome: string }> = {}
   for (const p of postos ?? []) {

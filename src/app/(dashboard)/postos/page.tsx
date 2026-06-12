@@ -224,6 +224,11 @@ export default function PostosPage() {
           <div>
             <span className="font-medium text-gray-900 group-hover:text-orange-600 transition-colors block">
               {row.original.nome}
+              {row.original.conveniencia && (
+                <span className="ml-2 align-middle inline-block text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5">
+                  Conveniência
+                </span>
+              )}
             </span>
             {row.original.razao_social && (
               <span className="text-[11px] text-gray-400 block leading-tight">{row.original.razao_social}</span>

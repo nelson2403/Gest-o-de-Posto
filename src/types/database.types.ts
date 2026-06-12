@@ -70,6 +70,7 @@ export interface Posto {
   uf: string | null
   sincronizado_em: string | null
   codigo_empresa_externo: string | null
+  conveniencia: boolean | null
   empresa?: Empresa
 }
 

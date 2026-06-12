@@ -24,6 +24,7 @@ interface Posto {
   id:                     string
   nome:                   string
   codigo_empresa_externo: string | null
+  conveniencia?:          boolean | null
 }
 
 interface AnaliseData {
@@ -214,7 +215,7 @@ export default function AnaliseVendasPage() {
   useEffect(() => {
     const sb = createClient()
     sb.from('postos')
-      .select('id, nome, codigo_empresa_externo')
+      .select('id, nome, codigo_empresa_externo, conveniencia')
       .not('codigo_empresa_externo', 'is', null)
       .order('nome')
       .then(({ data }) => {
@@ -296,7 +297,8 @@ export default function AnaliseVendasPage() {
       return
     }
     const empresaIds = postos
-      .filter(p => postoIds.has(p.id) && p.codigo_empresa_externo)
+      // Histórico de combustíveis: ignora lojas de conveniência (sem combustível)
+      .filter(p => postoIds.has(p.id) && p.codigo_empresa_externo && !p.conveniencia)
       .map(p => p.codigo_empresa_externo!)
       .join(',')
     if (!empresaIds) return
@@ -671,7 +673,10 @@ export default function AnaliseVendasPage() {
                       onChange={() => togglePosto(p.id)}
                       className="accent-orange-500 w-3.5 h-3.5"
                     />
-                    <span className="text-[12.5px] text-gray-700 truncate">{p.nome}</span>
+                    <span className="text-[12.5px] text-gray-700 truncate">
+                      {p.nome}
+                      {p.conveniencia && <span className="ml-1.5 text-[10px] text-amber-600">(conv.)</span>}
+                    </span>
                   </label>
                 ))}
                 {postos.length === 0 && (

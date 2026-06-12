@@ -113,6 +113,30 @@ export default function PostoDetalhesPage() {
     setSyncing(false)
   }
 
+  const [savingConv, setSavingConv] = useState(false)
+  async function toggleConveniencia() {
+    if (!posto) return
+    const novo = !posto.conveniencia
+    setSavingConv(true)
+    try {
+      const res = await fetch(`/api/postos/${id}/conveniencia`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conveniencia: novo }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        toast({ variant: 'destructive', title: 'Erro', description: json.error })
+      } else {
+        setPosto(p => p ? { ...p, conveniencia: novo } : p)
+        toast({ title: novo ? 'Marcado como Conveniência' : 'Marcação removida' })
+      }
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro ao salvar' })
+    }
+    setSavingConv(false)
+  }
+
   function handleCopy() {
     if (!posto) return
     const lines: string[] = []
@@ -231,6 +255,22 @@ export default function PostoDetalhesPage() {
                   <Row label="Inscrição Estadual" value={(posto as Posto).ie!} />
                 )}
                 <Row label="Status" value={<AtivoInativoBadge ativo={posto.ativo} />} />
+                <Row label="Tipo" value={
+                  <div className="flex items-center gap-3">
+                    {posto.conveniencia
+                      ? <Badge variant="warning" className="text-xs">Conveniência (sem combustível)</Badge>
+                      : <Badge variant="info" className="text-xs">Posto de combustível</Badge>}
+                    {can(role ?? null, 'postos.edit') && (
+                      <button
+                        onClick={toggleConveniencia}
+                        disabled={savingConv}
+                        className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+                      >
+                        {savingConv ? 'Salvando…' : posto.conveniencia ? 'Marcar como posto' : 'Marcar como conveniência'}
+                      </button>
+                    )}
+                  </div>
+                } />
                 <Row label="Cadastrado em" value={formatDate(posto.criado_em)} />
               </CardContent>
             </Card>

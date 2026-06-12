@@ -31,12 +31,19 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-// GET /api/postos-mapeamento
-export async function GET() {
-  const { data, error } = await supabase
+// GET /api/postos-mapeamento?sem_conveniencia=1
+// sem_conveniencia=1 → exclui lojas de conveniência (áreas de combustível)
+export async function GET(req: NextRequest) {
+  const semConv = new URL(req.url).searchParams.get('sem_conveniencia') === '1'
+
+  let query = supabase
     .from('postos')
-    .select('id, nome, codigo_empresa_externo')
+    .select('id, nome, codigo_empresa_externo, conveniencia')
     .order('nome')
+
+  if (semConv) query = query.eq('conveniencia', false)
+
+  const { data, error } = await query
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
