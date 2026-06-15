@@ -74,6 +74,39 @@ export default function ConsultaFechamentoCaixaPage() {
     }
   }
 
+  // Redefinir PIN do frentista (volta a ser primeiro acesso)
+  const [senhaCodigo, setSenhaCodigo] = useState('')
+  const [senhaMsg,    setSenhaMsg]    = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null)
+  const [redefinindo, setRedefinindo] = useState(false)
+
+  async function redefinirSenha() {
+    const cod = senhaCodigo.trim()
+    if (!cod) return
+    setRedefinindo(true)
+    setSenhaMsg(null)
+    try {
+      const res = await fetch('/api/caixa/redefinir-senha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codigo: cod }),
+      })
+      const j = await res.json()
+      if (!res.ok) {
+        setSenhaMsg({ tipo: 'erro', texto: j.error ?? 'Erro ao redefinir' })
+      } else {
+        const txt = (j.redefinidos ?? [])
+          .map((l: any) => `${l.nome}${l.posto ? ` (${l.posto})` : ''}`)
+          .join(' | ')
+        setSenhaMsg({ tipo: 'ok', texto: `PIN redefinido: ${txt}. No próximo acesso ele cadastra um novo PIN.` })
+        setSenhaCodigo('')
+      }
+    } catch (e: any) {
+      setSenhaMsg({ tipo: 'erro', texto: e.message })
+    } finally {
+      setRedefinindo(false)
+    }
+  }
+
   const [fechamentos,  setFechamentos]  = useState<Fechamento[]>([])
   const [dataIni,      setDataIni]      = useState('')
   const [dataFim,      setDataFim]      = useState('')
@@ -235,6 +268,43 @@ export default function ConsultaFechamentoCaixaPage() {
             {liberarMsg && (
               <p className={`text-sm ${liberarMsg.tipo === 'ok' ? 'text-emerald-600' : 'text-red-600'}`}>
                 {liberarMsg.texto}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Redefinir senha (PIN) do frentista */}
+        {podeLiberar && (
+          <div className="bg-white rounded-xl border border-blue-200 px-5 py-4 space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-800">Redefinir senha do frentista</h3>
+              <p className="text-xs text-gray-500">
+                Digite o código do frentista para zerar o PIN. No próximo acesso ao PDV
+                ele cadastra uma nova senha (primeiro acesso).
+              </p>
+            </div>
+            <div className="flex items-end gap-3 flex-wrap">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Código do frentista</label>
+                <input
+                  value={senhaCodigo}
+                  onChange={e => setSenhaCodigo(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') redefinirSenha() }}
+                  placeholder="Ex.: 58898"
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 w-40"
+                />
+              </div>
+              <button
+                onClick={redefinirSenha}
+                disabled={redefinindo || !senhaCodigo.trim()}
+                className="px-5 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 disabled:opacity-50"
+              >
+                {redefinindo ? 'Redefinindo…' : 'Redefinir senha'}
+              </button>
+            </div>
+            {senhaMsg && (
+              <p className={`text-sm ${senhaMsg.tipo === 'ok' ? 'text-emerald-600' : 'text-red-600'}`}>
+                {senhaMsg.texto}
               </p>
             )}
           </div>
