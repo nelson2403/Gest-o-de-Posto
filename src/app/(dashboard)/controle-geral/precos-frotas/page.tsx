@@ -46,6 +46,7 @@ export default function PrecosFrotasPage() {
   const [vinculacoes, setVinculacoes] = useState<Vinculacao[]>([])
   const [loading,     setLoading]     = useState(true)
   const [aba,         setAba]         = useState<'status' | 'precos' | 'portais'>('status')
+  const [filtroPosto, setFiltroPosto] = useState<string>('')   // '' = todos
 
   const [editando,  setEditando]  = useState<{ posto_id: string; produto: string } | null>(null)
   const [editValor, setEditValor] = useState('')
@@ -269,6 +270,27 @@ export default function PrecosFrotasPage() {
         ))}
       </div>
 
+      {/* Filtro por posto (abas de dados) */}
+      {aba !== 'portais' && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="text-[12px] font-medium text-gray-500">Posto:</label>
+          <select
+            value={filtroPosto}
+            onChange={e => setFiltroPosto(e.target.value)}
+            className="h-9 border border-gray-200 rounded-lg px-3 text-[13px] text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-400/30 min-w-[220px]"
+          >
+            <option value="">Todos os postos</option>
+            {postos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+          </select>
+          {filtroPosto && (
+            <button onClick={() => setFiltroPosto('')}
+              className="flex items-center gap-1 h-9 px-2.5 text-[12px] text-gray-500 hover:text-gray-700">
+              <X className="w-3.5 h-3.5" /> Limpar
+            </button>
+          )}
+        </div>
+      )}
+
       {/* ── ABA: Status dos Portais ─────────────────────────────────────────── */}
       {aba === 'status' && (
         <div className="space-y-4">
@@ -280,7 +302,9 @@ export default function PrecosFrotasPage() {
           {portais.map(portal => {
             const { total, pendente, postosVinculados } = contarPendentes(portal.id)
             const tudo_ok = total > 0 && pendente === 0
-            const postosV = postosDoPortal(portal.id)
+            const postosV = postosDoPortal(portal.id).filter(p => !filtroPosto || p.id === filtroPosto)
+            // Com filtro ativo, esconde portais que não têm o posto selecionado
+            if (filtroPosto && postosV.length === 0) return null
 
             return (
               <div key={portal.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
@@ -396,7 +420,7 @@ export default function PrecosFrotasPage() {
                 </tr>
               </thead>
               <tbody>
-                {postos.map((posto, pi) => (
+                {postos.filter(p => !filtroPosto || p.id === filtroPosto).map((posto, pi) => (
                   <tr key={posto.id} className={pi % 2 === 0 ? '' : 'bg-gray-50/50'}>
                     <td className="px-4 py-2.5 font-medium text-gray-800 text-[12px] whitespace-nowrap">{posto.nome}</td>
                     {PRODUTOS.map(produto => {
