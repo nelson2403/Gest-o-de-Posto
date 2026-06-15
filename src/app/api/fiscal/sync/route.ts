@@ -97,6 +97,7 @@ export async function POST(_req: NextRequest) {
                 empresa_grid:    m.empresa,
                 fornecedor_nome: m.emitente_nome,
                 fornecedor_cpf:  m.emitente_cpf,
+                nf_numero:       m.nf_numero ?? null,
                 valor_as:        m.valor,
                 data_emissao:    m.data_emissao,
                 posto_id:        postoMap[m.empresa]?.id ?? null,
@@ -106,6 +107,24 @@ export async function POST(_req: NextRequest) {
             if (errInsert) console.error('[fiscal-sync] erro INSERT fiscal_tarefas:', errInsert.message)
             importadas = criadas?.length ?? 0
           }
+
+          // Backfill do número da NF em tarefas antigas que ainda não têm.
+          // (Resiliente: se a migration 119 não rodou, o erro é ignorado.)
+          try {
+            const numMap = new Map<string, number>()
+            for (const m of manifestos as any[]) if (m.nf_numero) numMap.set(String(m.grid), Number(m.nf_numero))
+            if (numMap.size) {
+              const { data: semNum } = await admin
+                .from('fiscal_tarefas')
+                .select('id, nfe_resumo_grid')
+                .in('nfe_resumo_grid', [...numMap.keys()].map(Number))
+                .is('nf_numero', null)
+              for (const t of semNum ?? []) {
+                const num = numMap.get(String((t as any).nfe_resumo_grid))
+                if (num) await admin.from('fiscal_tarefas').update({ nf_numero: num }).eq('id', (t as any).id)
+              }
+            }
+          } catch { /* coluna nf_numero ainda não existe — ignora */ }
         }
       }
     } catch (e: any) {

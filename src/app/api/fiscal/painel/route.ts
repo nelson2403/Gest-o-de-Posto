@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
       return postoIds ? q.in('posto_id', postoIds) : q
     }
 
-    const BOLETO_COLS = 'id, fornecedor_nome, valor_as, boleto_vencimento, boleto_valor, boleto_url, boletos, postos(nome)'
+    const BOLETO_COLS = 'id, fornecedor_nome, nf_numero, valor_as, boleto_vencimento, boleto_valor, boleto_url, boletos, postos(nome)'
 
     const [
       { data: pendentesGerente },
@@ -44,11 +44,11 @@ export async function GET(req: NextRequest) {
       { data: semBoleto },
       { data: todosBoletosAnexados },
     ] = await Promise.all([
-      applyPosto(supabase.from('fiscal_tarefas').select('id, fornecedor_nome, valor_as, data_emissao, postos(nome)'))
+      applyPosto(supabase.from('fiscal_tarefas').select('id, fornecedor_nome, nf_numero, valor_as, data_emissao, postos(nome)'))
         .in('status', ['pendente_gerente', 'nf_rejeitada'])
         .order('criada_em', { ascending: true }),
 
-      applyPosto(supabase.from('fiscal_tarefas').select('id, fornecedor_nome, valor_as, data_emissao, boleto_vencimento, postos(nome)'))
+      applyPosto(supabase.from('fiscal_tarefas').select('id, fornecedor_nome, nf_numero, valor_as, data_emissao, boleto_vencimento, postos(nome)'))
         .eq('status', 'aguardando_fiscal')
         .order('boleto_vencimento', { ascending: true }),
 
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
         .order('boleto_vencimento', { ascending: true }),
 
       // Tarefas aguardando fiscal sem boleto
-      applyPosto(supabase.from('fiscal_tarefas').select('id, fornecedor_nome, valor_as, postos(nome)'))
+      applyPosto(supabase.from('fiscal_tarefas').select('id, fornecedor_nome, nf_numero, valor_as, postos(nome)'))
         .eq('status', 'aguardando_fiscal')
         .is('boleto_url', null),
 

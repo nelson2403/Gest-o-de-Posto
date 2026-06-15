@@ -23,6 +23,12 @@ function diasAteVencer(d: string | null) {
   if (!d) return null
   return Math.ceil((new Date(d + 'T12:00:00').getTime() - Date.now()) / 86400000)
 }
+// Número da NF formatado como no AUTOSYSTEM (000.000.000)
+function fmtNF(n: number | string | null | undefined) {
+  if (n == null || n === '') return '—'
+  const s = String(n).replace(/\D/g, '').padStart(9, '0')
+  return `${s.slice(0, 3)}.${s.slice(3, 6)}.${s.slice(6)}`
+}
 
 const STATUS_LABELS: Record<string, string> = {
   pendente_gerente:  'Pendente Gerente',
@@ -422,6 +428,7 @@ export default function FiscalPainelPage() {
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="text-left py-2.5 px-4 font-medium text-gray-500 text-[10px] uppercase tracking-wide">Posto</th>
+                  <th className="text-left py-2.5 px-4 font-medium text-gray-500 text-[10px] uppercase tracking-wide">Nº NF</th>
                   <th className="text-left py-2.5 px-4 font-medium text-gray-500 text-[10px] uppercase tracking-wide">Fornecedor</th>
                   <th className="text-left py-2.5 px-4 font-medium text-gray-500 text-[10px] uppercase tracking-wide">Emissão</th>
                   <th className="text-right py-2.5 px-4 font-medium text-gray-500 text-[10px] uppercase tracking-wide">Valor AS</th>
@@ -442,6 +449,7 @@ export default function FiscalPainelPage() {
                         <span className="text-gray-800">{row.postos?.nome ?? '—'}</span>
                       </div>
                     </td>
+                    <td className="py-2.5 px-4 font-mono text-gray-700">{fmtNF(row.nf_numero)}</td>
                     <td className="py-2.5 px-4 text-gray-600">{row.fornecedor_nome}</td>
                     <td className="py-2.5 px-4 text-gray-500">{fmtDate(row.data_emissao)}</td>
                     <td className="py-2.5 px-4 text-right font-mono font-bold text-gray-900">{fmtBRL(row.valor_as)}</td>
@@ -455,7 +463,7 @@ export default function FiscalPainelPage() {
                   </tr>
                 ))}
                 {!data?.pendentes_gerente?.length && (
-                  <tr><td colSpan={5} className="py-8 text-center text-gray-400 text-sm">Nenhuma tarefa pendente</td></tr>
+                  <tr><td colSpan={6} className="py-8 text-center text-gray-400 text-sm">Nenhuma tarefa pendente</td></tr>
                 )}
               </tbody>
             </table>
@@ -471,6 +479,7 @@ export default function FiscalPainelPage() {
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="text-left py-2.5 px-4 font-medium text-gray-500 text-[10px] uppercase tracking-wide">Posto</th>
+                  <th className="text-left py-2.5 px-4 font-medium text-gray-500 text-[10px] uppercase tracking-wide">Nº NF</th>
                   <th className="text-left py-2.5 px-4 font-medium text-gray-500 text-[10px] uppercase tracking-wide">Fornecedor</th>
                   <th className="text-left py-2.5 px-4 font-medium text-gray-500 text-[10px] uppercase tracking-wide">Emissão</th>
                   <th className="text-right py-2.5 px-4 font-medium text-gray-500 text-[10px] uppercase tracking-wide">Valor</th>
@@ -484,6 +493,7 @@ export default function FiscalPainelPage() {
                   return (
                     <tr key={row.id} className="hover:bg-gray-50/50">
                       <td className="py-2.5 px-4 text-gray-800">{row.postos?.nome ?? '—'}</td>
+                      <td className="py-2.5 px-4 font-mono text-gray-700">{fmtNF(row.nf_numero)}</td>
                       <td className="py-2.5 px-4 text-gray-600">{row.fornecedor_nome}</td>
                       <td className="py-2.5 px-4 text-gray-500">{fmtDate(row.data_emissao)}</td>
                       <td className="py-2.5 px-4 text-right font-mono font-bold text-gray-900">{fmtBRL(row.valor_as)}</td>
@@ -521,7 +531,7 @@ export default function FiscalPainelPage() {
                   )
                 })}
                 {!data?.aguardando_fiscal?.length && (
-                  <tr><td colSpan={6} className="py-8 text-center text-gray-400 text-sm">Nenhuma nota aguardando lançamento</td></tr>
+                  <tr><td colSpan={7} className="py-8 text-center text-gray-400 text-sm">Nenhuma nota aguardando lançamento</td></tr>
                 )}
               </tbody>
             </table>

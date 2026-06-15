@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
       empresa_grid:     m.empresa,
       fornecedor_nome:  m.emitente_nome,
       fornecedor_cpf:   m.emitente_cpf,
+      nf_numero:        m.nf_numero ?? null,
       valor_as:         m.valor,
       data_emissao:     m.data_emissao,
       posto_id:         postoMap[m.empresa]?.id ?? null,

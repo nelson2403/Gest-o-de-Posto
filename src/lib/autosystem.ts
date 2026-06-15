@@ -1848,6 +1848,7 @@ export interface NfeResumoRow extends Record<string, unknown> {
   emitente_cpf:   string
   data_emissao:   string
   valor:          number
+  nf_numero:      number | null   // número da NF (nNF), extraído da chave de acesso
 }
 
 export async function buscarNfeManifestos(
@@ -1860,8 +1861,11 @@ export async function buscarNfeManifestos(
     `SELECT nr.grid::bigint, nr.empresa::bigint, nr.nfe::bigint,
             nr.emitente_nome::text, nr.emitente_cpf::text,
             to_char(nr.data_emissao, 'YYYY-MM-DD') AS data_emissao,
-            nr.valor::float
+            nr.valor::float,
+            -- nNF: dígitos 26-34 da chave de acesso (44 dígitos) da NF baixada
+            NULLIF(SUBSTRING(n.chave_acesso FROM 26 FOR 9), '')::bigint AS nf_numero
      FROM nfe_resumo nr
+     LEFT JOIN nfe n ON n.grid = nr.nfe
      WHERE nr.empresa = ANY($1::bigint[])
        AND nr.data_emissao >= (NOW() - INTERVAL '90 days')::date
        AND NOT EXISTS (
