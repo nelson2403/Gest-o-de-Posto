@@ -34,7 +34,7 @@ export async function POST(_req: NextRequest) {
           // Consulta apenas os grids que o AS retornou — sem limite de 1000 linhas
           const manifestoGrids = manifestos.map((m: any) => Number(m.grid))
 
-          const [{ data: ativasParaGrids }, { data: nullParaGrids }, { data: encerradas }] = await Promise.all([
+          const [{ data: ativasParaGrids }, { data: nullParaGrids }, { data: encerradas }, { data: concluidasGrids }] = await Promise.all([
             admin.from('fiscal_tarefas')
               .select('nfe_resumo_grid')
               .in('nfe_resumo_grid', manifestoGrids)
@@ -50,12 +50,21 @@ export async function POST(_req: NextRequest) {
               .select('id, nfe_resumo_grid, posto_id')
               .in('nfe_resumo_grid', manifestoGrids)
               .in('status', ['desconhecida']),
+            // concluida: NÃO reabre nem reinsere — mas precisa ser excluída do INSERT,
+            // senão um único grid concluído que ainda aparece na lista de manifestos
+            // (SEFAZ só com 210210/Ciência) viola a unique de nfe_resumo_grid e DERRUBA
+            // o lote inteiro de notas novas. Era a causa do "não sincroniza toda semana".
+            admin.from('fiscal_tarefas')
+              .select('nfe_resumo_grid')
+              .in('nfe_resumo_grid', manifestoGrids)
+              .eq('status', 'concluida'),
           ])
 
           const gridsAtivos = new Set([
             ...(ativasParaGrids ?? []).map((t: any) => String(t.nfe_resumo_grid)),
             ...(nullParaGrids   ?? []).map((t: any) => String(t.nfe_resumo_grid)),
           ])
+          const gridsConcluidos = new Set((concluidasGrids ?? []).map((t: any) => String(t.nfe_resumo_grid)))
           const encerradasMap = new Map((encerradas ?? []).map((t: any) => [String(t.nfe_resumo_grid), { id: t.id as string, posto_id: t.posto_id as string | null }]))
           const postoMap       = Object.fromEntries(postos.map((p: any) => [Number(p.codigo_empresa_externo), p]))
 
@@ -64,7 +73,10 @@ export async function POST(_req: NextRequest) {
 
           // Subset que já tem tarefa encerrada — reabre em vez de duplicar
           const paraReabrir  = pendentes.filter((m: any) => encerradasMap.has(String(m.grid)))
-          const paraInserir  = pendentes.filter((m: any) => !encerradasMap.has(String(m.grid)))
+          // Insere só os que NÃO têm nenhuma tarefa (nem desconhecida nem concluida),
+          // evitando violar a unique e quebrar o lote inteiro.
+          const paraInserir  = pendentes.filter((m: any) =>
+            !encerradasMap.has(String(m.grid)) && !gridsConcluidos.has(String(m.grid)))
 
           if (paraReabrir.length) {
             await Promise.all(paraReabrir.map((m: any) => {

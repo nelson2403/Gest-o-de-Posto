@@ -30,10 +30,16 @@ export async function POST(req: NextRequest) {
 
     if (!manifestos.length) return NextResponse.json({ criadas: 0 })
 
-    // Tarefas já existentes para não duplicar
+    // Tarefas já existentes para não duplicar.
+    // IMPORTANTE: escopar pelos grids dos manifestos. Sem o filtro, o SELECT pega
+    // só as 1000 primeiras linhas (limite do Supabase) e, com a tabela > 1000,
+    // grids já existentes seriam tratados como novos → INSERT duplicado viola a
+    // unique e derruba o lote inteiro (manifestos não eram importados).
+    const manifestoGrids = manifestos.map((m: any) => Number(m.grid))
     const { data: existentes } = await admin
       .from('fiscal_tarefas')
       .select('nfe_resumo_grid')
+      .in('nfe_resumo_grid', manifestoGrids)
 
     const gridsExistentes = new Set((existentes ?? []).map((t: any) => String(t.nfe_resumo_grid)))
 
