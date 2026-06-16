@@ -86,6 +86,31 @@ export async function buscarMovtosAutosystem(empresaId: number, datas: string[])
   )
 }
 
+// Movimento de uma CONTA bancária somando TODAS as empresas do grupo.
+// Contas bancárias podem ser compartilhadas entre matriz e filiais (mesmo código
+// de conta), e o extrato reflete o total do banco — então a conciliação precisa
+// consolidar o grupo, não só a empresa do posto.
+export async function buscarMovimentoContaGrupo(
+  contaCodigo: string,
+  empresaGrids: number[],
+  datas: string[],
+): Promise<{ entradas: number; saidas: number; movimento: number }> {
+  if (!empresaGrids.length || !datas.length) return { entradas: 0, saidas: 0, movimento: 0 }
+  const rows = await query<{ entradas: number; saidas: number }>(
+    `SELECT
+       COALESCE(SUM(CASE WHEN conta_debitar  = $1 THEN valor ELSE 0 END), 0)::float AS entradas,
+       COALESCE(SUM(CASE WHEN conta_creditar = $1 THEN valor ELSE 0 END), 0)::float AS saidas
+     FROM movto
+     WHERE empresa = ANY($2::bigint[])
+       AND data = ANY($3::date[])
+       AND (conta_debitar = $1 OR conta_creditar = $1)`,
+    [contaCodigo, empresaGrids, datas],
+  )
+  const entradas = parseFloat((Number(rows[0]?.entradas ?? 0)).toFixed(2))
+  const saidas   = parseFloat((Number(rows[0]?.saidas   ?? 0)).toFixed(2))
+  return { entradas, saidas, movimento: parseFloat((entradas - saidas).toFixed(2)) }
+}
+
 export async function buscarMovtosContasReceber(
   empresaIds: number[],
   opts: { contaCod?: string | null; dataIni?: string | null; dataFim?: string | null; venctoIni?: string; venctoFim?: string | null; limit?: number },
