@@ -107,7 +107,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'Pombal Massas',
-    onlyForRoles: ['master', 'adm_financeiro', 'gerente'],
+    onlyForRoles: ['master'],
     items: [
       { href: '/pombal-massas',           label: 'Painel',          icon: LayoutDashboard, permission: null, hideForRoles: ['gerente'] },
       { href: '/pombal-massas/salgados',  label: 'Salgados',        icon: Croissant,       permission: null, hideForRoles: ['gerente'] },
@@ -148,7 +148,7 @@ export const NAV_GROUPS: NavGroup[] = [
         ],
       },
       { href: '/controle-geral/precos-frotas', label: 'Preços Frotas', icon: Fuel, permission: 'portais.view' as Permission, hideForRoles: ['adm_financeiro', 'adm_fiscal', 'adm_marketing', 'adm_transpombal', 'adm_contas_pagar', 'operador_caixa', 'operador_conciliador', 'gerente'] },
-      { href: '/controle-geral/uso-consumo', label: 'Uso e Consumo', icon: ShoppingCart, permission: null, hideForRoles: ['operador_caixa', 'operador_conciliador'] },
+      { href: '/controle-geral/uso-consumo', label: 'Uso e Consumo', icon: ShoppingCart, permission: null, hideForRoles: ['operador_caixa', 'operador_conciliador', 'gerente'] },
       {
         label: 'Acessos', icon: KeyRound, permission: null,
         children: [

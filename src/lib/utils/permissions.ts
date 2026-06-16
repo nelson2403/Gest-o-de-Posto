@@ -16,8 +16,8 @@ export const PERMISSIONS = {
   // Dashboard — somente master
   'dashboard.view':  ['master'],
 
-  // Analítico — master vê tudo; ADMs veem o analítico da sua área
-  'analitico.view':  ['master', 'adm_financeiro', 'adm_fiscal', 'adm_transpombal', 'adm_contas_pagar'],
+  // Analítico — master vê tudo; ADMs veem o analítico da sua área (adm_fiscal não)
+  'analitico.view':  ['master', 'adm_financeiro', 'adm_transpombal', 'adm_contas_pagar'],
 
   // Empresas — master + ADMs fiscais/transpombal/contas a pagar
   'empresas.view':    ['master', 'adm_fiscal', 'adm_transpombal', 'adm_contas_pagar'],
@@ -86,11 +86,11 @@ export const PERMISSIONS = {
   'anydesk.edit':   [...ADM_ALL],
   'anydesk.delete': [...ADM_ALL],
 
-  // Servidores — somente ADMs
-  'servidores.view':   [...ADM_ALL],
-  'servidores.create': [...ADM_ALL],
-  'servidores.edit':   [...ADM_ALL],
-  'servidores.delete': [...ADM_ALL],
+  // Servidores — ADMs, exceto adm_financeiro
+  'servidores.view':   ['master', 'adm_fiscal', 'adm_transpombal', 'adm_contas_pagar'],
+  'servidores.create': ['master', 'adm_fiscal', 'adm_transpombal', 'adm_contas_pagar'],
+  'servidores.edit':   ['master', 'adm_fiscal', 'adm_transpombal', 'adm_contas_pagar'],
+  'servidores.delete': ['master', 'adm_fiscal', 'adm_transpombal', 'adm_contas_pagar'],
 
   // Contas Bancárias — adm_financeiro + rh (somente leitura)
   'contas_bancarias.view':   ['master', 'adm_financeiro', 'rh'],
