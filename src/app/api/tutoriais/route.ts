@@ -73,6 +73,58 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ tutorial: { ...data, url } })
 }
 
+// PATCH — edita um tutorial (só master). multipart: id, titulo, descricao, file?(troca)
+export async function PATCH(req: NextRequest) {
+  const { user, role } = await getRole()
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  if (role !== 'master') return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
+
+  const form = await req.formData()
+  const id        = String(form.get('id') ?? '').trim()
+  const titulo    = String(form.get('titulo') ?? '').trim()
+  const descricao = String(form.get('descricao') ?? '').trim()
+  const file      = form.get('file') as File | null
+
+  if (!id)     return NextResponse.json({ error: 'id obrigatório' }, { status: 400 })
+  if (!titulo) return NextResponse.json({ error: 'Informe o título' }, { status: 400 })
+
+  const admin = createAdminClient()
+  const { data: atual } = await admin.from('tutoriais').select('arquivo_path').eq('id', id).single()
+  if (!atual) return NextResponse.json({ error: 'Tutorial não encontrado' }, { status: 404 })
+
+  const updates: Record<string, unknown> = { titulo, descricao: descricao || null }
+
+  // Trocar o vídeo (opcional)
+  if (file && file.size > 0) {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const path = `${crypto.randomUUID()}_${safeName}`
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const { error: upErr } = await admin.storage
+      .from(BUCKET)
+      .upload(path, buffer, { contentType: file.type || 'video/mp4', upsert: false })
+    if (upErr) return NextResponse.json({ error: `Erro no upload: ${upErr.message}` }, { status: 500 })
+    updates.arquivo_path = path
+    updates.arquivo_nome = file.name
+  }
+
+  const { data, error } = await admin
+    .from('tutoriais')
+    .update(updates)
+    .eq('id', id)
+    .select('id, titulo, descricao, arquivo_path, arquivo_nome, criado_em')
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Remove o arquivo antigo após trocar com sucesso
+  if (updates.arquivo_path && atual.arquivo_path && atual.arquivo_path !== updates.arquivo_path) {
+    await admin.storage.from(BUCKET).remove([atual.arquivo_path])
+  }
+
+  const url = admin.storage.from(BUCKET).getPublicUrl(data.arquivo_path).data.publicUrl
+  return NextResponse.json({ tutorial: { ...data, url } })
+}
+
 // DELETE — remove um tutorial (só master). ?id=
 export async function DELETE(req: NextRequest) {
   const { user, role } = await getRole()

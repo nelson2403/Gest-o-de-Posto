@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { PlayCircle, Plus, Trash2, Loader2, Upload, X, GraduationCap } from 'lucide-react'
+import { PlayCircle, Plus, Trash2, Pencil, Loader2, Upload, X, GraduationCap } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import { useAuthContext } from '@/contexts/AuthContext'
 import { can } from '@/lib/utils/permissions'
@@ -19,12 +19,20 @@ export default function TutoriaisPage() {
   const [loading,   setLoading]   = useState(true)
   const [assistir,  setAssistir]  = useState<Tutorial | null>(null)
 
-  // form de upload (master)
+  // form de adicionar/editar (master)
   const [showForm, setShowForm] = useState(false)
+  const [editId,    setEditId]    = useState<string | null>(null)   // null = adicionar
   const [titulo,    setTitulo]    = useState('')
   const [descricao, setDescricao] = useState('')
   const [file,      setFile]      = useState<File | null>(null)
   const [enviando,  setEnviando]  = useState(false)
+
+  function abrirAdicionar() {
+    setEditId(null); setTitulo(''); setDescricao(''); setFile(null); setShowForm(true)
+  }
+  function abrirEdicao(t: Tutorial) {
+    setEditId(t.id); setTitulo(t.titulo); setDescricao(t.descricao ?? ''); setFile(null); setShowForm(true)
+  }
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -44,18 +52,19 @@ export default function TutoriaisPage() {
 
   async function enviar() {
     if (!titulo.trim()) { toast({ variant: 'destructive', title: 'Informe o título' }); return }
-    if (!file) { toast({ variant: 'destructive', title: 'Selecione o vídeo' }); return }
+    if (!editId && !file) { toast({ variant: 'destructive', title: 'Selecione o vídeo' }); return }
     setEnviando(true)
     try {
       const fd = new FormData()
       fd.append('titulo', titulo)
       fd.append('descricao', descricao)
-      fd.append('file', file)
-      const r = await fetch('/api/tutoriais', { method: 'POST', body: fd })
+      if (file) fd.append('file', file)
+      if (editId) fd.append('id', editId)
+      const r = await fetch('/api/tutoriais', { method: editId ? 'PATCH' : 'POST', body: fd })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error)
-      toast({ title: 'Vídeo adicionado!' })
-      setShowForm(false); setTitulo(''); setDescricao(''); setFile(null)
+      toast({ title: editId ? 'Tutorial atualizado!' : 'Vídeo adicionado!' })
+      setShowForm(false); setEditId(null); setTitulo(''); setDescricao(''); setFile(null)
       carregar()
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Erro ao enviar', description: e.message })
@@ -91,7 +100,7 @@ export default function TutoriaisPage() {
           </div>
         </div>
         {podeGerenciar && (
-          <button onClick={() => setShowForm(true)}
+          <button onClick={abrirAdicionar}
             className="flex items-center gap-1.5 h-9 px-4 bg-rose-500 hover:bg-rose-600 text-white rounded-lg text-[13px] font-medium">
             <Plus className="w-4 h-4" /> Adicionar vídeo
           </button>
@@ -123,9 +132,16 @@ export default function TutoriaisPage() {
                     <PlayCircle className="w-3.5 h-3.5" /> Assistir
                   </button>
                   {podeGerenciar && (
-                    <button onClick={() => excluir(t)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => abrirEdicao(t)} title="Editar"
+                        className="p-1.5 text-gray-300 hover:text-blue-500 hover:bg-blue-50 rounded-lg">
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => excluir(t)} title="Excluir"
+                        className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -153,8 +169,10 @@ export default function TutoriaisPage() {
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => !enviando && setShowForm(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
-              <div className="w-8 h-8 rounded-lg bg-rose-100 flex items-center justify-center"><Upload className="w-4 h-4 text-rose-600" /></div>
-              <h2 className="font-semibold text-gray-900 text-[15px]">Adicionar vídeo tutorial</h2>
+              <div className="w-8 h-8 rounded-lg bg-rose-100 flex items-center justify-center">
+                {editId ? <Pencil className="w-4 h-4 text-rose-600" /> : <Upload className="w-4 h-4 text-rose-600" />}
+              </div>
+              <h2 className="font-semibold text-gray-900 text-[15px]">{editId ? 'Editar tutorial' : 'Adicionar vídeo tutorial'}</h2>
               <button onClick={() => !enviando && setShowForm(false)} className="ml-auto text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-5 space-y-3">
@@ -169,15 +187,20 @@ export default function TutoriaisPage() {
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-[14px] resize-none focus:outline-none focus:ring-2 focus:ring-rose-400/30" />
               </div>
               <div>
-                <label className="block text-[12px] font-medium text-gray-600 mb-1">Vídeo (mp4)</label>
+                <label className="block text-[12px] font-medium text-gray-600 mb-1">
+                  Vídeo (mp4) {editId && <span className="text-gray-400 font-normal">— opcional, só se quiser trocar</span>}
+                </label>
                 <input type="file" accept="video/mp4,video/webm,video/quicktime"
                   onChange={e => setFile(e.target.files?.[0] ?? null)}
                   className="w-full text-[13px] file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-rose-50 file:text-rose-600 file:font-medium hover:file:bg-rose-100" />
                 {file && <p className="text-[11px] text-gray-400 mt-1">{file.name} — {(file.size / 1048576).toFixed(1)} MB</p>}
+                {editId && !file && <p className="text-[11px] text-gray-400 mt-1">Mantém o vídeo atual se você não selecionar outro.</p>}
               </div>
-              <button onClick={enviar} disabled={enviando || !titulo.trim() || !file}
+              <button onClick={enviar} disabled={enviando || !titulo.trim() || (!editId && !file)}
                 className="w-full h-11 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-[14px] font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
-                {enviando ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando…</> : <><Upload className="w-4 h-4" /> Enviar vídeo</>}
+                {enviando
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> {editId ? 'Salvando…' : 'Enviando…'}</>
+                  : editId ? <><Pencil className="w-4 h-4" /> Salvar alterações</> : <><Upload className="w-4 h-4" /> Enviar vídeo</>}
               </button>
             </div>
           </div>
