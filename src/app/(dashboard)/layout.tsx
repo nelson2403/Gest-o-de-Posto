@@ -1,5 +1,6 @@
 import { AuthProvider } from '@/contexts/AuthContext'
 import { Topbar } from '@/components/layout/Topbar'
+import { BotaoVoltar } from '@/components/layout/BotaoVoltar'
 import { IAAssistente } from '@/components/ia/IAAssistente'
 import { DashboardSync } from '@/components/layout/DashboardSync'
 
@@ -10,6 +11,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="flex flex-col h-screen overflow-hidden bg-gray-50 dark:bg-gray-950">
         <Topbar />
         <main className="flex-1 min-w-0 w-full overflow-y-auto overflow-x-hidden">
+          <BotaoVoltar />
           {children}
         </main>
         <IAAssistente />

@@ -9,7 +9,7 @@ import {
   Lock,
   ArrowLeftRight, Eye, EyeOff, X, ChevronDown,
   Menu,
-  Sun, Moon, Home,
+  Sun, Moon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { useAuthContext } from '@/contexts/AuthContext'
@@ -165,19 +165,6 @@ export function Topbar() {
 
         {/* Divider entre a marca e o menu */}
         <div className="hidden md:block w-px h-6 bg-white/20 mx-3 flex-shrink-0" aria-hidden />
-
-        {/* Botão Início (volta para os cards) — perfis sem subbar */}
-        {semSubbar && (
-          <Link href="/"
-            className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-medium transition-colors flex-shrink-0',
-              pathname === '/'
-                ? 'bg-white/[0.18] text-white'
-                : 'text-white/80 hover:text-white hover:bg-white/[0.10]'
-            )}>
-            <Home className="w-4 h-4" />
-            <span>Início</span>
-          </Link>
-        )}
 
         {/* Dashboard link — apenas para quem tem permissão */}
         {canUser('dashboard.view') && (
@@ -418,13 +405,6 @@ export function Topbar() {
                   className={cn('flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium border-b border-white/[0.04]',
                     pathname === '/' ? 'text-[#ffaa99]' : 'text-white/60')}>
                   <LayoutDashboard className="w-4 h-4" /> Dashboard
-                </Link>
-              )}
-              {semSubbar && (
-                <Link href="/" onClick={() => setMobileOpen(false)}
-                  className={cn('flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium border-b border-white/[0.04]',
-                    pathname === '/' ? 'text-[#ffaa99]' : 'text-white/60')}>
-                  <LayoutDashboard className="w-4 h-4" /> Início
                 </Link>
               )}
               {!semSubbar && NAV_GROUPS.map(group => {
