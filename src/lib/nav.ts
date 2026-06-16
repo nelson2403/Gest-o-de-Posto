@@ -19,8 +19,10 @@ export type NavChild = { href: string; label: string; icon: ElementType; permiss
 export type NavItem  = { href?: string; label: string; icon: ElementType; permission: Permission | null; children?: NavChild[]; divider?: boolean; hideForRoles?: Role[] }
 export type NavGroup = { label: string; items: NavItem[]; onlyForRoles?: Role[] }
 
-// Perfis de baixo acesso: navegam só pela home de cards (sem a subbar do topo)
-export const ROLES_SEM_SUBBAR: Role[] = ['gerente', 'operador_caixa', 'operador_conciliador', 'operador_contagem']
+// Apenas o master mantém a subbar do topo; todos os outros navegam pela home de cards.
+// Perfis de baixo acesso (poucas páginas) veem os cards em lista única (flat);
+// os ADMs veem agrupado por seção.
+export const ROLES_BAIXO_ACESSO: Role[] = ['gerente', 'operador_caixa', 'operador_conciliador', 'operador_contagem']
 
 // ─── Nav structure (fonte única: subbar + cards da home) ────────────────────────
 

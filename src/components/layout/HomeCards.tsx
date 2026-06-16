@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { useAuthContext } from '@/contexts/AuthContext'
-import { NAV_GROUPS, ROLES_SEM_SUBBAR } from '@/lib/nav'
+import { NAV_GROUPS, ROLES_BAIXO_ACESSO } from '@/lib/nav'
 import type { Role } from '@/types/database.types'
 import type { Permission } from '@/lib/utils/permissions'
 import type { ElementType } from 'react'
@@ -100,7 +100,7 @@ export function HomeCards({ titulo }: { titulo?: string }) {
   const secoes = secoesVisiveis(canUser, role)
   // Perfis de baixo acesso (poucas páginas) veem lista única e limpa;
   // ADMs veem agrupado por seção (menos poluição com muitas páginas).
-  const agrupar = !(role && ROLES_SEM_SUBBAR.includes(role))
+  const agrupar = !(role && ROLES_BAIXO_ACESSO.includes(role))
 
   const primeiroNome = usuario?.nome?.split(' ')[0] ?? ''
   const totalCards = secoes.reduce((s, sec) => s + sec.cards.length, 0)

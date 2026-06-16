@@ -18,7 +18,7 @@ import { ROLE_LABELS, ROLE_COLORS, getRoleLabel, getRoleColor } from '@/lib/util
 import { createClient } from '@/lib/supabase/client'
 import { toast } from '@/hooks/use-toast'
 import type { Role } from '@/types/database.types'
-import { NAV_GROUPS, ROLES_SEM_SUBBAR, type NavGroup } from '@/lib/nav'
+import { NAV_GROUPS, type NavGroup } from '@/lib/nav'
 
 // ─── Topbar ───────────────────────────────────────────────────────────────────
 
@@ -27,8 +27,8 @@ export function Topbar() {
   const { usuario, signOut, canUser } = useAuthContext()
   const { theme, toggleTheme } = useTheme()
   const role = usuario?.role as Role | undefined
-  // Perfis de baixo acesso navegam só pela home de cards — sem a subbar
-  const semSubbar = !!role && ROLES_SEM_SUBBAR.includes(role)
+  // Só o master mantém a subbar; todos os outros navegam pela home de cards.
+  const semSubbar = !!role && role !== 'master'
 
   const [openGroup,    setOpenGroup]    = useState<string | null>(null)
   const [openFlyout,   setOpenFlyout]   = useState<string | null>(null)
