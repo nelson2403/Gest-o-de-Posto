@@ -176,6 +176,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/transpombal', label: 'Transpombal — Frota', icon: Truck, permission: 'transpombal.view' as Permission },
       { href: '/tanques',     label: 'Medição de Tanques',  icon: Fuel,  permission: 'tanques.view' as Permission },
+      { href: '/precos-combustivel', label: 'Preços de Combustível', icon: Fuel, permission: 'precos_combustivel.lancar' as Permission, hideForRoles: ['master'] },
       {
         label: 'Marketing', icon: Megaphone, permission: 'marketing.view' as Permission,
         children: [

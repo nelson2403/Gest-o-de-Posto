@@ -181,6 +181,9 @@ export const PERMISSIONS = {
   'tanques.view': ['master', 'adm_transpombal', 'adm_fiscal', 'gerente'],
   'tanques.edit': ['master', 'adm_transpombal', 'adm_fiscal', 'gerente'],
 
+  // Preços de Combustível — gerente lança a troca; vira pendência nos portais
+  'precos_combustivel.lancar': ['master', 'gerente'],
+
   // Máscaras (DRE / Fluxo de Caixa) — somente master
   'mascaras.view': ['master'],
   'mascaras.edit': ['master'],
