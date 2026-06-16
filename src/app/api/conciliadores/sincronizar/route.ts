@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buscarMovtosAutosystem, calcularMovimento, buscarMovimentoContaGrupo } from '@/lib/autosystem'
+import { buscarMovtosAutosystem, calcularMovimento } from '@/lib/autosystem'
 
 // POST — sincroniza e recalcula divergências do usuário
 export async function POST(req: NextRequest) {
@@ -96,11 +96,6 @@ export async function POST(req: NextRequest) {
         contaMapPosto[c.posto_id] = c.codigo_conta_externo!
     }
 
-    // Grids de todas as empresas do grupo (contas bancárias compartilhadas matriz/filial)
-    const { data: grupoPostos } = await admin
-      .from('postos').select('codigo_empresa_externo').not('codigo_empresa_externo', 'is', null)
-    const grupoGrids = (grupoPostos ?? []).map((p: any) => Number(p.codigo_empresa_externo)).filter(Boolean)
-
     let sincronizadas = 0
     let divergentes = 0
     let resolvidas = 0
@@ -127,14 +122,15 @@ export async function POST(req: NextRequest) {
         ? (t as any).extrato_datas_as
         : [dataFim]
 
-      // Buscar movimento ATUAL do AUTOSYSTEM
+      // Buscar movimento ATUAL do AUTOSYSTEM (por empresa do posto)
       let movAtual: number
       try {
+        const movtos = await buscarMovtosAutosystem(empresaId, datasAS)
         if (contaCodigo) {
-          // Conta pode ser compartilhada matriz/filial → consolida o grupo
-          movAtual = (await buscarMovimentoContaGrupo(contaCodigo, grupoGrids, datasAS)).movimento
+          const entradas = movtos.filter(m => m.conta_debitar === contaCodigo).reduce((s, m) => s + m.valor, 0)
+          const saidas   = movtos.filter(m => m.conta_creditar === contaCodigo).reduce((s, m) => s + m.valor, 0)
+          movAtual = parseFloat((entradas - saidas).toFixed(2))
         } else {
-          const movtos = await buscarMovtosAutosystem(empresaId, datasAS)
           movAtual = calcularMovimento(movtos, null)
         }
       } catch {
@@ -155,6 +151,7 @@ export async function POST(req: NextRequest) {
           .update({
             extrato_status: novoStatus,
             extrato_diferenca: diferenca,
+            extrato_saldo_externo: movAtual,   // mantém o "AS" exibido coerente com a diferença
             atualizado_em: new Date().toISOString(),
           })
           .eq('id', t.id)

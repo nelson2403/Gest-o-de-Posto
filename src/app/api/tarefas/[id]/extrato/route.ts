@@ -243,18 +243,12 @@ export async function POST(
 
   if (empresaId) {
     try {
+      const movtos = await buscarMovtosAutosystem(empresaId, datasAS)
       if (contaCodigo) {
-        // Conta bancária pode ser compartilhada entre matriz e filiais — consolida
-        // o movimento da conta em TODAS as empresas do grupo (igual ao extrato).
-        const { data: grupo } = await admin
-          .from('postos').select('codigo_empresa_externo').not('codigo_empresa_externo', 'is', null)
-        const grupoGrids = (grupo ?? []).map((p: any) => Number(p.codigo_empresa_externo)).filter(Boolean)
-        const mov = await buscarMovimentoContaGrupo(contaCodigo, grupoGrids, datasAS)
-        entradasAS = mov.entradas
-        saidasAS   = mov.saidas
-        movimentoExterno = mov.movimento
+        entradasAS = parseFloat(movtos.filter(m => m.conta_debitar  === contaCodigo).reduce((s, m) => s + m.valor, 0).toFixed(2))
+        saidasAS   = parseFloat(movtos.filter(m => m.conta_creditar === contaCodigo).reduce((s, m) => s + m.valor, 0).toFixed(2))
+        movimentoExterno = parseFloat((entradasAS - saidasAS).toFixed(2))
       } else {
-        const movtos = await buscarMovtosAutosystem(empresaId, datasAS)
         movimentoExterno = calcularMovimento(movtos, null)
       }
       asAcessivel = true

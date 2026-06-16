@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buscarMovtosAutosystem, calcularMovimento, buscarMovimentoContaGrupo } from '@/lib/autosystem'
+import { buscarMovtosAutosystem, calcularMovimento } from '@/lib/autosystem'
 
 const CRON_SECRET = process.env.CRON_SECRET
 
@@ -51,11 +51,6 @@ export async function POST(req: NextRequest) {
       contaMapPosto[c.posto_id] = c.codigo_conta_externo!
   }
 
-  // Grids de todas as empresas do grupo (contas compartilhadas matriz/filial)
-  const { data: grupoPostos } = await admin
-    .from('postos').select('codigo_empresa_externo').not('codigo_empresa_externo', 'is', null)
-  const grupoGrids = (grupoPostos ?? []).map((p: any) => Number(p.codigo_empresa_externo)).filter(Boolean)
-
   // ── 3. Usuários master/adm_financeiro ──────────────────────────────────────
   const { data: masterAdmins } = await admin
     .from('usuarios')
@@ -83,14 +78,15 @@ export async function POST(req: NextRequest) {
       ? (t as any).extrato_datas_as
       : [dataFim]
 
-    // ── 4. Busca movimento ATUAL no AUTOSYSTEM ─────────────────────────────
+    // ── 4. Busca movimento ATUAL no AUTOSYSTEM (por empresa do posto) ───────
     let movAtual: number
     try {
+      const movtos = await buscarMovtosAutosystem(empresaId, datasAS)
       if (contaCodigo) {
-        // Conta pode ser compartilhada matriz/filial → consolida o grupo
-        movAtual = (await buscarMovimentoContaGrupo(contaCodigo, grupoGrids, datasAS)).movimento
+        const entradas = movtos.filter(m => m.conta_debitar  === contaCodigo).reduce((s, m) => s + m.valor, 0)
+        const saidas   = movtos.filter(m => m.conta_creditar === contaCodigo).reduce((s, m) => s + m.valor, 0)
+        movAtual = parseFloat((entradas - saidas).toFixed(2))
       } else {
-        const movtos = await buscarMovtosAutosystem(empresaId, datasAS)
         movAtual = calcularMovimento(movtos, null)
       }
     } catch {
