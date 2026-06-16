@@ -2466,13 +2466,20 @@ export async function buscarTefOperadorasDistinct(
 
 // Constrói candidatos de login AUTOSYSTEM a partir do nome do funcionário.
 // O AUTOSYSTEM usa vários formatos: só primeiro nome, primeiro+último, nome completo sem espaço, etc.
+// IMPORTANTE: o AUTOSYSTEM costuma PULAR preposições (DE, DA, DOS...) ao montar o
+// login — ex.: "CLEIDIANE DE JESUS DAMASCENO" → CLEIDIANEJESUS (primeiro + JESUS).
 function nomeParaCandidatos(nome: string): string[] {
-  const partes = nome.trim().toUpperCase().replace(/\s+/g, ' ').split(' ')
+  const PREP = new Set(['DE', 'DA', 'DO', 'DAS', 'DOS', 'E', 'DI', 'DU'])
+  const partes = nome.trim().toUpperCase().replace(/\s+/g, ' ').split(' ').filter(Boolean)
+  const signif = partes.filter(p => !PREP.has(p))   // partes "de verdade" (sem preposição)
   const s = new Set<string>()
   s.add(partes[0])                                                // só primeiro nome (BRUNA)
-  s.add(partes.join(''))                                          // tudo junto (BRUNADEARLRODRIGES)
-  if (partes.length >= 2) s.add(partes[0] + partes[partes.length - 1])  // primeiro + último
-  if (partes.length >= 3) s.add(partes[0] + partes[1])          // primeiro + segundo
+  s.add(partes.join(''))                                          // tudo junto com preposições
+  s.add(signif.join(''))                                          // tudo junto sem preposições
+  if (partes.length >= 2) s.add(partes[0] + partes[partes.length - 1])  // primeiro + último (cru)
+  if (signif.length >= 2) s.add(signif[0] + signif[signif.length - 1])  // primeiro + último significativo
+  if (partes.length >= 3) s.add(partes[0] + partes[1])           // primeiro + segundo (cru)
+  if (signif.length >= 2) s.add(signif[0] + signif[1])           // primeiro + segundo significativo (CLEIDIANEJESUS)
   if (partes.length >= 2) s.add(partes[0] + ' ' + partes[partes.length - 1])  // com espaço
   return [...s].filter(c => c.length >= 2)
 }
