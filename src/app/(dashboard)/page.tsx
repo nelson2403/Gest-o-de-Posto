@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Header } from '@/components/layout/Header'
+import { HomeCards } from '@/components/layout/HomeCards'
 import {
   MapPin, Smartphone, Users, TrendingUp, AlertCircle,
   Wrench, CreditCard, Globe, ArrowRight, Monitor, Server, Link2, ClipboardList,
@@ -99,17 +99,9 @@ function diffDias(iso: string) {
 export default function DashboardPage() {
   const { usuario, canUser } = useAuthContext()
   const supabase = createClient()
-  const router   = useRouter()
   const role     = usuario?.role as Role | undefined
+  // Master vê o dashboard completo; os demais perfis veem a home de cards.
   const isRestrito = !canUser('dashboard.view')
-
-  useEffect(() => {
-    if (!usuario) return
-    if (role === 'adm_transpombal')   { router.replace('/transpombal');              return }
-    if (role === 'gerente')           { router.replace('/tanques');                 return }
-    if (role === 'adm_contas_pagar')  { router.replace('/contas-pagar/conferencia'); return }
-    if (role === 'operador_contagem') { router.replace('/estoque/contagem');         return }
-  }, [usuario, role])
 
   const [data,         setData]         = useState<DashboardEmpresa | null>(null)
   const [caixas,       setCaixas]       = useState<CaixaRow[]>([])
@@ -205,6 +197,9 @@ export default function DashboardPage() {
     .filter(c => c.ultimo_caixa_fechado && diffDias(c.ultimo_caixa_fechado) > 1)
     .sort((a, b) => (b.ultimo_caixa_fechado ?? '') < (a.ultimo_caixa_fechado ?? '') ? -1 : 1)
     .slice(0, 5)
+
+  // Perfis sem dashboard veem a home de cards
+  if (isRestrito) return <HomeCards />
 
   return (
     <div className="animate-fade-in">
