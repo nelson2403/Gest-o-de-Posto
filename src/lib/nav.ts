@@ -8,7 +8,7 @@ import {
   TrendingUp, Wallet, Receipt, Settings, Megaphone, Gift, Database,
   PackageSearch, Truck, CalendarDays, ShoppingCart,
   Banknote, Hash, Target, Calculator, AlertTriangle, Croissant, Wheat, Factory,
-  Scale,
+  Scale, GraduationCap,
 } from 'lucide-react'
 import type { Role } from '@/types/database.types'
 import type { Permission } from '@/lib/utils/permissions'
@@ -177,6 +177,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/transpombal', label: 'Transpombal — Frota', icon: Truck, permission: 'transpombal.view' as Permission },
       { href: '/tanques',     label: 'Medição de Tanques',  icon: Fuel,  permission: 'tanques.view' as Permission },
       { href: '/precos-combustivel', label: 'Preços de Combustível', icon: Fuel, permission: 'precos_combustivel.lancar' as Permission, hideForRoles: ['master'] },
+      { href: '/tutoriais', label: 'Tutoriais', icon: GraduationCap, permission: null },
       {
         label: 'Marketing', icon: Megaphone, permission: 'marketing.view' as Permission,
         children: [

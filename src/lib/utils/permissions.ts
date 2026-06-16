@@ -184,6 +184,9 @@ export const PERMISSIONS = {
   // Preços de Combustível — gerente lança a troca; vira pendência nos portais
   'precos_combustivel.lancar': ['master', 'gerente'],
 
+  // Tutoriais — todos assistem (sem permissão no menu); só master gerencia
+  'tutoriais.manage': ['master'],
+
   // Máscaras (DRE / Fluxo de Caixa) — somente master
   'mascaras.view': ['master'],
   'mascaras.edit': ['master'],
