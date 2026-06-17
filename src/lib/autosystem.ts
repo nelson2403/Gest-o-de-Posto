@@ -2609,9 +2609,12 @@ export async function buscarDadosCaixaFrentista(
   try {
     const formaRows = agrupado
       ? await query<{ conta_debitar: string; nome_b: Buffer | null; total: number }>(
+          // Só usuários que abriram CAIXA (exclui lançamentos administrativos:
+          // estoque, transferências bancárias, despesas — não são formas de pagamento)
           `SELECT m.conta_debitar::text, c.nome::bytea AS nome_b, COALESCE(SUM(m.valor), 0)::float AS total
            FROM movto m LEFT JOIN conta c ON c.codigo = m.conta_debitar
            WHERE m.empresa = $1 AND m.data = $2::date AND m.conta_debitar NOT LIKE '4.%'
+             AND m.usuario IN (SELECT DISTINCT usuario FROM caixa WHERE empresa = $1 AND data = $2::date)
            GROUP BY m.conta_debitar, c.nome ORDER BY total DESC`,
           [empresaGrid, data],
         )
@@ -2668,6 +2671,7 @@ export async function buscarDadosCaixaFrentista(
         ? await query<{ motivo_grid: number | null; conta: string; total: number }>(
             `SELECT ${selectMotivo} conta::text, COALESCE(SUM(valor), 0)::float AS total
              FROM lancto WHERE empresa = $1 AND data = $2::date AND operacao = 'V'
+               AND usuario IN (SELECT DISTINCT usuario FROM caixa WHERE empresa = $1 AND data = $2::date)
              GROUP BY ${groupBy}`,
             [empresaGrid, data],
           )
@@ -2729,9 +2733,14 @@ export async function buscarDadosCaixaFrentista(
           ? `AND UPPER(${colStatus}::text) IN ('5', 'APPROVED', 'PAID', 'APROVADO', 'PAGO', '1', 'OK', 'S')`
           : ''
 
-        // Filtra pelos movtos do posto (empresa+data) — +usuario quando não agrupado
-        const usuarioMovtoCond = agrupado ? '' : 'AND usuario = $3'
-        const usuarioMovtoCond2 = agrupado ? '' : 'AND m.usuario = $3'
+        // Filtra pelos movtos do posto (empresa+data) — +usuario quando não agrupado.
+        // Agrupado: restringe aos usuários que abriram caixa (exclui administrativos).
+        const usuarioMovtoCond = agrupado
+          ? 'AND usuario IN (SELECT DISTINCT usuario FROM caixa WHERE empresa = $1 AND data = $2::date)'
+          : 'AND usuario = $3'
+        const usuarioMovtoCond2 = agrupado
+          ? 'AND m.usuario IN (SELECT DISTINCT usuario FROM caixa WHERE empresa = $2 AND data = $1::date)'
+          : 'AND m.usuario = $3'
         const qrParams = agrupado ? [empresaGrid, data] : [empresaGrid, data, usuarioAS]
         const r1 = await query<{ total: number }>(
           `SELECT COALESCE(SUM(qr.${colValor}::float), 0) AS total
