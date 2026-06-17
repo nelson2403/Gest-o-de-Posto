@@ -2490,6 +2490,7 @@ export async function buscarDadosCaixaFrentista(
   codigoOperador: string,     // funcionario.codigo do frentista
   motivoGrupos:   Record<number, string> = {},  // motivo_grid → grupo
   tefGrupos:      Record<string, string> = {},   // "PROFROTA" / "STONE - PIX" → grupo
+  agrupado:       boolean = false,               // caixa agrupado: consolida o POSTO inteiro do dia
 ): Promise<DadosCaixaFrentista> {
 
   // Pré-carrega schemas (colunasExistentes usa cache global)
@@ -2574,7 +2575,9 @@ export async function buscarDadosCaixaFrentista(
   let estrategia = 'nenhuma'
   let pdvContaCode: string | null = null
 
-  if (!usuarioAS) {
+  // Caixa agrupado: o posto trabalha como um caixa único; agrega TODOS os usuários
+  // do dia (vendas + TEF + manuais), independente de qual operador resolveu o login.
+  if (!usuarioAS && !agrupado) {
     console.log(`[caixa-frentista] usuario AS não encontrado para codigo=${codigoOperador}`)
     return {
       cartoes: 0, cartoes_frotas: 0, pix_tef: 0, pix_cnpj: 0,
@@ -2585,33 +2588,41 @@ export async function buscarDadosCaixaFrentista(
     }
   }
 
-  // ── 2. Caixas do frentista pelo login ────────────────────────────────────
+  // ── 2. Caixas — agrupado: todos do posto/dia; individual: só do operador ──
   try {
-    const rows = await query<{ grid: number }>(
-      `SELECT grid::bigint FROM caixa WHERE empresa=$1 AND data=$2::date AND usuario=$3`,
-      [empresaGrid, data, usuarioAS],
-    )
+    const rows = agrupado
+      ? await query<{ grid: number }>(
+          `SELECT grid::bigint FROM caixa WHERE empresa=$1 AND data=$2::date`,
+          [empresaGrid, data],
+        )
+      : await query<{ grid: number }>(
+          `SELECT grid::bigint FROM caixa WHERE empresa=$1 AND data=$2::date AND usuario=$3`,
+          [empresaGrid, data, usuarioAS],
+        )
     caixaGrids = rows.map(r => Number(r.grid))
-    estrategia = `caixa.usuario(${usuarioAS})`
+    estrategia = agrupado ? `agrupado(posto)` : `caixa.usuario(${usuarioAS})`
     console.log(`[caixa-frentista] caixas=[${caixaGrids.join(',')}]`)
   } catch (e: any) { console.log(`[caixa-frentista] caixa lookup erro: ${e.message}`) }
 
   // ── 3. Formas de pagamento via movto (filtrado por usuario) ─────────────
   // movto NÃO tem coluna caixa — filtra por empresa+data+usuario
   try {
-    const formaRows = await query<{ conta_debitar: string; nome_b: Buffer | null; total: number }>(
-      `SELECT m.conta_debitar::text,
-              c.nome::bytea AS nome_b,
-              COALESCE(SUM(m.valor), 0)::float AS total
-       FROM movto m
-       LEFT JOIN conta c ON c.codigo = m.conta_debitar
-       WHERE m.empresa = $1 AND m.data = $2::date AND m.usuario = $3
-         AND m.conta_debitar NOT LIKE '4.%'
-       GROUP BY m.conta_debitar, c.nome
-       ORDER BY total DESC`,
-      [empresaGrid, data, usuarioAS],
-    )
-    console.log(`[caixa-frentista] movto usuario(${usuarioAS}) → ${formaRows.length} forma(s)`)
+    const formaRows = agrupado
+      ? await query<{ conta_debitar: string; nome_b: Buffer | null; total: number }>(
+          `SELECT m.conta_debitar::text, c.nome::bytea AS nome_b, COALESCE(SUM(m.valor), 0)::float AS total
+           FROM movto m LEFT JOIN conta c ON c.codigo = m.conta_debitar
+           WHERE m.empresa = $1 AND m.data = $2::date AND m.conta_debitar NOT LIKE '4.%'
+           GROUP BY m.conta_debitar, c.nome ORDER BY total DESC`,
+          [empresaGrid, data],
+        )
+      : await query<{ conta_debitar: string; nome_b: Buffer | null; total: number }>(
+          `SELECT m.conta_debitar::text, c.nome::bytea AS nome_b, COALESCE(SUM(m.valor), 0)::float AS total
+           FROM movto m LEFT JOIN conta c ON c.codigo = m.conta_debitar
+           WHERE m.empresa = $1 AND m.data = $2::date AND m.usuario = $3 AND m.conta_debitar NOT LIKE '4.%'
+           GROUP BY m.conta_debitar, c.nome ORDER BY total DESC`,
+          [empresaGrid, data, usuarioAS],
+        )
+    console.log(`[caixa-frentista] movto ${agrupado ? 'AGRUPADO(posto)' : 'usuario('+usuarioAS+')'} → ${formaRows.length} forma(s)`)
     for (const r of formaRows) {
       const nome = decodeBytea(r.nome_b).trim() || r.conta_debitar
       movto_por_forma[nome] = (movto_por_forma[nome] ?? 0) + Number(r.total)
@@ -2650,17 +2661,23 @@ export async function buscarDadosCaixaFrentista(
         if (mg > 0) lancto_por_motivo[mg] = (lancto_por_motivo[mg] ?? 0) + Number(r.total)
       }
     } else {
-      // Sem lancto.caixa: filtra por empresa+data+usuario+operacao (padrão desta instância)
+      // Sem lancto.caixa: filtra por empresa+data (+usuario quando não agrupado)
       const selectMotivo = temMotivo ? `COALESCE(motivo::bigint, 0) AS motivo_grid,` : `0 AS motivo_grid,`
       const groupBy = temMotivo ? 'conta, motivo' : 'conta'
-      const rows = await query<{ motivo_grid: number | null; conta: string; total: number }>(
-        `SELECT ${selectMotivo} conta::text, COALESCE(SUM(valor), 0)::float AS total
-         FROM lancto
-         WHERE empresa = $1 AND data = $2::date AND usuario = $3 AND operacao = 'V'
-         GROUP BY ${groupBy}`,
-        [empresaGrid, data, usuarioAS],
-      )
-      console.log(`[caixa-frentista] lancto via usuario(${usuarioAS}) → ${rows.length} linha(s)`)
+      const rows = agrupado
+        ? await query<{ motivo_grid: number | null; conta: string; total: number }>(
+            `SELECT ${selectMotivo} conta::text, COALESCE(SUM(valor), 0)::float AS total
+             FROM lancto WHERE empresa = $1 AND data = $2::date AND operacao = 'V'
+             GROUP BY ${groupBy}`,
+            [empresaGrid, data],
+          )
+        : await query<{ motivo_grid: number | null; conta: string; total: number }>(
+            `SELECT ${selectMotivo} conta::text, COALESCE(SUM(valor), 0)::float AS total
+             FROM lancto WHERE empresa = $1 AND data = $2::date AND usuario = $3 AND operacao = 'V'
+             GROUP BY ${groupBy}`,
+            [empresaGrid, data, usuarioAS],
+          )
+      console.log(`[caixa-frentista] lancto ${agrupado ? 'AGRUPADO' : 'usuario('+usuarioAS+')'} → ${rows.length} linha(s)`)
       for (const r of rows) {
         lancto_por_conta[r.conta] = (lancto_por_conta[r.conta] ?? 0) + Number(r.total)
         const mg = Number(r.motivo_grid)
@@ -2712,7 +2729,10 @@ export async function buscarDadosCaixaFrentista(
           ? `AND UPPER(${colStatus}::text) IN ('5', 'APPROVED', 'PAID', 'APROVADO', 'PAGO', '1', 'OK', 'S')`
           : ''
 
-        // Filtra pelos movtos do frentista (empresa+data+usuario)
+        // Filtra pelos movtos do posto (empresa+data) — +usuario quando não agrupado
+        const usuarioMovtoCond = agrupado ? '' : 'AND usuario = $3'
+        const usuarioMovtoCond2 = agrupado ? '' : 'AND m.usuario = $3'
+        const qrParams = agrupado ? [empresaGrid, data] : [empresaGrid, data, usuarioAS]
         const r1 = await query<{ total: number }>(
           `SELECT COALESCE(SUM(qr.${colValor}::float), 0) AS total
            FROM exchange_linxpay_qr_transacao qr
@@ -2720,22 +2740,23 @@ export async function buscarDadosCaixaFrentista(
              ${statusCond}
              AND qr.${colMovto} IN (
                SELECT grid FROM movto
-               WHERE empresa = $1 AND data = $2::date AND usuario = $3
+               WHERE empresa = $1 AND data = $2::date ${usuarioMovtoCond}
              )`,
-          [empresaGrid, data, usuarioAS],
+          qrParams,
         )
         let qrTotal = Number(r1[0]?.total ?? 0)
-        console.log(`[qr-linxpay] via usuario(${usuarioAS}) total=${qrTotal}`)
+        console.log(`[qr-linxpay] ${agrupado ? 'AGRUPADO' : 'usuario('+usuarioAS+')'} total=${qrTotal}`)
 
         // Verifica se QRLINX já está contabilizado no movto para evitar duplicação
         if (qrTotal > 0) {
+          const chkParams = agrupado ? [data, empresaGrid] : [data, empresaGrid, usuarioAS]
           const chkRows = await query<{ cnt: number }>(
             `SELECT COUNT(*)::int AS cnt
              FROM exchange_linxpay_qr_transacao qr
              JOIN movto m ON m.grid = qr.${colMovto}
              WHERE qr.${colData}::date = $1::date ${statusCond}
-               AND m.empresa = $2 AND m.data = $1::date AND m.usuario = $3`,
-            [data, empresaGrid, usuarioAS],
+               AND m.empresa = $2 AND m.data = $1::date ${usuarioMovtoCond2}`,
+            chkParams,
           ).catch(() => [{ cnt: 0 }])
           if (Number(chkRows[0]?.cnt ?? 0) > 0) {
             console.log(`[qr-linxpay] QRLINX já em movto — não duplica`)

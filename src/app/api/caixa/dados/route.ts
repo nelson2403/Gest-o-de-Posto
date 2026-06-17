@@ -63,6 +63,14 @@ export async function GET(req: NextRequest) {
         .eq('id', sessao.posto_id)
         .single()
 
+      // Caixa agrupado (resiliente caso a migration 121 ainda não tenha rodado)
+      let caixaAgrupado = false
+      try {
+        const { data: pa } = await admin
+          .from('postos').select('caixa_agrupado').eq('id', sessao.posto_id).single()
+        caixaAgrupado = (pa as any)?.caixa_agrupado === true
+      } catch { /* coluna ainda não existe */ }
+
       if (posto?.codigo_empresa_externo) {
         try {
           // Carrega mapeamentos motivo → grupo e TEF operadora → grupo
@@ -85,6 +93,7 @@ export async function GET(req: NextRequest) {
             sessao.codigo_operador_as,
             motivoGrupos,
             tefGrupos,
+            caixaAgrupado,
           )
           console.log('[caixa-dados] AS estrategia:', dadosAS.estrategia, '| caixas:', dadosAS.caixas_encontrados)
         } catch (e: any) {
