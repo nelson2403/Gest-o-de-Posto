@@ -2597,20 +2597,6 @@ export async function buscarDadosCaixaFrentista(
     console.log(`[caixa-frentista] caixas=[${caixaGrids.join(',')}]`)
   } catch (e: any) { console.log(`[caixa-frentista] caixa lookup erro: ${e.message}`) }
 
-  // Caixa agrupado: os OUTROS caixas do posto no dia — usados para somar as TEF
-  // que foram baixadas por outros operadores dentro do caixa agrupado.
-  let outrosCaixaGrids: number[] = []
-  if (agrupado) {
-    try {
-      const rows = await query<{ grid: number }>(
-        `SELECT grid::bigint FROM caixa WHERE empresa=$1 AND data=$2::date`,
-        [empresaGrid, data],
-      )
-      const proprios = new Set(caixaGrids)
-      outrosCaixaGrids = rows.map(r => Number(r.grid)).filter(g => !proprios.has(g))
-      console.log(`[caixa-frentista] AGRUPADO outros caixas=[${outrosCaixaGrids.join(',')}]`)
-    } catch (e: any) { console.log(`[caixa-frentista] agrupado caixas erro: ${e.message}`) }
-  }
 
   // ── 3. Formas de pagamento via movto (filtrado por usuario) ─────────────
   // movto NÃO tem coluna caixa — filtra por empresa+data+usuario
@@ -2686,15 +2672,26 @@ export async function buscarDadosCaixaFrentista(
   } catch (e: any) { console.log(`[caixa-frentista] lancto query erro: ${e.message}`) }
 
   // ── 5. TEF automático via tef_transacao (filtrado pelos caixas) ──────────
+  // Agrupado: aqui só as TEF lançadas pelo PRÓPRIO operador; as baixadas por
+  // outros usuários no caixa dele entram no passo 5b (com limite no gap).
   if (caixaGrids.length) {
     try {
-      const tefRows = await query<{ op_b: Buffer | null; bnd_b: Buffer | null; total: number }>(
-        `SELECT operadora_nome::bytea AS op_b, bandeira::bytea AS bnd_b,
-                COALESCE(SUM(valor), 0)::float AS total
-         FROM tef_transacao WHERE caixa = ANY($1::bigint[])
-         GROUP BY operadora_nome, bandeira ORDER BY total DESC`,
-        [caixaGrids],
-      )
+      const tefRows = agrupado
+        ? await query<{ op_b: Buffer | null; bnd_b: Buffer | null; total: number }>(
+            `SELECT t.operadora_nome::bytea AS op_b, t.bandeira::bytea AS bnd_b,
+                    COALESCE(SUM(t.valor), 0)::float AS total
+             FROM tef_transacao t LEFT JOIN movto mv ON mv.grid = t.movto
+             WHERE t.caixa = ANY($1::bigint[]) AND (mv.usuario = $2 OR mv.usuario IS NULL)
+             GROUP BY t.operadora_nome, t.bandeira ORDER BY total DESC`,
+            [caixaGrids, usuarioAS],
+          )
+        : await query<{ op_b: Buffer | null; bnd_b: Buffer | null; total: number }>(
+            `SELECT operadora_nome::bytea AS op_b, bandeira::bytea AS bnd_b,
+                    COALESCE(SUM(valor), 0)::float AS total
+             FROM tef_transacao WHERE caixa = ANY($1::bigint[])
+             GROUP BY operadora_nome, bandeira ORDER BY total DESC`,
+            [caixaGrids],
+          )
       console.log(`[caixa-frentista] tef_transacao → ${tefRows.length} linha(s)`)
       for (const r of tefRows) {
         const op = decodeBytea(r.op_b).trim(); const bnd = decodeBytea(r.bnd_b).trim()
@@ -2707,30 +2704,6 @@ export async function buscarDadosCaixaFrentista(
         if (!jaExiste) movto_por_forma[`TEF ${chave}`] = (movto_por_forma[`TEF ${chave}`] ?? 0) + Number(r.total)
       }
     } catch (e: any) { console.log(`[caixa-frentista] tef_transacao erro: ${e.message}`) }
-  }
-
-  // ── 5b. CAIXA AGRUPADO: TEF baixadas por OUTROS operadores ───────────────
-  // No caixa agrupado, as vendas/manuais ficam sob o responsável (acima), mas as
-  // TEF são baixadas pelos terminais dos outros operadores (outros caixas do
-  // posto). Soma essas TEF — são transações separadas, não estão no movto do
-  // responsável, então entram sempre (sem o filtro anti-duplicação).
-  if (agrupado && outrosCaixaGrids.length) {
-    try {
-      const tefRows = await query<{ op_b: Buffer | null; bnd_b: Buffer | null; total: number }>(
-        `SELECT operadora_nome::bytea AS op_b, bandeira::bytea AS bnd_b,
-                COALESCE(SUM(valor), 0)::float AS total
-         FROM tef_transacao WHERE caixa = ANY($1::bigint[])
-         GROUP BY operadora_nome, bandeira ORDER BY total DESC`,
-        [outrosCaixaGrids],
-      )
-      console.log(`[caixa-frentista] AGRUPADO tef outros operadores → ${tefRows.length} linha(s)`)
-      for (const r of tefRows) {
-        const op = decodeBytea(r.op_b).trim(); const bnd = decodeBytea(r.bnd_b).trim()
-        if (!op) continue
-        const chave = bnd ? `${op} - ${bnd}` : op
-        movto_por_forma[`TEF ${chave}`] = (movto_por_forma[`TEF ${chave}`] ?? 0) + Number(r.total)
-      }
-    } catch (e: any) { console.log(`[caixa-frentista] agrupado tef erro: ${e.message}`) }
   }
 
   // ── 6. QRLINX-PIX via exchange_linxpay_qr_transacao ─────────────────────
@@ -2787,6 +2760,44 @@ export async function buscarDadosCaixaFrentista(
       }
     }
   } catch (e: any) { console.log(`[qr-linxpay] erro: ${e.message}`) }
+
+  // ── 5b. CAIXA AGRUPADO: TEF baixadas por OUTROS usuários no caixa do operador ──
+  // No caixa agrupado, o operador (quem abriu o caixa) tem as vendas/entradas, mas
+  // parte das formas (TEF) é baixada pelos terminais de outros usuários DENTRO do
+  // caixa dele. Preenche o "buraco" (entradas − formas já lançadas) com essas TEF,
+  // limitado ao gap para não estourar (operadores já batidos recebem zero).
+  if (agrupado && caixaGrids.length) {
+    try {
+      const EXC_5B = ['pdv - ', 'cheques em transito', 'cheque pdv', 'juros pend', 'transferencia', 'deposito em transito']
+      let formasAtuais = 0
+      for (const [nome, val] of Object.entries(movto_por_forma)) {
+        const c = nome.toLowerCase()
+        if (EXC_5B.some(e => c.startsWith(e) || c.includes(e))) continue
+        formasAtuais += val
+      }
+      let gap = parseFloat((total_entradas - formasAtuais).toFixed(2))
+      if (gap > 0.02) {
+        const tefRows = await query<{ op_b: Buffer | null; bnd_b: Buffer | null; total: number }>(
+          `SELECT t.operadora_nome::bytea AS op_b, t.bandeira::bytea AS bnd_b,
+                  COALESCE(SUM(t.valor), 0)::float AS total
+           FROM tef_transacao t JOIN movto mv ON mv.grid = t.movto
+           WHERE t.caixa = ANY($1::bigint[]) AND mv.usuario <> $2
+           GROUP BY t.operadora_nome, t.bandeira ORDER BY total DESC`,
+          [caixaGrids, usuarioAS],
+        )
+        console.log(`[caixa-frentista] AGRUPADO tef-outros-no-caixa gap=${gap} → ${tefRows.length} linha(s)`)
+        for (const r of tefRows) {
+          if (gap <= 0.02) break
+          const op = decodeBytea(r.op_b).trim(); const bnd = decodeBytea(r.bnd_b).trim()
+          if (!op) continue
+          const chave = bnd ? `${op} - ${bnd}` : op
+          const add = Math.min(Number(r.total), gap)
+          movto_por_forma[`TEF ${chave}`] = (movto_por_forma[`TEF ${chave}`] ?? 0) + add
+          gap = parseFloat((gap - add).toFixed(2))
+        }
+      }
+    } catch (e: any) { console.log(`[caixa-frentista] agrupado tef-outros erro: ${e.message}`) }
+  }
 
   // 6. Agrega totais por grupo usando movto_por_forma (principal) + config tefGrupos (nome → grupo)
   let cartoes            = 0
