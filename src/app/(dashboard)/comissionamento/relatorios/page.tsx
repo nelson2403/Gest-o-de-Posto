@@ -360,6 +360,9 @@ export default function ComissionamentoRelatoriosPage() {
                             key={v.vendedor_id}
                             v={v} comissao={comissao} aberto={aberto}
                             onToggle={() => toggleVendedor(v.vendedor_id)}
+                            postoId={postoId}
+                            dataIni={dataIni}
+                            dataFim={dataFim}
                           />
                         )
                       })}
@@ -400,14 +403,20 @@ interface RelatorioLinhaVendedorProps {
   comissao: ComissaoPorVendedor | null
   aberto: boolean
   onToggle: () => void
+  postoId: string
+  dataIni: string
+  dataFim: string
 }
-function RelatorioLinhaVendedor({ v, comissao, aberto, onToggle }: RelatorioLinhaVendedorProps) {
+function RelatorioLinhaVendedor({ v, comissao, aberto, onToggle, postoId, dataIni, dataFim }: RelatorioLinhaVendedorProps) {
   const regras = comissao?.comissoes ?? []
   // Ordena por comissão desc (maior contribuição primeiro)
   const regrasOrdenadas = useMemo(
     () => [...regras].sort((a, b) => b.comissao - a.comissao),
     [regras],
   )
+
+  // Modal "Vendas por grupo / subgrupo / produto" — abertura sob demanda
+  const [modalAberto, setModalAberto] = useState(false)
 
   return (
     <>
@@ -460,6 +469,13 @@ function RelatorioLinhaVendedor({ v, comissao, aberto, onToggle }: RelatorioLinh
                 <Wand2 className="w-3 h-3 text-gray-400" />
                 Regras aplicadas ({regrasOrdenadas.length})
               </p>
+              <button
+                onClick={() => setModalAberto(true)}
+                className="h-7 px-2.5 rounded-md border border-orange-200 text-orange-700 hover:bg-orange-50 text-[11.5px] font-semibold flex items-center gap-1.5"
+              >
+                <BarChart3 className="w-3 h-3" />
+                Ver vendas por grupo
+              </button>
             </div>
 
             {regrasOrdenadas.length === 0 ? (
@@ -526,7 +542,295 @@ function RelatorioLinhaVendedor({ v, comissao, aberto, onToggle }: RelatorioLinh
           </td>
         </tr>
       )}
+
+      {modalAberto && (
+        <VendasPorGrupoModal
+          vendedorId={v.vendedor_id}
+          vendedorNome={v.vendedor_nome}
+          postoId={postoId}
+          dataIni={dataIni}
+          dataFim={dataFim}
+          onClose={() => setModalAberto(false)}
+        />
+      )}
     </>
+  )
+}
+
+// ── Modal: Vendas por Grupo → Subgrupo → Produto (sem combustíveis) ─────────
+//
+// Aberto sob demanda a partir do bloco expandido do vendedor no relatório.
+// Busca as vendas do vendedor no endpoint `/vendas-por-vendedor` (já filtrado
+// para excluir combustíveis no servidor) e agrega por (Grupo → Subgrupo →
+// Produto) em runtime para mostrar a árvore.
+
+interface VendaSimples {
+  produto_nome:     string
+  grupo_produto:    string | null
+  subgrupo_produto: string | null
+  produto_tipo:     string | null
+  quantidade:       number
+  valor_total:      number
+}
+
+interface ProdutoAgg {
+  produto:      string
+  qtd:          number
+  faturamento:  number
+}
+interface SubgrupoAgg {
+  subgrupo:     string
+  produtos:     ProdutoAgg[]
+  qtd:          number
+  faturamento:  number
+}
+interface GrupoAgg {
+  grupo:        string
+  subgrupos:    SubgrupoAgg[]
+  qtd:          number
+  faturamento:  number
+}
+
+function agregarPorGrupoSubgrupoProduto(vendas: VendaSimples[]): GrupoAgg[] {
+  type Tmp = Map<string, Map<string, Map<string, ProdutoAgg>>>
+  const map: Tmp = new Map()
+  for (const v of vendas) {
+    const g = v.grupo_produto?.trim()    || '(sem grupo)'
+    const s = v.subgrupo_produto?.trim() || '(sem subgrupo)'
+    const p = v.produto_nome
+    if (!map.has(g))      map.set(g, new Map())
+    if (!map.get(g)!.has(s)) map.get(g)!.set(s, new Map())
+    const prodMap = map.get(g)!.get(s)!
+    const ex = prodMap.get(p)
+    if (ex) {
+      ex.qtd         += v.quantidade
+      ex.faturamento += v.valor_total
+    } else {
+      prodMap.set(p, { produto: p, qtd: v.quantidade, faturamento: v.valor_total })
+    }
+  }
+
+  const grupos: GrupoAgg[] = []
+  for (const [gName, subMap] of map) {
+    const subgrupos: SubgrupoAgg[] = []
+    for (const [sName, prodMap] of subMap) {
+      const produtos = Array.from(prodMap.values()).sort((a, b) => b.faturamento - a.faturamento)
+      subgrupos.push({
+        subgrupo:    sName,
+        produtos,
+        qtd:         produtos.reduce((s, x) => s + x.qtd,         0),
+        faturamento: produtos.reduce((s, x) => s + x.faturamento, 0),
+      })
+    }
+    subgrupos.sort((a, b) => b.faturamento - a.faturamento)
+    grupos.push({
+      grupo:       gName,
+      subgrupos,
+      qtd:         subgrupos.reduce((s, x) => s + x.qtd,         0),
+      faturamento: subgrupos.reduce((s, x) => s + x.faturamento, 0),
+    })
+  }
+  grupos.sort((a, b) => b.faturamento - a.faturamento)
+  return grupos
+}
+
+interface VendasPorGrupoModalProps {
+  vendedorId:   string
+  vendedorNome: string
+  postoId:      string
+  dataIni:      string
+  dataFim:      string
+  onClose:      () => void
+}
+function VendasPorGrupoModal({ vendedorId, vendedorNome, postoId, dataIni, dataFim, onClose }: VendasPorGrupoModalProps) {
+  const [mounted, setMounted]   = useState(false)
+  const [vendas,  setVendas]    = useState<VendaSimples[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [erro,    setErro]      = useState<string | null>(null)
+  const [abertos, setAbertos]   = useState<Set<string>>(new Set())  // grupos expandidos
+  const [subAbertos, setSubAbertos] = useState<Set<string>>(new Set())  // chave: `${grupo}::${subgrupo}`
+
+  // Esc fecha
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  useEffect(() => { setMounted(true) }, [])
+
+  // Fetch on mount
+  useEffect(() => {
+    const params = new URLSearchParams({
+      posto_id:    postoId,
+      data_ini:    dataIni,
+      data_fim:    dataFim,
+      vendedor_id: vendedorId,
+      excluir_combustiveis: '1',
+    })
+    fetch(`/api/comissionamento/vendas-por-vendedor?${params}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.error) { setErro(json.error); return }
+        setVendas((json.vendas ?? []) as VendaSimples[])
+      })
+      .catch(e => setErro(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLoading(false))
+  }, [postoId, dataIni, dataFim, vendedorId])
+
+  const grupos = useMemo(() => agregarPorGrupoSubgrupoProduto(vendas), [vendas])
+
+  function toggleGrupo(g: string) {
+    setAbertos(prev => {
+      const next = new Set(prev)
+      if (next.has(g)) next.delete(g); else next.add(g)
+      return next
+    })
+  }
+  function toggleSub(key: string) {
+    setSubAbertos(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
+  function expandirTudo() {
+    setAbertos(new Set(grupos.map(g => g.grupo)))
+    setSubAbertos(new Set(grupos.flatMap(g => g.subgrupos.map(s => `${g.grupo}::${s.subgrupo}`))))
+  }
+  function recolherTudo() { setAbertos(new Set()); setSubAbertos(new Set()) }
+
+  const totalQtd      = grupos.reduce((s, g) => s + g.qtd,         0)
+  const totalFat      = grupos.reduce((s, g) => s + g.faturamento, 0)
+
+  if (!mounted) return null
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-orange-600" />
+            <div>
+              <h3 className="text-[13.5px] font-semibold text-gray-800">Vendas por grupo de produto</h3>
+              <p className="text-[11px] text-gray-500">{vendedorNome} <span className="text-gray-400">· sem combustíveis</span></p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-gray-500">
+              <Loader2 className="w-4 h-4 animate-spin" /> <span className="text-[12.5px]">Carregando vendas…</span>
+            </div>
+          ) : erro ? (
+            <div className="flex items-start gap-2 p-3 rounded-md bg-red-50 border border-red-200 text-red-700 text-[12.5px]">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <p>{erro}</p>
+            </div>
+          ) : grupos.length === 0 ? (
+            <p className="text-[12px] text-gray-400 italic text-center py-8">Sem vendas (excluindo combustíveis) no período.</p>
+          ) : (
+            <>
+              <div className="flex items-center justify-end gap-2 text-[10.5px] mb-1.5">
+                <button onClick={expandirTudo} className="text-orange-600 hover:text-orange-700 font-medium">Expandir todos</button>
+                <span className="text-gray-300">·</span>
+                <button onClick={recolherTudo} className="text-gray-500 hover:text-gray-700 font-medium">Recolher todos</button>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 overflow-hidden">
+                <table className="w-full text-[12.5px]">
+                  <thead className="bg-gray-50">
+                    <tr className="text-[10.5px] uppercase tracking-wide text-gray-500 border-b border-gray-100">
+                      <th className="text-left  px-3 py-2">Grupo / Subgrupo / Produto</th>
+                      <th className="text-right px-3 py-2 w-24">Quantidade</th>
+                      <th className="text-right px-3 py-2 w-32">Faturamento</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {grupos.map(g => {
+                      const openG = abertos.has(g.grupo)
+                      return (
+                        <FragmentRow key={g.grupo}>
+                          <tr onClick={() => toggleGrupo(g.grupo)}
+                            className="bg-gray-50/60 hover:bg-orange-50/30 cursor-pointer">
+                            <td className="px-3 py-1.5">
+                              <div className="flex items-center gap-1.5">
+                                {openG ? <ChevronDown className="w-3 h-3 text-gray-500" /> : <ChevronRight className="w-3 h-3 text-gray-500" />}
+                                <span className="font-semibold text-gray-800 truncate" title={g.grupo}>{g.grupo}</span>
+                                <span className="text-[10px] text-gray-400 font-normal">
+                                  ({g.subgrupos.length} subgrupo{g.subgrupos.length === 1 ? '' : 's'})
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-gray-700">{fmtQtd(g.qtd)}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums font-bold text-gray-900">{fmtBRL(g.faturamento)}</td>
+                          </tr>
+
+                          {openG && g.subgrupos.map(s => {
+                            const subKey = `${g.grupo}::${s.subgrupo}`
+                            const openS  = subAbertos.has(subKey)
+                            return (
+                              <FragmentRow key={subKey}>
+                                <tr onClick={() => toggleSub(subKey)}
+                                  className="bg-white hover:bg-orange-50/20 cursor-pointer">
+                                  <td className="px-3 py-1 pl-9">
+                                    <div className="flex items-center gap-1.5">
+                                      {openS ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
+                                      <span className="text-gray-700 truncate" title={s.subgrupo}>
+                                        {s.subgrupo === '(sem subgrupo)'
+                                          ? <span className="italic text-gray-400">{s.subgrupo}</span>
+                                          : s.subgrupo}
+                                      </span>
+                                      <span className="text-[10px] text-gray-400">
+                                        ({s.produtos.length} produto{s.produtos.length === 1 ? '' : 's'})
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-1 text-right tabular-nums text-gray-700">{fmtQtd(s.qtd)}</td>
+                                  <td className="px-3 py-1 text-right tabular-nums font-semibold text-gray-800">{fmtBRL(s.faturamento)}</td>
+                                </tr>
+
+                                {openS && s.produtos.map(p => (
+                                  <tr key={`${subKey}::${p.produto}`} className="hover:bg-orange-50/20">
+                                    <td className="px-3 py-1 pl-14 text-gray-600 truncate max-w-[300px]" title={p.produto}>{p.produto}</td>
+                                    <td className="px-3 py-1 text-right tabular-nums text-gray-600">{fmtQtd(p.qtd)}</td>
+                                    <td className="px-3 py-1 text-right tabular-nums text-gray-700">{fmtBRL(p.faturamento)}</td>
+                                  </tr>
+                                ))}
+                              </FragmentRow>
+                            )
+                          })}
+                        </FragmentRow>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot className="bg-gray-50/60 border-t border-gray-200">
+                    <tr className="text-[12px]">
+                      <td className="px-3 py-1.5 font-semibold text-gray-700">Total</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-gray-700">{fmtQtd(totalQtd)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums font-bold text-gray-900">{fmtBRL(totalFat)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end px-5 py-3 border-t border-gray-200 bg-gray-50">
+          <button onClick={onClose}
+            className="h-8 px-3 rounded border border-gray-300 text-[12px] font-medium text-gray-700 hover:bg-white">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
 

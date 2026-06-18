@@ -13,7 +13,7 @@ import { buscarVendasParaComissionamento } from '@/lib/autosystem'
 import { parseCondicoes } from '@/app/(dashboard)/comissionamento/_lib/conditions'
 import type {
   Regra, Meta, MetaSplit, Membro, Venda, RegraStatus,
-  Esquema, ProductFilter, EsquemaStatus, EscopoRegraTipo, RegraCampo,
+  Esquema, ProductFilter, EsquemaStatus, EscopoRegraTipo, RegraCampo, RegraEscopo,
 } from './types'
 
 // ── Esquema (com product_filters) ───────────────────────────────────────────
@@ -64,6 +64,8 @@ export async function carregarRegrasDoEsquema(esquemaId: string): Promise<Regra[
     realizado_campo:      (r.realizado_campo ?? 'faturamento') as RegraCampo,
     base_filtros:         Array.isArray(r.base_filtros) ? (r.base_filtros as ProductFilter[]) : [],
     base_campo:           (r.base_campo ?? 'faturamento') as RegraCampo,
+    realizado_escopo:     (r.realizado_escopo ?? 'vendedor') as RegraEscopo,
+    base_escopo:          (r.base_escopo ?? 'vendedor') as RegraEscopo,
   }))
 }
 

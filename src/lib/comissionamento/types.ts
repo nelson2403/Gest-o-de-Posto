@@ -64,6 +64,11 @@ export type EscopoRegraTipo = 'produto' | 'grupo_produto' | 'subgrupo_produto'
 //                       Útil para o ENTÃO em modo por_unidade ou a_cada.
 export type RegraCampo = 'faturamento' | 'quantidade' | 'lucro' | 'mix' | 'atingimento_meta'
 
+// Escopo dos filtros (migration 127). Define se o agregado é calculado
+// sobre as vendas do vendedor sendo processado ('vendedor') ou sobre TODAS
+// as vendas do posto ('todos'). 'todos' resolve regras de gerente.
+export type RegraEscopo = 'vendedor' | 'todos'
+
 // ── Regra normalizada para o motor ──────────────────────────────────────────
 export interface Regra {
   id:                   string
@@ -93,6 +98,10 @@ export interface Regra {
   // Vazio = base é o agregado de TODAS as vendas do vendedor.
   base_filtros:         ProductFilter[]
   base_campo:           RegraCampo
+  // Escopo de agregação (migration 127). 'vendedor' = como hoje;
+  // 'todos' = agrega sobre o posto inteiro (regras de gerente).
+  realizado_escopo:     RegraEscopo
+  base_escopo:          RegraEscopo
 }
 
 // ── Membro do comissionamento (vendedor / gerente / etc.) ───────────────────

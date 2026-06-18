@@ -15,7 +15,10 @@ export async function GET() {
     .single()
 
   const admin = createAdminClient()
-  let query = admin.from('postos').select('id, nome').order('nome')
+  // codigo_empresa_externo é usado por comissionamento (filtra postos sem
+  // empresa AUTOSYSTEM) e /analise-vendas. conveniencia é usado para a aba
+  // de Conveniência na análise de vendas.
+  let query = admin.from('postos').select('id, nome, codigo_empresa_externo, conveniencia').order('nome')
 
   // Master vê todos; demais usuários veem só da sua empresa
   if (usuarioData?.role !== 'master' && usuarioData?.empresa_id) {

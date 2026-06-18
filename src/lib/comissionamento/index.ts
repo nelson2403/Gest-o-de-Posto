@@ -104,16 +104,23 @@ export async function calcularComissoes(input: CalcularComissoesInput): Promise<
 
   // 4. Calcula atingimento por (vendedor, meta) sobre TODAS as vendas do
   // posto no período — o filtro da própria meta refina o que conta.
-  const { atingimentoPorVendedorPorMeta, detalhes: atingimentos } = calcularAtingimento({
-    vendas, metas, splits, membros,
-  })
+  // Também devolve o atingimento TOTAL (todos os vendedores) por meta —
+  // usado por regras de gerente (escopo='todos').
+  const {
+    atingimentoPorVendedorPorMeta,
+    atingimentoTotalPorMeta,
+    detalhes: atingimentos,
+  } = calcularAtingimento({ vendas, metas, splits, membros })
 
   // 5. Aplica engine NOVO: 1 ComissaoPorVendedor por vendedor com a lista
   // de regras que casaram. Sem first-match-wins; várias regras podem
-  // contribuir para o mesmo vendedor.
+  // contribuir para o mesmo vendedor. `membros` permite que gerentes sem
+  // vendas próprias entrem no loop (recebem comissão sobre agregado).
   const comissaoPorVendedor = calcularComissaoPorVendedor({
     vendas: vendasNoEscopo, regras, metas,
     atingimentoPorVendedorPorMeta,
+    atingimentoTotalPorMeta,
+    membros,
   })
 
   // 6. Resumo por vendedor: comissão vem do engine; faturamento/custo/qtd

@@ -29,6 +29,10 @@ export type EscopoTipo = 'produto' | 'grupo_produto' | 'subgrupo_produto'
 // 'atingimento_meta' é especial — vem direto do mapa de atingimentos.
 export type RegraCampo = 'faturamento' | 'quantidade' | 'lucro' | 'mix' | 'atingimento_meta'
 
+// Escopo da agregação (migration 127). 'vendedor' = comportamento atual;
+// 'todos' = agrega sobre o posto inteiro (regras de gerente).
+export type RegraEscopoApi = 'vendedor' | 'todos'
+
 const STATUS_VALIDOS: readonly RegraStatus[]   = ['rascunho', 'ativo', 'inativo']
 const TIPOS_VALIDOS:  readonly ResultadoTipo[] = [
   'vendas_rs', 'lucro_bruto', 'quantidade', 'mix', 'produto', 'grupo_produto', 'subgrupo_produto',
@@ -36,6 +40,7 @@ const TIPOS_VALIDOS:  readonly ResultadoTipo[] = [
 const MODOS_VALIDOS:  readonly ResultadoModo[] = ['sobre', 'por_unidade', 'a_cada']
 const ESCOPO_VALIDOS: readonly EscopoTipo[]    = ['produto', 'grupo_produto', 'subgrupo_produto']
 const CAMPOS_VALIDOS: readonly RegraCampo[]    = ['faturamento', 'quantidade', 'lucro', 'mix', 'atingimento_meta']
+const ESCOPOS_VALIDOS: readonly RegraEscopoApi[] = ['vendedor', 'todos']
 
 // ─── POST — cria nova regra dentro do esquema ───────────────────────────────
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -62,6 +67,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     realizado_campo:       RegraCampo
     base_filtros:          unknown[]
     base_campo:            RegraCampo
+    realizado_escopo:      RegraEscopoApi
+    base_escopo:           RegraEscopoApi
   }>
 
   if (!body.nome?.trim()) {
@@ -84,6 +91,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   if (body.base_campo && !CAMPOS_VALIDOS.includes(body.base_campo)) {
     return NextResponse.json({ error: `base_campo inválido — use ${CAMPOS_VALIDOS.join(', ')}` }, { status: 400 })
+  }
+  if (body.realizado_escopo && !ESCOPOS_VALIDOS.includes(body.realizado_escopo)) {
+    return NextResponse.json({ error: `realizado_escopo inválido — use ${ESCOPOS_VALIDOS.join(', ')}` }, { status: 400 })
+  }
+  if (body.base_escopo && !ESCOPOS_VALIDOS.includes(body.base_escopo)) {
+    return NextResponse.json({ error: `base_escopo inválido — use ${ESCOPOS_VALIDOS.join(', ')}` }, { status: 400 })
   }
   if (body.realizado_filtros !== undefined && !Array.isArray(body.realizado_filtros)) {
     return NextResponse.json({ error: 'realizado_filtros deve ser um array' }, { status: 400 })
@@ -123,6 +136,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       realizado_campo:       body.realizado_campo ?? 'faturamento',
       base_filtros:          Array.isArray(body.base_filtros) ? body.base_filtros : [],
       base_campo:            body.base_campo ?? 'faturamento',
+      realizado_escopo:      body.realizado_escopo ?? 'vendedor',
+      base_escopo:           body.base_escopo ?? 'vendedor',
       criado_por:            user.id,
     })
     .select()

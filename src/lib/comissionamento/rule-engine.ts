@@ -25,7 +25,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type {
-  Venda, Regra, Meta, ProductFilter,
+  Venda, Regra, Meta, ProductFilter, Membro,
   ConditionGroup, FieldKey, OperatorKey,
   ResultadoModo, ResultadoTipo,
   VendaComissionada, BreakdownCalculo,
@@ -676,6 +676,19 @@ export interface CalcularPorVendedorInput {
    * o engine cai no fallback: realizado/meta.valor_meta × 100.
    */
   atingimentoPorVendedorPorMeta?: Map<string, Map<string, number>>
+  /**
+   * Mapa atingimento_TOTAL_por_meta: meta_id → % (somando vendas de TODOS
+   * os vendedores). Usado quando regra.realizado_escopo === 'todos'.
+   * Migration 127.
+   */
+  atingimentoTotalPorMeta?:       Map<string, number>
+  /**
+   * Membros do esquema (com external_person_id). Quando passado, o engine
+   * GARANTE uma linha de comissão por membro ativo, mesmo que ele não tenha
+   * vendas próprias — necessário para gerentes/supervisores que comissionam
+   * sobre o realizado/base agregado do posto. Migration 127.
+   */
+  membros?:                       Membro[]
 }
 
 export function calcularComissaoPorVendedor(input: CalcularPorVendedorInput): ComissaoPorVendedor[] {
@@ -693,6 +706,20 @@ export function calcularComissaoPorVendedor(input: CalcularPorVendedorInput): Co
     porVendedor.set(key, arr)
   }
 
+  // Garante que cada membro ativo com external_person_id tem entrada (mesmo
+  // que vazia). Necessário para gerentes que não têm vendas próprias mas
+  // recebem comissão sobre o agregado (regras com escopo='todos').
+  // Membros sem external_person_id (fora do AUTOSYSTEM) ficam de fora.
+  const membroNomePorVendedorKey = new Map<string, string>()
+  if (input.membros) {
+    for (const m of input.membros) {
+      if (!m.ativo || !m.external_person_id) continue
+      const key = m.external_person_id
+      if (!porVendedor.has(key)) porVendedor.set(key, [])
+      membroNomePorVendedorKey.set(key, m.nome)
+    }
+  }
+
   // ── Map auxiliar de metas por id ──────────────────────────────────────────
   const metaPorId = new Map<string, Meta>()
   for (const m of input.metas) metaPorId.set(m.id, m)
@@ -700,17 +727,27 @@ export function calcularComissaoPorVendedor(input: CalcularPorVendedorInput): Co
   const resultado: ComissaoPorVendedor[] = []
 
   for (const [vKey, vendasDoVendedor] of porVendedor) {
-    if (vendasDoVendedor.length === 0) continue
+    // Antes só pulava se vazio — agora permite gerentes (sem vendas próprias)
+    // entrarem desde que estejam no map (via input.membros). Regras com
+    // escopo='vendedor' naturalmente devolvem 0 pra esses membros; regras
+    // com escopo='todos' devolvem agregado do posto.
+    const semVendas = vendasDoVendedor.length === 0
+    if (semVendas && !membroNomePorVendedorKey.has(vKey)) continue
 
-    // Vendedor info — pega da primeira venda
-    const primeira = vendasDoVendedor[0]
+    // Vendedor info — pega da primeira venda quando tiver, senão do membro
+    const primeira: Venda | null = vendasDoVendedor[0] ?? null
+    const nomeFallback = membroNomePorVendedorKey.get(vKey) ?? '(sem vendedor)'
     const comissoesDoVendedor: ComissaoPorRegra[] = []
 
     for (const regra of regrasAtivas) {
-      // ── 1. Filtra vendas para o REALIZADO ────────────────────────────────
+      // ── 1. Pool de vendas para o REALIZADO (escopo) ──────────────────────
+      // 'vendedor': só as vendas desse vendedor. 'todos': vendas do posto.
+      const poolRealizado = regra.realizado_escopo === 'todos'
+        ? input.vendas
+        : vendasDoVendedor
       const vendasRealizado = regra.realizado_filtros.length === 0
-        ? vendasDoVendedor
-        : vendasDoVendedor.filter(v => vendaPassaProductFilters(v, regra.realizado_filtros))
+        ? poolRealizado
+        : poolRealizado.filter(v => vendaPassaProductFilters(v, regra.realizado_filtros))
 
       // ── 2. Resolve atingimento via meta de referência ────────────────────
       let metaValor:        number | null = null
@@ -720,17 +757,19 @@ export function calcularComissaoPorVendedor(input: CalcularPorVendedorInput): Co
         const meta = metaPorId.get(regra.meta_referencia_id)
         if (meta) {
           metaValor = Number(meta.valor_meta) || 0
-          // Preferência: mapa pré-calculado (consistente com o resto do sistema).
-          // Fallback: realizado_filtros (faturamento) / valor_meta × 100.
-          // Quando realizado_campo='atingimento_meta', o próprio realizadoValor
-          // depende deste atingimento — então só dá pra usar o preCalc.
-          const preCalc = input.atingimentoPorVendedorPorMeta?.get(vKey)?.get(meta.id)
-          if (preCalc != null) {
-            atingimentoMeta = preCalc
-          } else if (metaValor > 0 && regra.realizado_campo !== 'atingimento_meta') {
-            // fallback só faz sentido quando temos um realizado somável
-            const realizadoFallback = agregarCampo(vendasRealizado, regra.realizado_campo)
-            atingimentoMeta = (realizadoFallback / metaValor) * 100
+          // Quando escopo='todos': puxa do mapa TOTAL (atingimento da meta inteira).
+          // Quando escopo='vendedor': puxa do mapa individual; fallback usa o
+          // realizado calculado localmente.
+          if (regra.realizado_escopo === 'todos') {
+            atingimentoMeta = input.atingimentoTotalPorMeta?.get(meta.id) ?? null
+          } else {
+            const preCalc = input.atingimentoPorVendedorPorMeta?.get(vKey)?.get(meta.id)
+            if (preCalc != null) {
+              atingimentoMeta = preCalc
+            } else if (metaValor > 0 && regra.realizado_campo !== 'atingimento_meta') {
+              const realizadoFallback = agregarCampo(vendasRealizado, regra.realizado_campo)
+              atingimentoMeta = (realizadoFallback / metaValor) * 100
+            }
           }
         }
       }
@@ -741,16 +780,13 @@ export function calcularComissaoPorVendedor(input: CalcularPorVendedorInput): Co
         : agregarCampo(vendasRealizado, regra.realizado_campo)
 
       // ── 4. Avalia condições do SE no contexto agregado ───────────────────
-      // Os campos da venda (produto/grupo/subgrupo) não fazem sentido no
-      // contexto agregado e vão vazios. Vendedor/cargo/posto vêm da primeira
-      // venda — assume-se que o vendedor é coerente entre suas vendas.
       const ctx: EvalContext = {
         produto:           '',
         grupo_produto:     '',
         subgrupo_produto:  '',
-        vendedor:          primeira.vendedor_nome ?? '',
-        cargo:             primeira.cargo ?? '',
-        posto:             String(primeira.empresa_id ?? ''),
+        vendedor:          primeira?.vendedor_nome ?? nomeFallback,
+        cargo:             primeira?.cargo ?? '',
+        posto:             String(primeira?.empresa_id ?? ''),
         faturamento:       agregarCampo(vendasRealizado, 'faturamento'),
         quantidade:        agregarCampo(vendasRealizado, 'quantidade'),
         mix:               agregarCampo(vendasRealizado, 'mix'),
@@ -765,10 +801,13 @@ export function calcularComissaoPorVendedor(input: CalcularPorVendedorInput): Co
 
       if (!evaluateGroup(regra.condicoes, ctx)) continue
 
-      // ── 5. Filtra vendas para a BASE e resolve o valor agregado ──────────
+      // ── 5. Pool de vendas para a BASE (escopo) ───────────────────────────
+      const poolBase = regra.base_escopo === 'todos'
+        ? input.vendas
+        : vendasDoVendedor
       const vendasBase = regra.base_filtros.length === 0
-        ? vendasDoVendedor
-        : vendasDoVendedor.filter(v => vendaPassaProductFilters(v, regra.base_filtros))
+        ? poolBase
+        : poolBase.filter(v => vendaPassaProductFilters(v, regra.base_filtros))
       const baseValor = regra.base_campo === 'atingimento_meta'
         ? (atingimentoMeta ?? 0)
         : agregarCampo(vendasBase, regra.base_campo)
@@ -794,11 +833,15 @@ export function calcularComissaoPorVendedor(input: CalcularPorVendedorInput): Co
       })
     }
 
+    // Filtra zerados: se membro sem vendas nem aceitou regra (todas zeram),
+    // não inclui no resultado para não poluir o relatório com linhas vazias.
+    const totalComissao = comissoesDoVendedor.reduce((s, c) => s + c.comissao, 0)
+    if (semVendas && comissoesDoVendedor.length === 0) continue
     resultado.push({
       vendedor_id:    vKey,
-      vendedor_nome:  primeira.vendedor_nome ?? '(sem vendedor)',
+      vendedor_nome:  primeira?.vendedor_nome ?? nomeFallback,
       comissoes:      comissoesDoVendedor,
-      comissao_total: comissoesDoVendedor.reduce((s, c) => s + c.comissao, 0),
+      comissao_total: totalComissao,
     })
   }
 

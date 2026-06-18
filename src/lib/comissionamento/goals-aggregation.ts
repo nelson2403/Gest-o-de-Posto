@@ -85,6 +85,10 @@ export interface CalcularAtingimentoInput {
 export interface CalcularAtingimentoOutput {
   // Mapa achatado: vendedor_id (pessoa.grid stringificado) → meta_id → atingimento %
   atingimentoPorVendedorPorMeta: Map<string, Map<string, number>>
+  // Atingimento TOTAL da meta — realizado de todas as vendas no filtro
+  // dividido pelo valor_meta global. Usado por regras de gerente que
+  // precisam do "atingimento da loja inteira" (migration 127).
+  atingimentoTotalPorMeta:       Map<string, number>
   // Lista detalhada (para UI / relatórios)
   detalhes: AtingimentoMeta[]
 }
@@ -101,11 +105,20 @@ export function calcularAtingimento(input: CalcularAtingimentoInput): CalcularAt
   }
 
   const atingByVendedor = new Map<string, Map<string, number>>()
+  const atingTotal      = new Map<string, number>()
   const detalhes: AtingimentoMeta[] = []
 
   for (const meta of input.metas) {
     const vendasDaMeta = input.vendas.filter(v => vendaCasaFiltroMeta(v, meta))
     const splitsDaMeta = input.splits.filter(s => s.meta_id === meta.id)
+
+    // Atingimento TOTAL da meta (independente do split). Usa o valor_meta
+    // global da meta. Quando 0, o atingimento total fica 0 (não dá pra
+    // dividir).
+    const realizadoTotal = realizadoNoCampo(vendasDaMeta, meta)
+    const valorMetaTotal = Number(meta.valor_meta) || 0
+    const atingimentoTotal = valorMetaTotal > 0 ? (realizadoTotal / valorMetaTotal) * 100 : 0
+    atingTotal.set(meta.id, atingimentoTotal)
 
     for (const split of splitsDaMeta) {
       const externalId = membroToExternal.get(split.membro_id)
@@ -134,5 +147,9 @@ export function calcularAtingimento(input: CalcularAtingimentoInput): CalcularAt
     }
   }
 
-  return { atingimentoPorVendedorPorMeta: atingByVendedor, detalhes }
+  return {
+    atingimentoPorVendedorPorMeta: atingByVendedor,
+    atingimentoTotalPorMeta:       atingTotal,
+    detalhes,
+  }
 }

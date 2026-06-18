@@ -100,6 +100,8 @@ interface Regra {
   realizado_campo:       RegraCampo
   base_filtros:          ProductFilter[]
   base_campo:            RegraCampo
+  realizado_escopo:      RegraEscopo
+  base_escopo:           RegraEscopo
   criado_em:             string
   atualizado_em:         string
 }
@@ -114,6 +116,10 @@ const ESCOPO_LABEL: Record<EscopoTipoUI, string> = {
 
 // Campo somado no realizado e na base (migration 093 + 094)
 export type RegraCampo = 'faturamento' | 'quantidade' | 'lucro' | 'mix' | 'atingimento_meta'
+
+// Escopo da agregação (migration 127). 'vendedor' = como hoje; 'todos' =
+// agrega sobre o posto inteiro (regras de gerente).
+export type RegraEscopo = 'vendedor' | 'todos'
 const CAMPO_LABEL: Record<RegraCampo, string> = {
   faturamento:      'Faturamento',
   quantidade:       'Quantidade',
@@ -287,6 +293,8 @@ export default function EsquemaDetailPage({ params }: { params: Promise<{ id: st
     realizado_campo:       'faturamento' as RegraCampo,    // SE — dimensão do realizado
     base_filtros:          [] as ProductFilter[],          // ENTÃO — filtros da base
     base_campo:            'faturamento' as RegraCampo,    // ENTÃO — dimensão da base
+    realizado_escopo:      'vendedor' as RegraEscopo,      // SE — vendedor ou agregado posto
+    base_escopo:           'vendedor' as RegraEscopo,      // ENTÃO — idem
     condicoes:             emptyRootGroup() as ConditionGroup,
   })
   const [salvandoRegra, setSalvandoRegra] = useState(false)
@@ -464,6 +472,8 @@ export default function EsquemaDetailPage({ params }: { params: Promise<{ id: st
       realizado_campo:       'faturamento',
       base_filtros:          [],
       base_campo:            'faturamento',
+      realizado_escopo:      'vendedor',
+      base_escopo:           'vendedor',
       condicoes:             emptyRootGroup(),
     })
   }
@@ -494,6 +504,8 @@ export default function EsquemaDetailPage({ params }: { params: Promise<{ id: st
       realizado_campo:       (r.realizado_campo ?? 'faturamento') as RegraCampo,
       base_filtros:          Array.isArray(r.base_filtros) ? r.base_filtros : [],
       base_campo:            (r.base_campo ?? 'faturamento') as RegraCampo,
+      realizado_escopo:      (r.realizado_escopo ?? 'vendedor') as RegraEscopo,
+      base_escopo:           (r.base_escopo ?? 'vendedor') as RegraEscopo,
       condicoes:             parseCondicoes(r.condicoes),
     })
     setAbaAtiva('regras')
@@ -1168,6 +1180,8 @@ interface RegraFormState {
   realizado_campo:       RegraCampo
   base_filtros:          ProductFilter[]
   base_campo:            RegraCampo
+  realizado_escopo:      RegraEscopo
+  base_escopo:           RegraEscopo
   condicoes:             ConditionGroup
 }
 
@@ -1241,10 +1255,12 @@ function RegraForm({ regraForm, setRegraForm, regraEditando, salvando, onCancel,
             setFiltros={(f) => setRegraForm(s => ({ ...s, realizado_filtros: f }))}
             campo={regraForm.realizado_campo}
             setCampo={(c) => setRegraForm(s => ({ ...s, realizado_campo: c }))}
+            escopo={regraForm.realizado_escopo}
+            setEscopo={(e) => setRegraForm(s => ({ ...s, realizado_escopo: e }))}
             gruposAS={gruposAS}
             subgruposAS={subgruposAS}
             titulo="Filtros do realizado"
-            descricao="Quais vendas do vendedor entram no cálculo do realizado da meta de referência. Vazio = todas."
+            descricao="Quais vendas entram no cálculo do realizado da meta de referência. Vazio = todas."
             borderColor="border-blue-200"
             campoLabel="Campo somado"
           />
@@ -1420,10 +1436,12 @@ function RegraForm({ regraForm, setRegraForm, regraEditando, salvando, onCancel,
             setFiltros={(f) => setRegraForm(s => ({ ...s, base_filtros: f }))}
             campo={regraForm.base_campo}
             setCampo={(c) => setRegraForm(s => ({ ...s, base_campo: c }))}
+            escopo={regraForm.base_escopo}
+            setEscopo={(e) => setRegraForm(s => ({ ...s, base_escopo: e }))}
             gruposAS={gruposAS}
             subgruposAS={subgruposAS}
             titulo="Filtros da base do cálculo"
-            descricao="Quais vendas do vendedor entram na base. Vazio = todas as vendas. Combinação com o Campo decide o agregado sobre o qual a regra aplica."
+            descricao="Quais vendas entram na base. Vazio = todas. Combinação com o Campo decide o agregado sobre o qual a regra aplica."
             borderColor="border-emerald-200"
             campoLabel="Campo agregado na base"
           />
@@ -1654,6 +1672,8 @@ interface FiltrosERealizadoBoxProps {
   setFiltros:   (f: ProductFilter[]) => void
   campo:        RegraCampo
   setCampo:     (c: RegraCampo) => void
+  escopo:       RegraEscopo
+  setEscopo:    (e: RegraEscopo) => void
   gruposAS:     AsItem[]
   subgruposAS:  AsItem[]
   titulo:       string
@@ -1663,8 +1683,8 @@ interface FiltrosERealizadoBoxProps {
 }
 
 function FiltrosERealizadoBox(props: FiltrosERealizadoBoxProps) {
-  const { filtros, setFiltros, campo, setCampo, gruposAS, subgruposAS,
-          titulo, descricao, borderColor, campoLabel } = props
+  const { filtros, setFiltros, campo, setCampo, escopo, setEscopo,
+          gruposAS, subgruposAS, titulo, descricao, borderColor, campoLabel } = props
 
   function addFiltro() {
     setFiltros([...filtros, { tipo: 'grupo_produto', valores: [], modo: 'incluir' }])
@@ -1677,6 +1697,7 @@ function FiltrosERealizadoBox(props: FiltrosERealizadoBoxProps) {
   }
 
   const CampoIcone = CAMPO_ICONE[campo]
+  const escopoTodos = escopo === 'todos'
 
   return (
     <div className={cn('rounded-lg border bg-white p-3', borderColor)}>
@@ -1697,7 +1718,7 @@ function FiltrosERealizadoBox(props: FiltrosERealizadoBoxProps) {
 
       {filtros.length === 0 ? (
         <p className="text-[11.5px] text-gray-400 italic py-1.5">
-          Sem filtros — todas as vendas do vendedor entram.
+          Sem filtros — {escopoTodos ? 'todas as vendas do posto' : 'todas as vendas do vendedor'} entram.
         </p>
       ) : (
         <div className="space-y-2">
@@ -1740,6 +1761,38 @@ function FiltrosERealizadoBox(props: FiltrosERealizadoBoxProps) {
               })}
             </SelectContent>
           </Select>
+        </div>
+
+        {/* Escopo de agregação — vendedor (default) ou todos (gerente) */}
+        <div className="md:col-span-7">
+          <Label className="text-[10.5px] uppercase tracking-wide text-gray-500 mb-1 block">Calcular sobre</Label>
+          <div className="flex items-center gap-1 p-1 bg-gray-50 border border-gray-200 rounded-md">
+            <button
+              type="button"
+              onClick={() => setEscopo('vendedor')}
+              className={cn(
+                'flex-1 px-2 h-7 text-[11.5px] rounded',
+                !escopoTodos ? 'bg-white text-gray-800 font-semibold shadow-sm' : 'text-gray-500 hover:text-gray-700',
+              )}
+            >
+              Vendas do vendedor
+            </button>
+            <button
+              type="button"
+              onClick={() => setEscopo('todos')}
+              className={cn(
+                'flex-1 px-2 h-7 text-[11.5px] rounded',
+                escopoTodos ? 'bg-white text-gray-800 font-semibold shadow-sm' : 'text-gray-500 hover:text-gray-700',
+              )}
+            >
+              Vendas de TODOS os vendedores
+            </button>
+          </div>
+          {escopoTodos && (
+            <p className="text-[10px] text-amber-700 mt-1">
+              ⚠ Agrega sobre o posto inteiro. Use para regras de gerente / supervisor que não vendem mas comissionam sobre o resultado do time.
+            </p>
+          )}
         </div>
       </div>
     </div>
