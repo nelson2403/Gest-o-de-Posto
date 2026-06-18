@@ -383,6 +383,9 @@ export interface MascaraLinha {
   ordem: number
   nome: string
   tipo_linha: TipoLinhaMascara
+  // Quando true (e tipo_linha='grupo'), a linha entra na seção "Análise de
+  // Despesas" do relatório gerencial em Contábil → Relatórios. Default false.
+  usar_em_analise_despesas: boolean
   criado_em: string
   atualizado_em: string
 }
@@ -405,6 +408,56 @@ export interface MascaraMapeamentoGrupo {
   grupo_grid: string
   tipo_valor: TipoValorGrupo
   criado_em: string
+}
+
+// Mapeamento de/para de contas para exportação contábil.
+// Relaciona uma conta do plano AUTOSYSTEM a uma conta do plano usado
+// pela contabilidade externa que importa o CSV gerado em Contábil →
+// Exportação de Dados.
+export interface ContabilMapeamentoConta {
+  id: string
+  conta_autosystem: string
+  conta_contabil: string
+  descricao: string
+  ativo: boolean
+  criado_em: string
+  atualizado_em: string
+  criado_por: string | null
+}
+
+// Plano de contas externo do escritório de contabilidade — importado via
+// Excel/CSV na aba "Mapeamento De/Para". É a fonte das contas disponíveis
+// para escolher como destino na coluna direita do mapeamento.
+export interface ContabilPlanoConta {
+  id: string
+  codigo: string
+  descricao: string
+  criado_em: string
+  atualizado_em: string
+  criado_por: string | null
+}
+
+// Regras de transformação aplicadas no CSV de exportação contábil.
+// Avaliadas em ordem crescente, as ativas sobrescrevem o campo de saída
+// quando a condição bate sobre o dado original do AUTOSYSTEM.
+export type RegraCampoCondicao = 'conta_debitar' | 'conta_creditar' | 'observacao' | 'documento' | 'pessoa'
+export type RegraOperador      = 'starts_with' | 'not_starts_with' | 'equals' | 'not_equals' | 'contains' | 'not_contains'
+export type RegraCampoAcao     = 'conta_debitar' | 'conta_creditar' | 'observacao'
+
+export interface ContabilRegraExportacao {
+  id: string
+  nome: string
+  descricao: string
+  ativa: boolean
+  ordem: number
+  condicao_campo: RegraCampoCondicao
+  condicao_operador: RegraOperador
+  condicao_valor: string
+  acao_campo: RegraCampoAcao
+  acao_valor: string
+  criado_em: string
+  atualizado_em: string
+  criado_por: string | null
 }
 
 export interface DashboardEmpresa {

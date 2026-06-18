@@ -14,7 +14,6 @@ import {
   TrendingDown, Search, Loader2, AlertTriangle, CheckCircle2, FileBarChart,
   Scale, Megaphone, Wallet, ShoppingCart, ReceiptText, Truck, Clock,
 } from 'lucide-react'
-import { RelatoriosGerenciaisTab } from '@/components/analitico/RelatoriosGerenciaisTab'
 import {
   ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -25,12 +24,12 @@ import type { DreRow } from '@/app/api/analise-externo/route'
 
 // ── Abas visíveis por perfil ───────────────────────────────────
 type TabId =
-  | 'maquininhas' | 'relatorios'
+  | 'maquininhas'
   | 'fiscal' | 'contas_pagar' | 'marketing' | 'compras' | 'contas_receber' | 'transpombal'
 
 const TABS_POR_ROLE: Partial<Record<Role, TabId[]>> = {
-  master:           ['relatorios', 'maquininhas', 'contas_receber', 'fiscal', 'contas_pagar', 'marketing', 'compras', 'transpombal'],
-  adm_financeiro:   ['relatorios', 'maquininhas', 'contas_receber'],
+  master:           ['maquininhas', 'contas_receber', 'fiscal', 'contas_pagar', 'marketing', 'compras', 'transpombal'],
+  adm_financeiro:   ['maquininhas', 'contas_receber'],
   adm_fiscal:       ['fiscal'],
   adm_marketing:    ['marketing'],
   adm_transpombal:  ['transpombal', 'compras'],
@@ -1460,7 +1459,6 @@ export default function AnaliticoPage() {
   const [tabAtiva, setTabAtiva] = useState<TabId>('maquininhas')
 
   const ALL_TABS = [
-    { id: 'relatorios'    as TabId, label: 'Rel. Gerenciais',   icon: FileBarChart },
     { id: 'maquininhas'   as TabId, label: 'Maquininhas',       icon: Smartphone   },
     { id: 'contas_receber' as TabId, label: 'Contas a Receber', icon: ReceiptText  },
     { id: 'fiscal'        as TabId, label: 'Fiscal',            icon: Scale        },
@@ -1492,7 +1490,6 @@ export default function AnaliticoPage() {
           ))}
         </div>
 
-        {tabAtivaEfetiva === 'relatorios'     && <RelatoriosGerenciaisTab />}
         {tabAtivaEfetiva === 'maquininhas'    && <MaquininhsGroupTab />}
         {tabAtivaEfetiva === 'contas_receber' && <ContasReceberTab />}
         {tabAtivaEfetiva === 'fiscal'         && <FiscalTab />}

@@ -22,11 +22,20 @@ export type ResultadoModo =
   | 'por_unidade'   // R$ por unidade vendida
   | 'a_cada'        // R$ a cada N R$ de base (faixa)
 
+// Escopo opcional na ação — restringe quais vendas a regra alcança (legado).
+export type EscopoTipo = 'produto' | 'grupo_produto' | 'subgrupo_produto'
+
+// Campo somado no realizado/base do novo engine (migration 093 + 094).
+// 'atingimento_meta' é especial — vem direto do mapa de atingimentos.
+export type RegraCampo = 'faturamento' | 'quantidade' | 'lucro' | 'mix' | 'atingimento_meta'
+
 const STATUS_VALIDOS: readonly RegraStatus[]   = ['rascunho', 'ativo', 'inativo']
 const TIPOS_VALIDOS:  readonly ResultadoTipo[] = [
   'vendas_rs', 'lucro_bruto', 'quantidade', 'mix', 'produto', 'grupo_produto', 'subgrupo_produto',
 ]
 const MODOS_VALIDOS:  readonly ResultadoModo[] = ['sobre', 'por_unidade', 'a_cada']
+const ESCOPO_VALIDOS: readonly EscopoTipo[]    = ['produto', 'grupo_produto', 'subgrupo_produto']
+const CAMPOS_VALIDOS: readonly RegraCampo[]    = ['faturamento', 'quantidade', 'lucro', 'mix', 'atingimento_meta']
 
 // ─── POST — cria nova regra dentro do esquema ───────────────────────────────
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -46,6 +55,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     resultado_modo:        ResultadoModo
     resultado_valor:       number
     resultado_base_valor:  number
+    escopo_tipo:           EscopoTipo | null
+    escopo_valor:          string
+    meta_referencia_id:    string | null
+    realizado_filtros:     unknown[]
+    realizado_campo:       RegraCampo
+    base_filtros:          unknown[]
+    base_campo:            RegraCampo
   }>
 
   if (!body.nome?.trim()) {
@@ -59,6 +75,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   if (body.resultado_modo && !MODOS_VALIDOS.includes(body.resultado_modo)) {
     return NextResponse.json({ error: `resultado_modo inválido — use ${MODOS_VALIDOS.join(', ')}` }, { status: 400 })
+  }
+  if (body.escopo_tipo != null && !ESCOPO_VALIDOS.includes(body.escopo_tipo)) {
+    return NextResponse.json({ error: `escopo_tipo inválido — use ${ESCOPO_VALIDOS.join(', ')}` }, { status: 400 })
+  }
+  if (body.realizado_campo && !CAMPOS_VALIDOS.includes(body.realizado_campo)) {
+    return NextResponse.json({ error: `realizado_campo inválido — use ${CAMPOS_VALIDOS.join(', ')}` }, { status: 400 })
+  }
+  if (body.base_campo && !CAMPOS_VALIDOS.includes(body.base_campo)) {
+    return NextResponse.json({ error: `base_campo inválido — use ${CAMPOS_VALIDOS.join(', ')}` }, { status: 400 })
+  }
+  if (body.realizado_filtros !== undefined && !Array.isArray(body.realizado_filtros)) {
+    return NextResponse.json({ error: 'realizado_filtros deve ser um array' }, { status: 400 })
+  }
+  if (body.base_filtros !== undefined && !Array.isArray(body.base_filtros)) {
+    return NextResponse.json({ error: 'base_filtros deve ser um array' }, { status: 400 })
   }
 
   // Verifica se o esquema existe
@@ -85,6 +116,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       resultado_modo:        body.resultado_modo  ?? 'sobre',
       resultado_valor:       Number(body.resultado_valor      ?? 0),
       resultado_base_valor:  Number(body.resultado_base_valor ?? 0),
+      escopo_tipo:           body.escopo_tipo ?? null,
+      escopo_valor:          String(body.escopo_valor ?? '').trim(),
+      meta_referencia_id:    body.meta_referencia_id ?? null,
+      realizado_filtros:     Array.isArray(body.realizado_filtros) ? body.realizado_filtros : [],
+      realizado_campo:       body.realizado_campo ?? 'faturamento',
+      base_filtros:          Array.isArray(body.base_filtros) ? body.base_filtros : [],
+      base_campo:            body.base_campo ?? 'faturamento',
       criado_por:            user.id,
     })
     .select()

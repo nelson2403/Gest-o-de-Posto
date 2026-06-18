@@ -15,6 +15,7 @@ import type {
   DrillItem, DrillLancamento,
 } from '@/app/api/relatorios/dre/drill/route'
 import { BalancoFinanceiroView } from './BalancoFinanceiroView'
+import { AnaliseDespesasView } from './AnaliseDespesasView'
 
 const fmtBRL = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 })
@@ -260,16 +261,16 @@ export function RelatoriosGerenciaisTab() {
         ))}
       </div>
 
-      {subAba === 'balanco' && <BalancoFinanceiroView />}
+      {subAba === 'balanco'  && <BalancoFinanceiroView />}
+      {subAba === 'despesas' && <AnaliseDespesasView />}
 
-      {(subAba === 'fluxo' || subAba === 'despesas') && (
+      {subAba === 'fluxo' && (
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-center bg-white rounded-xl border border-dashed border-gray-300">
           <Hourglass className="w-10 h-10 text-gray-300" />
           <div>
             <p className="text-[15px] font-semibold text-gray-700">Em breve</p>
             <p className="text-[12.5px] text-gray-500 mt-1">
-              {subAba === 'fluxo'    && 'O relatório de Fluxo de Caixa estará disponível em uma próxima atualização.'}
-              {subAba === 'despesas' && 'A Análise de Despesas estará disponível em uma próxima atualização.'}
+              O relatório de Fluxo de Caixa estará disponível em uma próxima atualização.
             </p>
           </div>
         </div>
