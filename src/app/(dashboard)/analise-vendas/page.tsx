@@ -907,12 +907,15 @@ export default function AnaliseVendasPage() {
                               <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-28 hidden sm:table-cell">Custo</th>
                               <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-28 hidden sm:table-cell">Lucro</th>
                               <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-20">Margem</th>
+                              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-24 hidden lg:table-cell">Preço méd</th>
+                              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-24 hidden lg:table-cell">Custo méd</th>
+                              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-24 hidden lg:table-cell">Lucro un.</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-50">
                             {conveEmpresas.length === 0 ? (
                               <tr>
-                                <td colSpan={6} className="px-4 py-10 text-center text-[13px] text-gray-400 italic">
+                                <td colSpan={9} className="px-4 py-10 text-center text-[13px] text-gray-400 italic">
                                   Sem produtos de conveniência no período selecionado
                                 </td>
                               </tr>
@@ -945,6 +948,16 @@ export default function AnaliseVendasPage() {
                                       {fmtBRL(e.lucro)}
                                     </td>
                                     <td className={cn('px-4 py-2 text-right tabular-nums font-bold', corE)}>{fmtPct(e.margem)}</td>
+                                    {/* Médias ponderadas — ratios sobre os totais agregados da empresa */}
+                                    <td className="px-4 py-2 text-right text-gray-700 tabular-nums font-semibold hidden lg:table-cell">
+                                      {e.qtd > 0 ? fmtBRL(e.venda / e.qtd) : '—'}
+                                    </td>
+                                    <td className="px-4 py-2 text-right text-gray-700 tabular-nums hidden lg:table-cell">
+                                      {e.qtd > 0 ? fmtBRL(e.custo / e.qtd) : '—'}
+                                    </td>
+                                    <td className={cn('px-4 py-2 text-right tabular-nums font-semibold hidden lg:table-cell', e.lucro >= 0 ? 'text-emerald-700' : 'text-rose-600')}>
+                                      {e.qtd > 0 ? fmtBRL(e.lucro / e.qtd) : '—'}
+                                    </td>
                                   </tr>
 
                                   {empOpen && e.subgrupos.map(s => {
@@ -975,6 +988,15 @@ export default function AnaliseVendasPage() {
                                             {fmtBRL(s.lucro)}
                                           </td>
                                           <td className={cn('px-4 py-1.5 text-right tabular-nums font-semibold', corS)}>{fmtPct(s.margem)}</td>
+                                          <td className="px-4 py-1.5 text-right text-gray-700 tabular-nums font-medium hidden lg:table-cell">
+                                            {s.qtd > 0 ? fmtBRL(s.venda / s.qtd) : '—'}
+                                          </td>
+                                          <td className="px-4 py-1.5 text-right text-gray-600 tabular-nums hidden lg:table-cell">
+                                            {s.qtd > 0 ? fmtBRL(s.custo / s.qtd) : '—'}
+                                          </td>
+                                          <td className={cn('px-4 py-1.5 text-right tabular-nums font-medium hidden lg:table-cell', s.lucro >= 0 ? 'text-emerald-600' : 'text-rose-500')}>
+                                            {s.qtd > 0 ? fmtBRL(s.lucro / s.qtd) : '—'}
+                                          </td>
                                         </tr>
 
                                         {subOpen && s.produtos.map(p => {
@@ -993,6 +1015,15 @@ export default function AnaliseVendasPage() {
                                                 {fmtBRL(lucro)}
                                               </td>
                                               <td className={cn('px-4 py-1.5 text-right tabular-nums font-semibold', corMP)}>{fmtPct(margem)}</td>
+                                              <td className="px-4 py-1.5 text-right text-gray-700 tabular-nums hidden lg:table-cell">
+                                                {(p.qtd ?? 0) > 0 ? fmtBRL(p.venda / (p.qtd as number)) : '—'}
+                                              </td>
+                                              <td className="px-4 py-1.5 text-right text-gray-600 tabular-nums hidden lg:table-cell">
+                                                {(p.qtd ?? 0) > 0 ? fmtBRL(p.custo / (p.qtd as number)) : '—'}
+                                              </td>
+                                              <td className={cn('px-4 py-1.5 text-right tabular-nums hidden lg:table-cell', lucro >= 0 ? 'text-emerald-600' : 'text-rose-500')}>
+                                                {(p.qtd ?? 0) > 0 ? fmtBRL(lucro / (p.qtd as number)) : '—'}
+                                              </td>
                                             </tr>
                                           )
                                         })}
@@ -1033,12 +1064,15 @@ export default function AnaliseVendasPage() {
                               <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-28 hidden sm:table-cell">Custo</th>
                               <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-28 hidden sm:table-cell">Lucro</th>
                               <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-20">Margem</th>
+                              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-24 hidden lg:table-cell">Preço méd</th>
+                              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-24 hidden lg:table-cell">Custo méd</th>
+                              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-24 hidden lg:table-cell">Lucro un.</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-50">
                             {conveSubgrupos.length === 0 ? (
                               <tr>
-                                <td colSpan={6} className="px-4 py-10 text-center text-[13px] text-gray-400 italic">
+                                <td colSpan={9} className="px-4 py-10 text-center text-[13px] text-gray-400 italic">
                                   Sem produtos de conveniência no período selecionado
                                 </td>
                               </tr>
@@ -1069,6 +1103,15 @@ export default function AnaliseVendasPage() {
                                       {fmtBRL(s.lucro)}
                                     </td>
                                     <td className={cn('px-4 py-2 text-right tabular-nums font-bold', corM)}>{fmtPct(s.margem)}</td>
+                                    <td className="px-4 py-2 text-right text-gray-700 tabular-nums font-semibold hidden lg:table-cell">
+                                      {s.qtd > 0 ? fmtBRL(s.venda / s.qtd) : '—'}
+                                    </td>
+                                    <td className="px-4 py-2 text-right text-gray-700 tabular-nums hidden lg:table-cell">
+                                      {s.qtd > 0 ? fmtBRL(s.custo / s.qtd) : '—'}
+                                    </td>
+                                    <td className={cn('px-4 py-2 text-right tabular-nums font-semibold hidden lg:table-cell', s.lucro >= 0 ? 'text-emerald-700' : 'text-rose-600')}>
+                                      {s.qtd > 0 ? fmtBRL(s.lucro / s.qtd) : '—'}
+                                    </td>
                                   </tr>
 
                                   {isOpen && s.produtos.map(p => {
@@ -1087,6 +1130,15 @@ export default function AnaliseVendasPage() {
                                           {fmtBRL(lucro)}
                                         </td>
                                         <td className={cn('px-4 py-1.5 text-right tabular-nums font-semibold', corMP)}>{fmtPct(margem)}</td>
+                                        <td className="px-4 py-1.5 text-right text-gray-700 tabular-nums hidden lg:table-cell">
+                                          {(p.qtd ?? 0) > 0 ? fmtBRL(p.venda / (p.qtd as number)) : '—'}
+                                        </td>
+                                        <td className="px-4 py-1.5 text-right text-gray-600 tabular-nums hidden lg:table-cell">
+                                          {(p.qtd ?? 0) > 0 ? fmtBRL(p.custo / (p.qtd as number)) : '—'}
+                                        </td>
+                                        <td className={cn('px-4 py-1.5 text-right tabular-nums hidden lg:table-cell', lucro >= 0 ? 'text-emerald-600' : 'text-rose-500')}>
+                                          {(p.qtd ?? 0) > 0 ? fmtBRL(lucro / (p.qtd as number)) : '—'}
+                                        </td>
                                       </tr>
                                     )
                                   })}
