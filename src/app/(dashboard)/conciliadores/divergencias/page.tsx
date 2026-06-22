@@ -40,6 +40,7 @@ export default function DivergenciasPage() {
   const [selecionada, setSelecionada] = useState<DivergenciaItem | null>(null)
   const [filtroConciliador, setFiltroConciliador] = useState<string>('todos')
   const [userRole, setUserRole] = useState<string | null>(null)
+  const [reabrindo, setReabrindo] = useState(false)
   const divergenciasAnterioresRef = useRef<DivergenciaItem[]>([])
 
   // Carregar role do usuário
@@ -141,6 +142,28 @@ export default function DivergenciasPage() {
     // Carrega divergências ao abrir a página
     carregar()
   }, [carregar])
+
+  const podeReabrir = userRole === 'master'
+
+  async function reabrirTarefa(id: string) {
+    if (!confirm('Reabrir esta tarefa para anexar o extrato correto? Ela volta para pendente na tela de Tarefas.')) return
+    setReabrindo(true)
+    try {
+      const r = await fetch(`/api/tarefas/${id}/reabrir`, { method: 'POST' })
+      const d = await r.json()
+      if (!r.ok) { toast({ title: '❌ Erro ao reabrir', description: d.error }); return }
+      toast({ title: '✅ Tarefa reaberta', description: 'Envie o extrato correto na tela de Tarefas.' })
+      setSelecionada(null)
+      // Remove da lista localmente (e do ref) para NÃO disparar o auto-concluir do
+      // carregar(): a tarefa foi reaberta de propósito, não resolvida.
+      setDivergencias(prev => prev.filter(x => x.id !== id))
+      divergenciasAnterioresRef.current = divergenciasAnterioresRef.current.filter(x => x.id !== id)
+    } catch (e: any) {
+      toast({ title: '❌ Erro ao reabrir', description: e.message })
+    } finally {
+      setReabrindo(false)
+    }
+  }
 
   // Obter lista única de conciliadores
   const conciliadores = Array.from(
@@ -394,8 +417,8 @@ export default function DivergenciasPage() {
               </div>
             </div>
 
-            {/* Footer com botão de ação */}
-            <div className="border-t border-gray-200 p-4 flex-shrink-0">
+            {/* Footer com botões de ação */}
+            <div className="border-t border-gray-200 p-4 flex-shrink-0 space-y-2">
               <Link
                 href={`/tarefas?id=${selecionada.id}`}
                 className="w-full flex items-center justify-center gap-2 h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
@@ -403,6 +426,16 @@ export default function DivergenciasPage() {
                 <Edit2 className="w-4 h-4" />
                 Editar Tarefa
               </Link>
+              {podeReabrir && (
+                <button
+                  onClick={() => reabrirTarefa(selecionada.id)}
+                  disabled={reabrindo}
+                  className="w-full flex items-center justify-center gap-2 h-9 px-4 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-60"
+                >
+                  {reabrindo ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  Reabrir p/ anexar extrato correto
+                </button>
+              )}
             </div>
           </div>
         </div>

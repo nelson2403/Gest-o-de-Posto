@@ -24,7 +24,7 @@ import {
   AlertTriangle, CheckCircle2, Clock, XCircle, ChevronDown,
   Calendar, User2, Tag, Filter, MessageSquare, CalendarPlus,
   Upload, FileSpreadsheet, TrendingUp, TrendingDown, Minus, MapPin,
-  Landmark,
+  Landmark, RefreshCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import type { Tarefa, StatusTarefa, PrioridadeTarefa, CategoriaTarefa, Role, Usuario } from '@/types/database.types'
@@ -160,6 +160,7 @@ function TarefasPageInner() {
   const isConciliador  = role === 'operador_conciliador'
   const isRestrito     = isOperador || isConciliador   // comportamento de dashboard
   const isMaster       = role === 'master'
+  const podeReabrir    = role === 'master'
   const canDelete      = can(role ?? null, 'tarefas.delete')
   const canEdit        = can(role ?? null, 'tarefas.edit')
   const canCreate      = can(role ?? null, 'tarefas.create')
@@ -242,6 +243,7 @@ function TarefasPageInner() {
   // Extrato bancário
   const [uploadingExtrato, setUploadingExtrato] = useState(false)
   const [uploadingExtratoId, setUploadingExtratoId] = useState<string | null>(null)
+  const [reabrindoId, setReabrindoId] = useState<string | null>(null)
   // Extrato multi-dias: posto_id em processamento
   const [uploadingMultiPostoId, setUploadingMultiPostoId] = useState<string | null>(null)
   // Modal de resultado multi-dias
@@ -465,6 +467,22 @@ function TarefasPageInner() {
     })
     onDone?.()
     load()
+  }
+
+  async function reabrirTarefa(tarefaId: string) {
+    if (!confirm('Reabrir esta tarefa para anexar o extrato correto? Ela volta para pendente.')) return
+    setReabrindoId(tarefaId)
+    try {
+      const res = await fetch(`/api/tarefas/${tarefaId}/reabrir`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) { toast({ variant: 'destructive', title: 'Erro ao reabrir', description: json.error }); return }
+      toast({ title: 'Tarefa reaberta — agora envie o extrato correto' })
+      await load()
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro ao reabrir a tarefa' })
+    } finally {
+      setReabrindoId(null)
+    }
   }
 
   async function handleUploadExtrato(e: React.ChangeEvent<HTMLInputElement>) {
@@ -905,6 +923,22 @@ function TarefasPageInner() {
                                         }}
                                       />
                                     </label>
+                                  )}
+                                  {t.categoria === 'conciliacao_bancaria' && t.status === 'concluido' && podeReabrir && (
+                                    <button
+                                      onClick={() => reabrirTarefa(t.id)}
+                                      disabled={reabrindoId === t.id}
+                                      className={cn(
+                                        'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-semibold transition-colors',
+                                        reabrindoId === t.id
+                                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                          : 'bg-amber-100 hover:bg-amber-200 text-amber-700',
+                                      )}
+                                      title="Reabrir para anexar o extrato correto"
+                                    >
+                                      {reabrindoId === t.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                                      Reabrir
+                                    </button>
                                   )}
                                   {isConciliador && overdue && (
                                     <Button

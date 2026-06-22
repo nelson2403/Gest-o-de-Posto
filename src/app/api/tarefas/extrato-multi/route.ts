@@ -34,6 +34,16 @@ function parseDataExcel(raw: unknown): string | null {
   return null
 }
 
+// "DD/MM/YYYY HH:MM" (Stone) → ISO
+function parseDataStone(raw: unknown): string | null {
+  const [datePart] = String(raw ?? '').trim().split(' ')
+  const parts = (datePart ?? '').split('/')
+  if (parts.length !== 3) return null
+  const [d, m, y] = parts
+  if (!d || !m || !y || y.length !== 4) return null
+  return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+}
+
 // ─── POST /api/tarefas/extrato-multi ─────────────────────────────────────────
 // Body: FormData { file: File, posto_id: string }
 // Processa um extrato Excel com múltiplos dias e valida uma tarefa por dia.
@@ -55,46 +65,94 @@ export async function POST(req: NextRequest) {
   const ws     = wb.Sheets[wb.SheetNames[0]]
   const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
 
-  const saldosDia: Array<{ data: string; valor: number }> = []
-  let saldoAnterior: number | null = null
+  // Detecta o formato: Stone (col0 = Débito/Crédito) ou Sicoob (linhas SALDO DO DIA)
+  const isStone = rows.some(r => /^(Débito|Crédito)$/i.test(String(r[0] ?? '').trim()))
 
-  for (const row of rows) {
-    const colC = String(row[2] ?? '').trim().toUpperCase()
-    if (colC === 'SALDO DO DIA') {
-      const d = parseDataExcel(row[0])
-      if (d) saldosDia.push({ data: d, valor: parseValorBRSigned(row[3]) })
+  let diasMovimentos: Array<{ data: string; saldoDia: number; saldoAnterior: number; movimento: number }> = []
+
+  if (isStone) {
+    // ── Stone: agrupa as transações por dia; movimento = soma LÍQUIDA das linhas
+    //    (recebível de cartão entrando + transação saindo se anulam), igual ao
+    //    cálculo da tarefa individual. ──────────────────────────────────────────
+    const dataRows = rows.filter(r => /^(Débito|Crédito)$/i.test(String(r[0] ?? '').trim()))
+    const porData = new Map<string, unknown[][]>()
+    for (const r of dataRows) {
+      const d = parseDataStone(r[6])
+      if (!d) continue
+      if (!porData.has(d)) porData.set(d, [])
+      porData.get(d)!.push(r as unknown[])
     }
-    if (colC === 'SALDO ANTERIOR' && saldoAnterior === null) {
-      saldoAnterior = parseValorBRSigned(row[3])
+
+    const datas = [...porData.keys()].sort()
+    if (datas.length === 0) {
+      return NextResponse.json({ error: 'Extrato Stone vazio ou inválido.' }, { status: 422 })
     }
+    if (datas.length === 1) {
+      return NextResponse.json({
+        error: 'Este extrato contém apenas 1 dia. Use o botão "Extrato" na tarefa individual.',
+      }, { status: 422 })
+    }
+
+    // O AUTOSYSTEM registra nessa conta só os RECEBÍVEIS DE CARTÃO; as linhas
+    // "Transação" são transferências internas e não entram. Soma só os recebíveis.
+    const ehRecebivelCartao = (r: unknown[]) => {
+      const tipo = String(r[1] ?? '').trim().toLowerCase()
+      return tipo.includes('receb') && tipo.includes('cart')
+    }
+    diasMovimentos = datas.map(d => {
+      const rs = porData.get(d)!
+      const receb = rs.filter(ehRecebivelCartao)
+      const base = receb.length ? receb : rs
+      const movimento = parseFloat(base.reduce((s, r) => s + parseValorBRSigned(r[2]), 0).toFixed(2))
+      // arquivo vem em ordem decrescente de data/hora → 1ª linha do dia = mais recente
+      const liquidoDia = rs.reduce((s, r) => s + parseValorBRSigned(r[2]), 0)
+      const saldoDia = parseFloat(parseValorBRSigned((rs[0] as unknown[])[4]).toFixed(2))
+      return { data: d, saldoDia, saldoAnterior: parseFloat((saldoDia - liquidoDia).toFixed(2)), movimento }
+    })
+
+  } else {
+    // ── Sicoob: usa as linhas "SALDO DO DIA" e "SALDO ANTERIOR" ────────────────
+    const saldosDia: Array<{ data: string; valor: number }> = []
+    let saldoAnterior: number | null = null
+
+    for (const row of rows) {
+      const colC = String(row[2] ?? '').trim().toUpperCase()
+      if (colC === 'SALDO DO DIA') {
+        const d = parseDataExcel(row[0])
+        if (d) saldosDia.push({ data: d, valor: parseValorBRSigned(row[3]) })
+      }
+      if (colC === 'SALDO ANTERIOR' && saldoAnterior === null) {
+        saldoAnterior = parseValorBRSigned(row[3])
+      }
+    }
+
+    if (saldosDia.length === 0 || saldoAnterior === null) {
+      return NextResponse.json({
+        error: 'Não foram encontradas as linhas "SALDO DO DIA" e "SALDO ANTERIOR". Verifique se o arquivo é o extrato correto.',
+      }, { status: 422 })
+    }
+
+    if (saldosDia.length === 1) {
+      return NextResponse.json({
+        error: 'Este extrato contém apenas 1 dia. Use o botão "Extrato" na tarefa individual.',
+      }, { status: 422 })
+    }
+
+    saldosDia.sort((a, b) => a.data.localeCompare(b.data))
+
+    diasMovimentos = saldosDia.map((s, i) => {
+      const saldoPrev = i === 0 ? saldoAnterior! : saldosDia[i - 1].valor
+      return {
+        data:          s.data,
+        saldoDia:      s.valor,
+        saldoAnterior: saldoPrev,
+        movimento:     parseFloat((s.valor - saldoPrev).toFixed(2)),
+      }
+    })
   }
 
-  if (saldosDia.length === 0 || saldoAnterior === null) {
-    return NextResponse.json({
-      error: 'Não foram encontradas as linhas "SALDO DO DIA" e "SALDO ANTERIOR". Verifique se o arquivo é o extrato correto.',
-    }, { status: 422 })
-  }
-
-  if (saldosDia.length === 1) {
-    return NextResponse.json({
-      error: 'Este extrato contém apenas 1 dia. Use o botão "Extrato" na tarefa individual.',
-    }, { status: 422 })
-  }
-
-  saldosDia.sort((a, b) => a.data.localeCompare(b.data))
-
-  const periodoIni = saldosDia[0].data
-  const periodoFim = saldosDia[saldosDia.length - 1].data
-
-  const diasMovimentos = saldosDia.map((s, i) => {
-    const saldoPrev = i === 0 ? saldoAnterior! : saldosDia[i - 1].valor
-    return {
-      data:          s.data,
-      saldoDia:      s.valor,
-      saldoAnterior: saldoPrev,
-      movimento:     parseFloat((s.valor - saldoPrev).toFixed(2)),
-    }
-  })
+  const periodoIni = diasMovimentos[0].data
+  const periodoFim = diasMovimentos[diasMovimentos.length - 1].data
 
   const admin = createAdminClient()
 
@@ -162,7 +220,11 @@ export async function POST(req: NextRequest) {
 
   for (const dia of diasMovimentos) {
     const movtosDia = movtos.filter(m => m.data === dia.data)
-    const movAS = calcularMovimento(movtosDia, contaCodigo)
+    // Stone: compara contra as ENTRADAS do AUTOSYSTEM (recebíveis de cartão),
+    // ignorando as saídas/transferências. Demais bancos: líquido (entradas − saídas).
+    const movAS = (isStone && contaCodigo)
+      ? parseFloat(movtosDia.filter(m => m.conta_debitar === contaCodigo).reduce((s, m) => s + m.valor, 0).toFixed(2))
+      : calcularMovimento(movtosDia, contaCodigo)
 
     const diferenca = parseFloat((dia.movimento - movAS).toFixed(2))
     const statusDia = Math.abs(diferenca) < 0.02 ? 'ok' : 'divergente'

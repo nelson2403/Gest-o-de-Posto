@@ -27,7 +27,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       .from('tarefas')
       .update({
         status: 'concluida',
-        atualizada_em: new Date().toISOString(),
       })
       .eq('id', id)
       .eq('categoria', 'conciliacao_bancaria')

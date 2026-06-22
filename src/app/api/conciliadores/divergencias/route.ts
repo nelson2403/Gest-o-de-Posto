@@ -95,6 +95,8 @@ export async function GET(req: NextRequest) {
         usuario_atribuido:usuarios(id, nome)
       `)
       .eq('categoria', 'conciliacao_bancaria')
+      // Não mostra tarefas já resolvidas (concluídas/canceladas) — só divergências ativas.
+      .not('status', 'in', '("concluido","concluida","cancelado")')
       .not('extrato_arquivo_path', 'is', null)
       .not('extrato_data', 'is', null)
       .not('extrato_diferenca', 'is', null)

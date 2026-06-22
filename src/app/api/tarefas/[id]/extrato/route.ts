@@ -112,10 +112,12 @@ export async function POST(
   let saldoAnterior = 0
   let movimentoExtrato = 0
   let datasAS: string[] = []
+  let extratoEhStone = false
 
   if (isStone) {
-    // ── Parser Stone CSV ──────────────────────────────────────────────────
-    // Colunas: Tipo | Categoria | Valor | Saldo Devedor | Saldo Credor | Tarifa | Data/Hora | Status | ...
+    // ── Parser Stone ──────────────────────────────────────────────────────
+    // Colunas: Movimentação | Tipo | Valor | Saldo antes | Saldo depois | Tarifa | Data
+    //          (col0=Déb/Créd, col1=Transação/Recebível de Cartão, col2=Valor, col6=Data)
     const dataRows = rows.filter(row => /^(Débito|Crédito)$/i.test(String(row[0] ?? '').trim()))
     const datasNoArquivo = [...new Set(
       dataRows.map(r => parseDataStone(r[6])).filter((d): d is string => d !== null)
@@ -148,15 +150,29 @@ export async function POST(
     })
     const rowsTargetDate = dataRows.filter(r => parseDataStone(r[6]) === targetDate)
 
+    // O AUTOSYSTEM registra nessa conta apenas os RECEBÍVEIS DE CARTÃO (as vendas no
+    // cartão entrando), não as transferências/saques da conta Stone. Por isso o
+    // movimento a comparar é a soma só das linhas "Recebível de Cartão". As linhas
+    // "Transação" são transferências internas da conta e não entram. Fallback: se o
+    // arquivo não tiver esse tipo (layout antigo), soma tudo.
+    const ehRecebivelCartao = (r: unknown[]) => {
+      const tipo = String(r[1] ?? '').trim().toLowerCase()
+      return tipo.includes('receb') && tipo.includes('cart')
+    }
+    const rowsRecebivel = rowsForDate.filter(ehRecebivelCartao)
+    const baseMovimento = rowsRecebivel.length ? rowsRecebivel : rowsForDate
     movimentoExtrato = parseFloat(
-      rowsForDate.reduce((sum, r) => sum + parseValorBRSigned(r[2]), 0).toFixed(2)
+      baseMovimento.reduce((sum, r) => sum + parseValorBRSigned(r[2]), 0).toFixed(2)
     )
+    extratoEhStone = true
 
-    const lastRow   = rowsTargetDate[rowsTargetDate.length - 1]
-    const credorFim  = parseValorBRSigned(lastRow[4])
-    const devedorFim = parseValorBRSigned(lastRow[3])
-    saldoDia      = parseFloat((credorFim - devedorFim).toFixed(2))
-    saldoAnterior = parseFloat((saldoDia - movimentoExtrato).toFixed(2))
+    // Saldo do dia: o arquivo vem em ordem decrescente de data/hora, então a 1ª
+    // linha do dia-alvo é a mais recente (col "Saldo depois" = fechamento). O saldo
+    // anterior é o fechamento menos o movimento líquido (todas as linhas) do dia.
+    const movimentoLiquidoDia = rowsTargetDate.reduce((s, r) => s + parseValorBRSigned(r[2]), 0)
+    const fimDia = rowsTargetDate[0] ?? rowsTargetDate[rowsTargetDate.length - 1]
+    saldoDia      = parseFloat(parseValorBRSigned(fimDia[4]).toFixed(2))
+    saldoAnterior = parseFloat((saldoDia - movimentoLiquidoDia).toFixed(2))
     extratoData   = targetDate
     datasAS       = datasAgregadas
 
@@ -247,7 +263,12 @@ export async function POST(
       if (contaCodigo) {
         entradasAS = parseFloat(movtos.filter(m => m.conta_debitar  === contaCodigo).reduce((s, m) => s + m.valor, 0).toFixed(2))
         saidasAS   = parseFloat(movtos.filter(m => m.conta_creditar === contaCodigo).reduce((s, m) => s + m.valor, 0).toFixed(2))
-        movimentoExterno = parseFloat((entradasAS - saidasAS).toFixed(2))
+        // Stone: o extrato traz só os recebíveis de cartão (entradas); as
+        // transferências/saques não são lançados nessa conta do AUTOSYSTEM. Então
+        // comparamos contra as ENTRADAS, não o líquido. Demais bancos: líquido.
+        movimentoExterno = extratoEhStone
+          ? entradasAS
+          : parseFloat((entradasAS - saidasAS).toFixed(2))
       } else {
         movimentoExterno = calcularMovimento(movtos, null)
       }
