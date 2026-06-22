@@ -2484,6 +2484,24 @@ function nomeParaCandidatos(nome: string): string[] {
   return [...s].filter(c => c.length >= 2)
 }
 
+// Verifica se um login do AUTOSYSTEM é formado por um SUBCONJUNTO ORDENADO das
+// partes significativas do nome, começando pelo primeiro nome. Cobre truncamentos
+// arbitrários que a geração fixa de candidatos não pega, ex.:
+// "ANA CLARA GABRIEL FRAGA" → login "ANACLARAFRAGA" (pula "GABRIEL").
+function loginCasaNome(login: string, nome: string): boolean {
+  const PREP = new Set(['DE', 'DA', 'DO', 'DAS', 'DOS', 'E', 'DI', 'DU'])
+  const signif = nome.trim().toUpperCase().replace(/\s+/g, ' ').split(' ')
+    .filter(p => p && !PREP.has(p))
+  const L = login.toUpperCase().replace(/[^A-Z]/g, '')
+  if (L.length < 2 || signif.length === 0) return false
+  if (!L.startsWith(signif[0])) return false        // tem que começar pelo primeiro nome
+  let i = signif[0].length
+  for (let p = 1; p < signif.length && i < L.length; p++) {
+    if (L.startsWith(signif[p], i)) i += signif[p].length  // consome a parte se casar na posição
+  }
+  return i === L.length                              // todo o login foi consumido por partes do nome
+}
+
 export async function buscarDadosCaixaFrentista(
   empresaGrid:    number,
   data:           string,     // YYYY-MM-DD
@@ -2549,6 +2567,30 @@ export async function buscarDadosCaixaFrentista(
         )
         if (rows.length) usuarioAS = String(rows[0].usuario ?? '').trim()
       } catch (e: any) { console.log(`[caixa-frentista] movto usuario check erro: ${e.message}`) }
+    }
+
+    // Fallback robusto: varre os logins REAIS de caixa/movto do dia e casa quando o
+    // login é um subconjunto ordenado das partes do nome (truncamentos arbitrários).
+    // Ex.: "ANA CLARA GABRIEL FRAGA" → "ANACLARAFRAGA". Prioriza o de mais lançamentos.
+    if (!usuarioAS) {
+      try {
+        const rows = await query<{ usuario: string; n: number }>(
+          `SELECT usuario::text AS usuario, COUNT(*)::int AS n FROM (
+             SELECT usuario FROM caixa WHERE empresa = $1 AND data = $2::date
+             UNION ALL
+             SELECT usuario FROM movto WHERE empresa = $1 AND data = $2::date
+           ) t WHERE usuario IS NOT NULL
+           GROUP BY usuario ORDER BY n DESC`,
+          [empresaGrid, data],
+        )
+        for (const r of rows) {
+          if (loginCasaNome(String(r.usuario ?? ''), funcNome)) {
+            usuarioAS = String(r.usuario).trim()
+            console.log(`[caixa-frentista] login casado por subconjunto: "${usuarioAS}"`)
+            break
+          }
+        }
+      } catch (e: any) { console.log(`[caixa-frentista] fallback fuzzy erro: ${e.message}`) }
     }
 
     // Fallback: testa na tabela usuario (quando existe) para dias sem caixa aberto

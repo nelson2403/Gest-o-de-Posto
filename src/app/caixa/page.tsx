@@ -525,6 +525,14 @@ export default function CaixaPage() {
 
   async function handleEnviar() {
     if (!assinatura) { setErro('Assine antes de enviar'); return }
+    // Obriga lançar Sangria (dinheiro) OU Depósito (Dep. Cofre) antes de finalizar,
+    // quando o posto tem esses campos configurados.
+    const camposSD = itens.filter(i => i.tipo === 'dinheiro' || i.tipo === 'deposito_cofre')
+    if (camposSD.length > 0 &&
+        !camposSD.some(i => (parseFloat(i.valor_frentista.replace(',', '.')) || 0) > 0)) {
+      setErro('Lance a Sangria ou o Depósito (Dep. Cofre) antes de finalizar o fechamento.')
+      return
+    }
     setErro('')
     setLoading(true)
     try {
