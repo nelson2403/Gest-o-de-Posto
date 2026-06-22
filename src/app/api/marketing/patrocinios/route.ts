@@ -90,9 +90,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Quem já é aprovador (master / adm_marketing) cria o patrocínio JÁ APROVADO,
+  // sem precisar de uma aprovação posterior. Gerente continua entrando como pendente.
+  const ehAprovador = usr?.role === 'master' || usr?.role === 'adm_marketing'
+  const insert: Record<string, unknown> = { posto_id, valor, data_evento, patrocinado, descricao, created_by: user.id }
+  if (ehAprovador) {
+    insert.status = 'aprovado'
+    insert.aprovado_por = user.id
+    insert.aprovado_em = new Date().toISOString()
+  }
+
   const { data, error } = await admin
     .from('marketing_patrocinios')
-    .insert({ posto_id, valor, data_evento, patrocinado, descricao, created_by: user.id })
+    .insert(insert)
     .select()
     .single()
 
@@ -100,7 +110,7 @@ export async function POST(req: NextRequest) {
 
   // Log
   await admin.from('marketing_logs').insert({
-    tipo: 'patrocinio', ref_id: data.id, acao: 'criado',
+    tipo: 'patrocinio', ref_id: data.id, acao: ehAprovador ? 'aprovado' : 'criado',
     usuario_id: user.id, detalhes: { valor, patrocinado, posto_id }
   })
 

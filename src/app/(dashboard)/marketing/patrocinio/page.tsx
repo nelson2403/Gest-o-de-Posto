@@ -15,7 +15,7 @@ import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils/cn'
 import {
   Plus, Loader2, Gift, CheckCircle2, XCircle, Clock,
-  Upload, FileText, ChevronDown, ChevronUp, AlertTriangle,
+  Upload, FileText, ChevronDown, ChevronUp, AlertTriangle, Send,
 } from 'lucide-react'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ interface Patrocinio {
   data_evento: string
   patrocinado: string
   descricao: string | null
-  status: 'pendente' | 'aprovado' | 'reprovado'
+  status: 'pendente' | 'aprovado' | 'enviado' | 'reprovado'
   motivo_reprovacao: string | null
   documento_url: string | null
   created_at: string
@@ -58,6 +58,7 @@ function fmtDate(d: string) {
 const STATUS_CFG = {
   pendente:  { label: 'Aguardando',  icon: Clock,         cls: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
   aprovado:  { label: 'Aprovado',    icon: CheckCircle2,  cls: 'bg-green-100 text-green-700 border-green-200' },
+  enviado:   { label: 'Enviado',     icon: Send,          cls: 'bg-blue-100 text-blue-700 border-blue-200' },
   reprovado: { label: 'Reprovado',   icon: XCircle,       cls: 'bg-red-100 text-red-700 border-red-200' },
 }
 
@@ -98,6 +99,7 @@ export default function PatrocinioPage() {
   const [motivoReprov, setMotivoReprov] = useState('')
   const [patrocinioAlvo, setPatrocinioAlvo] = useState<string | null>(null)
   const [aprovando, setAprovando]     = useState(false)
+  const [enviandoCP, setEnviandoCP]   = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -159,7 +161,7 @@ export default function PatrocinioPage() {
         await fetch(`/api/marketing/patrocinios/${patId}/comprovante`, { method: 'POST', body: fd })
       }
 
-      toast({ title: 'Solicitação enviada com sucesso!' })
+      toast({ title: podeAprovar ? 'Patrocínio criado e aprovado!' : 'Solicitação enviada com sucesso!' })
       setShowModal(false)
       setForm({ posto_id: '', valor: '', data_evento: '', patrocinado: '', descricao: '' })
       setArquivo(null)
@@ -207,6 +209,22 @@ export default function PatrocinioPage() {
     }
   }
 
+  async function enviarContasPagar(patId: string) {
+    if (!confirm('Enviar o documento deste patrocínio para o Contas a Pagar?')) return
+    setEnviandoCP(patId)
+    try {
+      const res = await fetch(`/api/marketing/patrocinios/${patId}/enviar-contas-pagar`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) { toast({ title: json.error, variant: 'destructive' }); return }
+      toast({ title: 'Enviado ao Contas a Pagar!' })
+      load()
+    } catch {
+      toast({ title: 'Erro ao enviar ao Contas a Pagar', variant: 'destructive' })
+    } finally {
+      setEnviandoCP(null)
+    }
+  }
+
   const lista = patrocinios.filter(p => filtroStatus === 'todos' || p.status === filtroStatus)
 
   // Saldo do posto selecionado
@@ -238,7 +256,7 @@ export default function PatrocinioPage() {
           </div>
           {podeCriar && (
             <Button size="sm" onClick={() => setShowModal(true)} className="gap-1.5 text-[13px]">
-              <Plus className="w-4 h-4" /> Nova Solicitação
+              <Plus className="w-4 h-4" /> {podeAprovar ? 'Novo Patrocínio' : 'Nova Solicitação'}
             </Button>
           )}
         </div>
@@ -335,8 +353,8 @@ export default function PatrocinioPage() {
                           </div>
                         </div>
                       )}
-                      {/* Botão anexar documento — gerente pode adicionar enquanto pendente */}
-                      {podeCriar && p.status === 'pendente' && (
+                      {/* Botão anexar documento — enquanto pendente, ou aprovado (antes de enviar ao Contas a Pagar) */}
+                      {podeCriar && (p.status === 'pendente' || p.status === 'aprovado') && (
                         <div className="pt-1">
                           <Button size="sm" variant="outline"
                             className="text-[12px] h-8 border-blue-300 text-blue-700 hover:bg-blue-50"
@@ -345,7 +363,7 @@ export default function PatrocinioPage() {
                             <Upload className="w-3.5 h-3.5 mr-1" />
                             {p.marketing_comprovantes?.length > 0 ? 'Adicionar documento' : 'Anexar documento assinado'}
                           </Button>
-                          {p.marketing_comprovantes?.length === 0 && (
+                          {p.marketing_comprovantes?.length === 0 && p.status === 'pendente' && (
                             <p className="text-[11px] text-orange-500 mt-1 flex items-center gap-1">
                               <AlertTriangle className="w-3 h-3" />
                               Documento obrigatório para aprovação
@@ -370,6 +388,32 @@ export default function PatrocinioPage() {
                           </Button>
                         </div>
                       )}
+                      {/* Enviar ao Contas a Pagar — patrocínio aprovado, com documento */}
+                      {podeAprovar && p.status === 'aprovado' && (
+                        <div className="pt-1">
+                          <Button size="sm" variant="outline"
+                            className="text-[12px] h-8 border-blue-300 text-blue-700 hover:bg-blue-50"
+                            disabled={enviandoCP === p.id || (p.marketing_comprovantes?.length ?? 0) === 0}
+                            onClick={() => enviarContasPagar(p.id)}
+                          >
+                            {enviandoCP === p.id
+                              ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                              : <Send className="w-3.5 h-3.5 mr-1" />}
+                            Enviar p/ Contas a Pagar
+                          </Button>
+                          {(p.marketing_comprovantes?.length ?? 0) === 0 && (
+                            <p className="text-[11px] text-orange-500 mt-1 flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" />
+                              Anexe o documento assinado antes de enviar
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {p.status === 'enviado' && (
+                        <p className="text-[12px] text-blue-600 flex items-center gap-1 pt-1">
+                          <Send className="w-3.5 h-3.5" /> Documento enviado ao Contas a Pagar
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -384,7 +428,7 @@ export default function PatrocinioPage() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Gift className="w-4 h-4" /> Nova Solicitação de Patrocínio
+              <Gift className="w-4 h-4" /> {podeAprovar ? 'Novo Patrocínio' : 'Nova Solicitação de Patrocínio'}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">

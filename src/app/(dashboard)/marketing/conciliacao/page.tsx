@@ -56,6 +56,7 @@ export default function ConciliacaoPage() {
   const [dataFim, setDataFim] = useState(hoje)
   const [resultado, setResultado] = useState<ItemConciliacao[]>([])
   const [movExterno, setMovExterno] = useState(0)
+  const [movContasReceber, setMovContasReceber] = useState(0)
   const [loading, setLoading] = useState(false)
   const [buscado, setBuscado] = useState(false)
   const [filtro, setFiltro] = useState<'todos' | 'conciliado' | 'divergencia' | 'so_sistema' | 'so_caixa'>('todos')
@@ -68,6 +69,7 @@ export default function ConciliacaoPage() {
       if (!res.ok) { toast({ title: json.error, variant: 'destructive' }); return }
       setResultado(json.resultado ?? [])
       setMovExterno(json.movimentos_externo ?? 0)
+      setMovContasReceber(json.movimentos_contas_receber ?? 0)
       setBuscado(true)
     } catch {
       toast({ title: 'Erro ao buscar dados', variant: 'destructive' })
@@ -140,9 +142,14 @@ export default function ConciliacaoPage() {
             </div>
 
             {/* Info AutoSystem */}
-            <div className="text-[12px] text-gray-400 flex items-center gap-1">
+            <div className="text-[12px] text-gray-400 flex items-center gap-1 flex-wrap">
               <Link2 className="w-3.5 h-3.5" />
-              {movExterno} movimentação(ões) encontrada(s) no AutoSystem (marketing / patrocínio / ação)
+              {movExterno} movimentação(ões) no AutoSystem (marketing / patrocínio / ação)
+              {movContasReceber > 0 && (
+                <span className="text-emerald-600">
+                  · + {movContasReceber} patrocínio(s) casado(s) em contas a receber
+                </span>
+              )}
             </div>
 
             {/* Tabela */}
