@@ -525,12 +525,12 @@ export default function CaixaPage() {
 
   async function handleEnviar() {
     if (!assinatura) { setErro('Assine antes de enviar'); return }
-    // Obriga lançar Sangria (dinheiro) OU Depósito (Dep. Cofre) antes de finalizar,
-    // quando o posto tem esses campos configurados.
+    // Obriga que a Sangria (dinheiro) OU o Depósito (Dep. Cofre) tenha sido lançado
+    // NO SISTEMA (AUTOSYSTEM) — ou seja, o valor do lado "Sist." (valor_as) > 0.
+    // Isso força o frentista a lançar a sangria/depósito no sistema antes de fechar.
     const camposSD = itens.filter(i => i.tipo === 'dinheiro' || i.tipo === 'deposito_cofre')
-    if (camposSD.length > 0 &&
-        !camposSD.some(i => (parseFloat(i.valor_frentista.replace(',', '.')) || 0) > 0)) {
-      setErro('Lance a Sangria ou o Depósito (Dep. Cofre) antes de finalizar o fechamento.')
+    if (camposSD.length > 0 && !camposSD.some(i => (i.valor_as ?? 0) > 0)) {
+      setErro('Lance a Sangria ou o Depósito (Dep. Cofre) no sistema antes de finalizar o fechamento.')
       return
     }
     setErro('')

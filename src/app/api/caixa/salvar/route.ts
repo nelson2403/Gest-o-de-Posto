@@ -32,16 +32,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Itens e assinatura obrigatórios' }, { status: 400 })
     }
 
-    // Regra: o frentista precisa lançar a Sangria (dinheiro) OU o Depósito (deposito_cofre)
-    // antes de finalizar, para o sistema reconhecer o fechamento. Só exige quando o posto
-    // tem esses campos configurados.
+    // Regra: a Sangria (dinheiro) OU o Depósito (deposito_cofre) precisa ter sido lançado
+    // NO SISTEMA (AUTOSYSTEM) antes de finalizar — ou seja, o valor do lado "Sist."
+    // (valor_as) tem que ser > 0. Força o frentista a lançar a sangria/depósito no sistema.
     const camposSangriaDeposito = body.itens.filter(
       i => i.tipo === 'dinheiro' || i.tipo === 'deposito_cofre',
     )
     if (camposSangriaDeposito.length > 0 &&
-        !camposSangriaDeposito.some(i => (i.valor_frentista ?? 0) > 0)) {
+        !camposSangriaDeposito.some(i => (i.valor_as ?? 0) > 0)) {
       return NextResponse.json(
-        { error: 'Lance a Sangria ou o Depósito (Dep. Cofre) antes de finalizar o fechamento.' },
+        { error: 'Lance a Sangria ou o Depósito (Dep. Cofre) no sistema antes de finalizar o fechamento.' },
         { status: 400 },
       )
     }
