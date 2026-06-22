@@ -61,6 +61,11 @@ function fmtDate(d: string | null | undefined) {
   if (!d) return '—'
   return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')
 }
+function fmtNF(n: number | string | null | undefined) {
+  if (n == null || n === '') return '—'
+  const s = String(n).replace(/\D/g, '').padStart(9, '0')
+  return `${s.slice(0, 3)}.${s.slice(3, 6)}.${s.slice(6)}`
+}
 
 // ─── Item do romaneio ─────────────────────────────────────────────────────────
 interface ItemRomaneio {
@@ -1117,10 +1122,13 @@ function TarefaRow({
           <div className="flex items-center gap-3 min-w-0">
             <Building2 className="w-4 h-4 text-gray-400 shrink-0" />
             <span className="text-sm font-semibold text-gray-900 truncate">{t.postos?.nome ?? '—'}</span>
+            <span title="Número da NF" className="text-[11px] font-mono font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded shrink-0">
+              NF {fmtNF(t.nf_numero)}
+            </span>
             <span className="text-sm text-gray-500 truncate hidden sm:block">{t.fornecedor_nome}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-sm font-mono font-bold text-gray-900 hidden xs:block">{fmt(t.valor_as)}</span>
+            <span className="text-sm font-mono font-bold text-gray-900">{fmt(t.valor_as)}</span>
             {t.nf_url && !aberto && (
               <span title="NF anexada pelo gerente" className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-100 text-indigo-600 text-[10px] font-semibold">
                 <Paperclip className="w-2.5 h-2.5" /> NF
@@ -1144,6 +1152,7 @@ function TarefaRow({
 
             {/* Dados principais */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[12px]">
+              <div><p className="text-gray-400">Nº NF</p><p className="font-mono font-semibold text-gray-800">{fmtNF(t.nf_numero)}</p></div>
               <div><p className="text-gray-400">Emissão</p><p className="text-gray-800">{fmtDate(t.data_emissao)}</p></div>
               <div><p className="text-gray-400">Valor AS</p><p className="font-bold text-gray-900">{fmt(t.valor_as)}</p></div>
               <div><p className="text-gray-400">Venc. Boleto</p><p className={t.boleto_vencimento ? 'text-gray-800' : 'text-gray-400'}>{fmtDate(t.boleto_vencimento)}</p></div>
