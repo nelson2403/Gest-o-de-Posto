@@ -46,6 +46,7 @@ export async function middleware(request: NextRequest) {
   const publicRoutes = [
     '/login',
     '/auth/callback',
+    '/auth/confirm',
     '/api/cron/',
     '/api/caixa/login',
     '/api/caixa/setup-pin',
