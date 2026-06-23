@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buscarEmpresasCompleto } from '@/lib/autosystem'
+import { exigirUsuario, exigirRole, ADMINS } from '@/lib/auth-guard'
 
 export async function GET() {
+  const auth = await exigirUsuario()
+  if (!auth.ok) return auth.resp
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('postos')
@@ -14,6 +17,8 @@ export async function GET() {
 }
 
 export async function POST() {
+  const auth = await exigirRole(ADMINS)
+  if (!auth.ok) return auth.resp
   const supabase = createAdminClient()
 
   const [empresas, { data: postos, error: postoErr }] = await Promise.all([

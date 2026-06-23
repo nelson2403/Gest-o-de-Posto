@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { exigirUsuario } from "@/lib/auth-guard"
 
 // GET — diagnostica notas que estão no painel mas não no AUTOSYSTEM
 export async function GET(req: NextRequest) {
   try {
+    const auth = await exigirUsuario()
+    if (!auth.ok) return auth.resp
     const admin = createAdminClient()
     const { searchParams } = new URL(req.url)
     const postoNome = searchParams.get('posto')

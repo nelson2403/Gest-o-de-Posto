@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { exigirUsuario } from "@/lib/auth-guard"
 
 // GET /api/contas-pagar/{id}/matching
 // Verifica se uma conta a pagar específica tem boleto correspondente
@@ -8,6 +9,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await exigirUsuario()
+    if (!auth.ok) return auth.resp
     const { id } = await params
     const admin = createAdminClient()
 

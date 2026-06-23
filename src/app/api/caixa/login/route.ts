@@ -3,6 +3,40 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { queryAS } from '@/lib/autosystem'
 import { verificarSenha, criarSessao } from '@/lib/caixa-auth'
 
+// ── Proteção contra força bruta do PIN (em memória; o processo persiste no PM2) ──
+// Bloqueio por código: após MAX_FAILS PINs errados, trava o código por LOCK_MS.
+// Limite por IP: anti-enumeração de códigos.
+const tentativasPorCodigo = new Map<string, { fails: number; lockedUntil: number }>()
+const MAX_FAILS = 5
+const LOCK_MS   = 5 * 60_000
+const hitsPorIp = new Map<string, { count: number; resetAt: number }>()
+const IP_MAX        = 60
+const IP_WINDOW_MS  = 60_000
+
+function ipDe(req: NextRequest): string {
+  return req.headers.get('cf-connecting-ip')
+    || req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || 'desconhecido'
+}
+function ipExcedido(ip: string): boolean {
+  const agora = Date.now()
+  const e = hitsPorIp.get(ip)
+  if (!e || agora > e.resetAt) { hitsPorIp.set(ip, { count: 1, resetAt: agora + IP_WINDOW_MS }); return false }
+  e.count++
+  return e.count > IP_MAX
+}
+function segundosBloqueado(codigo: string): number {
+  const e = tentativasPorCodigo.get(codigo)
+  return e && e.lockedUntil > Date.now() ? Math.ceil((e.lockedUntil - Date.now()) / 1000) : 0
+}
+function registrarFalha(codigo: string) {
+  const e = tentativasPorCodigo.get(codigo) ?? { fails: 0, lockedUntil: 0 }
+  e.fails++
+  if (e.fails >= MAX_FAILS) { e.lockedUntil = Date.now() + LOCK_MS; e.fails = 0 }
+  tentativasPorCodigo.set(codigo, e)
+}
+function limparFalhas(codigo: string) { tentativasPorCodigo.delete(codigo) }
+
 async function buscarFuncionarioAS(codigo: string) {
   try {
     const rows = await queryAS<any>(`
@@ -41,6 +75,15 @@ export async function POST(req: NextRequest) {
     const login = body.login?.trim()
     if (!login) return NextResponse.json({ error: 'Código obrigatório' }, { status: 400 })
 
+    // Anti força-bruta: limite por IP e trava por código.
+    if (ipExcedido(ipDe(req))) {
+      return NextResponse.json({ error: 'Muitas tentativas. Aguarde um minuto e tente novamente.' }, { status: 429 })
+    }
+    const espera = segundosBloqueado(login)
+    if (espera > 0) {
+      return NextResponse.json({ error: `Muitas tentativas de PIN. Aguarde ${espera}s e tente de novo.` }, { status: 429 })
+    }
+
     const func = await buscarFuncionarioAS(login)
     if (!func) return NextResponse.json({ error: 'Código não encontrado no sistema' }, { status: 401 })
 
@@ -74,8 +117,10 @@ export async function POST(req: NextRequest) {
     }
 
     if (!verificarSenha(pin, frentista.senha_hash)) {
+      registrarFalha(login)
       return NextResponse.json({ error: 'PIN incorreto' }, { status: 401 })
     }
+    limparFalhas(login)
 
     if (frentista.nome !== nome) {
       await admin.from('frentistas')

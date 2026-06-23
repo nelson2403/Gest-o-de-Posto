@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { buscarEmpresas, buscarCaixas } from '@/lib/autosystem'
+import { exigirUsuario } from "@/lib/auth-guard"
 
 export interface CaixaExternoRow {
   grid: string
@@ -10,6 +11,8 @@ export interface CaixaExternoRow {
 
 export async function GET() {
   try {
+    const auth = await exigirUsuario()
+    if (!auth.ok) return auth.resp
     const [empresas, caixas] = await Promise.all([
       buscarEmpresas(),
       buscarCaixas({ soFechados: true }),

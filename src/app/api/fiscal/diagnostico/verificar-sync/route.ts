@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { exigirUsuario } from "@/lib/auth-guard"
 
 // GET — verifica se as notas órfãs foram deletadas
 export async function GET(req: NextRequest) {
   try {
+    const auth = await exigirUsuario()
+    if (!auth.ok) return auth.resp
     const admin = createAdminClient()
 
     // Procura pelas 2 notas que deveriam ter sido deletadas

@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { exigirRole } from '@/lib/auth-guard'
 
 // POST — limpa todas as notificações de divergências
 export async function POST(req: NextRequest) {
   try {
+    const auth = await exigirRole(['master', 'adm_financeiro', 'operador_conciliador'])
+    if (!auth.ok) return auth.resp
+
     const admin = createAdminClient()
 
     // Deleta todas as notificações de divergência

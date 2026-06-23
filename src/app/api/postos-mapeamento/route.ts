@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { exigirUsuario, exigirRole, ADMINS } from '@/lib/auth-guard'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,6 +10,9 @@ const supabase = createClient(
 // PATCH /api/postos-mapeamento
 export async function PATCH(req: NextRequest) {
   try {
+    const auth = await exigirRole(ADMINS)
+    if (!auth.ok) return auth.resp
+
     const { posto_id, codigo_empresa_externo } = await req.json()
 
     if (!posto_id) {
@@ -34,6 +38,9 @@ export async function PATCH(req: NextRequest) {
 // GET /api/postos-mapeamento?sem_conveniencia=1
 // sem_conveniencia=1 → exclui lojas de conveniência (áreas de combustível)
 export async function GET(req: NextRequest) {
+  const auth = await exigirUsuario()
+  if (!auth.ok) return auth.resp
+
   const semConv = new URL(req.url).searchParams.get('sem_conveniencia') === '1'
 
   let query = supabase

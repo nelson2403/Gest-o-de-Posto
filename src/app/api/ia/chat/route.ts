@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { groqClient, GROQ_MODEL } from '@/lib/groq'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buscarAnaliseVendasPorProduto } from '@/lib/autosystem'
+import { exigirUsuario } from '@/lib/auth-guard'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -320,6 +321,9 @@ ${contextData}`
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await exigirUsuario()
+    if (!auth.ok) return auth.resp
+
     const { messages, page } = await req.json() as { messages: ChatMessage[]; page: string }
 
     if (!process.env.GROQ_API_KEY) {

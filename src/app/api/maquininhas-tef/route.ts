@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { buscarCaixas, buscarTefTransacoes } from '@/lib/autosystem'
 import { Pool } from 'pg'
+import { exigirUsuario } from "@/lib/auth-guard"
 
 function getPool() {
   return new Pool({
@@ -42,6 +43,8 @@ export async function GET(req: NextRequest) {
   const dtFim    = dataFim    ?? new Date().toISOString().slice(0, 10)
 
   try {
+    const auth = await exigirUsuario()
+    if (!auth.ok) return auth.resp
     const caixas = await buscarCaixas({ empresaIds: grids, dataIni: dtInicio, dataFim: dtFim })
     const caixaGrids = caixas.map(c => c.grid as number)
 

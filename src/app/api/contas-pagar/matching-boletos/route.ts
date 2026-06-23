@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { exigirUsuario } from "@/lib/auth-guard"
 
 // GET — encontra boletos que correspondem a contas a pagar
 // Matching por: fornecedor + valor + vencimento
 export async function GET(req: NextRequest) {
   try {
+    const auth = await exigirUsuario()
+    if (!auth.ok) return auth.resp
     const admin = createAdminClient()
 
     // 1. Busca todas as contas a pagar pendentes
