@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 088_contabil_mapeamento_contas.sql
+-- 124_contabil_mapeamento_contas.sql
 --
 -- Tabela de mapeamento "de/para" entre o plano de contas do AUTOSYSTEM e
 -- o plano de contas usado pela contabilidade externa que importa os

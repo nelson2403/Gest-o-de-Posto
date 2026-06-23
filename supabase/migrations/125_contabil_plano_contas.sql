@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 089_contabil_plano_contas.sql
+-- 125_contabil_plano_contas.sql
 --
 -- Armazena o plano de contas do escritório de contabilidade externo,
 -- importado via Excel/CSV em Contábil → Exportação de Dados → aba

@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 091_comissionamento_regras_escopo.sql
+-- 127_comissionamento_regras_escopo.sql
 --
 -- Adiciona um "escopo" opcional na AÇÃO da regra (ENTÃO) — permite limitar
 -- em quais vendas a comissão se aplica sem precisar repetir o filtro nas

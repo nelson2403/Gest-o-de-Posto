@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 087_mascaras_linhas_analise_despesas.sql
+-- 123_mascaras_linhas_analise_despesas.sql
 --
 -- Marca quais linhas da máscara DRE (tipo_linha = 'grupo') devem aparecer
 -- na seção "Análise de Despesas" do relatório gerencial em Contábil →
