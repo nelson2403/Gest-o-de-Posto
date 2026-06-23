@@ -1427,23 +1427,39 @@ interface PessoaFuncRaw extends Record<string, unknown> {
 // Detecta colunas opcionais (`codigo`, `ativo`, `grupo`, `subgrupo`) e ignora
 // inativos quando há a coluna. Retorna até `limit` linhas ordenadas por nome.
 export interface ProdutoAS {
-  grid:   number
-  codigo: string | null
-  nome:   string
+  grid:           number
+  codigo:         string | null
+  nome:           string
+  tipo:           string | null  // 'C', 'M', 'K', 'S', 'P' — null se a coluna não existe
+  grupo_nome:     string | null  // nome do grupo do produto (para autopreencher)
+  subgrupo_nome:  string | null  // nome do subgrupo (para autopreencher)
 }
 
 interface ProdutoASRaw extends Record<string, unknown> {
-  grid:    number
-  codigo:  string | null
-  nome_b:  Buffer | null
+  grid:           number
+  codigo:         string | null
+  tipo:           string | null
+  nome_b:         Buffer | null
+  grupo_nome_b:   Buffer | null
+  subgrupo_nome_b: Buffer | null
 }
 
 export async function buscarProdutosAs(
   busca?: string,
   limit:  number = 200,
+  tipo?:  string,  // ex.: 'C' para listar só combustíveis
 ): Promise<ProdutoAS[]> {
-  const cols = await colunasExistentes('produto', ['codigo'])
-  const codigoExpr = cols.has('codigo') ? 'codigo::text' : 'NULL::text'
+  const cols = await colunasExistentes('produto', ['codigo', 'tipo', 'grupo', 'subgrupo'])
+  const codigoExpr   = cols.has('codigo') ? 'p.codigo::text' : 'NULL::text'
+  const tipoExpr     = cols.has('tipo')   ? 'p.tipo::text'   : 'NULL::text'
+  const hasTipo      = cols.has('tipo')
+
+  // JOINs defensivos com grupo/subgrupo — algumas instâncias têm essas FKs
+  // e outras armazenam o nome direto. Quando a FK existe, JOIN; senão, NULL.
+  const grupoJoin    = cols.has('grupo')    ? 'LEFT JOIN grupo_produto    g  ON g.grid  = p.grupo'    : ''
+  const subgrupoJoin = cols.has('subgrupo') ? 'LEFT JOIN subgrupo_produto sg ON sg.grid = p.subgrupo' : ''
+  const grupoExpr    = cols.has('grupo')    ? 'g.nome::bytea'    : 'NULL::bytea'
+  const subgrupoExpr = cols.has('subgrupo') ? 'sg.nome::bytea'   : 'NULL::bytea'
 
   // Sem filtro por `ativo` — diferentes instâncias do AUTOSYSTEM usam
   // representações distintas (bool/int/'S'/'N') e isso já estava deixando a
@@ -1452,25 +1468,37 @@ export async function buscarProdutosAs(
   const conds:  string[]  = []
   if (busca && busca.trim()) {
     params.push(`%${busca.trim().toLowerCase()}%`)
-    conds.push(`lower(nome::text) LIKE $${params.length}::text`)
+    conds.push(`lower(p.nome::text) LIKE $${params.length}::text`)
+  }
+  if (tipo && hasTipo) {
+    params.push(tipo.trim())
+    conds.push(`p.tipo::text = $${params.length}::text`)
   }
   params.push(limit)
   const limitParam = `$${params.length}`
 
   const sql = `
-    SELECT grid::bigint  AS grid,
-           ${codigoExpr} AS codigo,
-           nome::bytea   AS nome_b
-    FROM produto
+    SELECT p.grid::bigint  AS grid,
+           ${codigoExpr}    AS codigo,
+           ${tipoExpr}      AS tipo,
+           p.nome::bytea    AS nome_b,
+           ${grupoExpr}     AS grupo_nome_b,
+           ${subgrupoExpr}  AS subgrupo_nome_b
+    FROM produto p
+    ${grupoJoin}
+    ${subgrupoJoin}
     ${conds.length ? `WHERE ${conds.join(' AND ')}` : ''}
-    ORDER BY nome
+    ORDER BY p.nome
     LIMIT ${limitParam}
   `
   const rows = await query<ProdutoASRaw>(sql, params)
   return rows.map(r => ({
-    grid:   Number(r.grid),
-    codigo: r.codigo,
-    nome:   decodeBytea(r.nome_b).trim(),
+    grid:          Number(r.grid),
+    codigo:        r.codigo,
+    nome:          decodeBytea(r.nome_b).trim(),
+    tipo:          r.tipo ? r.tipo.trim() : null,
+    grupo_nome:    decodeBytea(r.grupo_nome_b).trim()    || null,
+    subgrupo_nome: decodeBytea(r.subgrupo_nome_b).trim() || null,
   }))
 }
 
@@ -1490,43 +1518,58 @@ export async function buscarPessoasFuncionariosPorEmpresa(
   const hasFuncionario = cols.has('funcionario')
   const hasAtivo       = cols.has('ativo')
 
-  const cargoExpr  = hasCargo  ? 'cargo::bytea' : 'NULL::bytea'
-  const codigoExpr = hasCodigo ? 'codigo::text' : 'NULL::text'
-  const emailExpr  = hasEmail  ? 'email::bytea' : 'NULL::bytea'
+  // `pessoa.cargo` em algumas instâncias é texto livre, noutras é FK
+  // numérico p/ uma tabela `cargo(grid, nome)`. JOIN com `cargo` quando
+  // existir; caso contrário cast via text (bytea direto de bigint
+  // dispara "cannot cast type bigint to bytea").
+  let cargoExpr  = 'NULL::bytea'
+  let cargoJoin  = ''
+  if (hasCargo) {
+    const colsCargo = await colunasExistentes('cargo', ['nome'])
+    if (colsCargo.has('nome')) {
+      cargoJoin = 'LEFT JOIN cargo cg ON cg.grid = p.cargo'
+      cargoExpr = 'cg.nome::bytea'
+    } else {
+      cargoExpr = '(p.cargo::text)::bytea'
+    }
+  }
+  const codigoExpr = hasCodigo ? 'p.codigo::text' : 'NULL::text'
+  const emailExpr  = hasEmail  ? 'p.email::bytea' : 'NULL::bytea'
 
   const params: unknown[] = []
   const conds:  string[]  = []
 
   if (hasEmpresa) {
     params.push(empresaId)
-    conds.push(`empresa = $${params.length}::bigint`)
+    conds.push(`p.empresa = $${params.length}::bigint`)
   }
   // Restringe a funcionários quando há uma coluna que permita inferir.
   // Se houver `funcionario` bool, usa-o; senão, se houver `cargo`, exige cargo não nulo.
   if (hasFuncionario) {
-    conds.push(`COALESCE(funcionario::text, 'f') IN ('t','true','1','Y','S')`)
+    conds.push(`COALESCE(p.funcionario::text, 'f') IN ('t','true','1','Y','S')`)
   } else if (hasCargo) {
-    conds.push(`cargo IS NOT NULL AND trim(cargo::text) <> ''`)
+    conds.push(`p.cargo IS NOT NULL AND trim(p.cargo::text) <> ''`)
   }
   if (hasAtivo) {
-    conds.push(`COALESCE(ativo::text, 't') IN ('t','true','1','Y','S')`)
+    conds.push(`COALESCE(p.ativo::text, 't') IN ('t','true','1','Y','S')`)
   }
   if (busca && busca.trim()) {
     params.push(`%${busca.trim().toLowerCase()}%`)
-    conds.push(`lower(nome::text) LIKE $${params.length}::text`)
+    conds.push(`lower(p.nome::text) LIKE $${params.length}::text`)
   }
   params.push(limit)
   const limitParam = `$${params.length}`
 
   const sql = `
-    SELECT grid::bigint     AS grid,
+    SELECT p.grid::bigint   AS grid,
            ${codigoExpr}    AS codigo,
-           nome::bytea      AS nome_b,
+           p.nome::bytea    AS nome_b,
            ${cargoExpr}     AS cargo_b,
            ${emailExpr}     AS email_b
-    FROM pessoa
+    FROM pessoa p
+    ${cargoJoin}
     ${conds.length ? `WHERE ${conds.join(' AND ')}` : ''}
-    ORDER BY nome
+    ORDER BY p.nome
     LIMIT ${limitParam}
   `
   const rows = await query<PessoaFuncRaw>(sql, params)
@@ -2991,4 +3034,231 @@ export function calcularMovimento(
   const debito  = movtos.filter(m => m.conta_debitar?.startsWith('1.2.')  && !m.conta_creditar?.startsWith('1.2.')).reduce((s, m) => s + m.valor, 0)
   const credito = movtos.filter(m => m.conta_creditar?.startsWith('1.2.') && !m.conta_debitar?.startsWith('1.2.')).reduce((s, m) => s + m.valor, 0)
   return parseFloat((debito - credito).toFixed(2))
+}
+
+// ─── Vendas para o motor de comissionamento ─────────────────────────────────
+// Retorna lançamentos brutos de venda (uma linha por item de venda) com tudo
+// que o motor precisa pra avaliar regras e calcular comissão:
+//   • empresa (FK)
+//   • data da venda
+//   • vendedor (pessoa.grid) + nome + cargo — quando l.vendedor existe
+//   • produto + nome + tipo (C/M/K/S/P) + grupo + subgrupo
+//   • quantidade · valor · custo_medio_unitario
+//
+// Coluna `lancto.vendedor` é detectada defensivamente; instâncias sem essa
+// coluna devolvem `vendedor_id = null` (o motor ignora regras de vendedor).
+// O LIMIT padrão de 50k linhas cobre meses inteiros de posto típico; ajuste
+// no chamador quando precisar de mais.
+
+export interface VendaParaComissionamento extends Record<string, unknown> {
+  grid:                  number    // lancto.grid (identidade da linha)
+  empresa_id:            number    // l.empresa
+  data:                  string    // YYYY-MM-DD
+  vendedor_id:           number | null
+  vendedor_nome:         string | null
+  cargo:                 string | null
+  produto:               number
+  produto_nome:          string
+  produto_tipo:          string | null
+  grupo_produto:         string | null
+  subgrupo_produto:      string | null
+  quantidade:            number
+  valor_total:           number
+  custo_medio_unitario:  number
+}
+
+export async function buscarVendasParaComissionamento(
+  empresaIds: number[],
+  dataIni:    string,
+  dataFim:    string,
+  limit:      number = 50000,
+): Promise<VendaParaComissionamento[]> {
+  if (!empresaIds.length) return []
+
+  // Detecta colunas opcionais
+  const colsLancto  = await colunasExistentes('lancto',  ['vendedor'])
+  const colsProduto = await colunasExistentes('produto', ['tipo', 'subgrupo'])
+  const colsPessoa  = await colunasExistentes('pessoa',  ['cargo'])
+
+  const temVendedor = colsLancto.has('vendedor')
+  const temTipo     = colsProduto.has('tipo')
+  const temSubgrp   = colsProduto.has('subgrupo')
+  const temCargo    = colsPessoa.has('cargo')
+
+  // `pessoa.cargo` em algumas instalações do AUTOSYSTEM é texto livre,
+  // noutras é FK numérico para uma tabela `cargo(grid, nome)`. Tentamos
+  // o JOIN quando essa tabela existir (mostra o nome do cargo); senão
+  // convertemos via text para tolerar qualquer tipo (mostra o valor cru).
+  let cargoSel  = 'NULL::bytea'
+  let cargoJoin = ''
+  if (temVendedor && temCargo) {
+    const colsCargo = await colunasExistentes('cargo', ['nome'])
+    if (colsCargo.has('nome')) {
+      cargoJoin = 'LEFT JOIN cargo cg ON cg.grid = pv.cargo'
+      cargoSel  = 'cg.nome::bytea'
+    } else {
+      // Cast via text é resiliente a bigint/varchar/text — bytea direto
+      // de bigint dispara `cannot cast type bigint to bytea`.
+      cargoSel = '(pv.cargo::text)::bytea'
+    }
+  }
+
+  const vendedorSel  = temVendedor ? 'l.vendedor::bigint' : 'NULL::bigint'
+  const vendedorJoin = temVendedor ? 'LEFT JOIN pessoa pv ON pv.grid = l.vendedor' : ''
+  const vendedorNome = temVendedor ? 'pv.nome::bytea'  : 'NULL::bytea'
+  const tipoSel      = temTipo     ? 'p.tipo::text'    : 'NULL::text'
+  const subgrupoSel  = temSubgrp   ? 'p.subgrupo::bigint' : 'NULL::bigint'
+  const subgrupoJoin = temSubgrp   ? 'LEFT JOIN subgrupo_produto sgp ON sgp.grid = p.subgrupo' : ''
+  const subgrupoNome = temSubgrp   ? 'sgp.nome::bytea' : 'NULL::bytea'
+
+  const rows = await query<{
+    grid:             number
+    empresa_id:       number
+    data:             Date | string
+    vendedor_id:      number | null
+    vendedor_nome_b:  Buffer | null
+    cargo_b:          Buffer | null
+    produto:          number
+    produto_nome_b:   Buffer | null
+    produto_tipo:     string | null
+    grupo_nome_b:     Buffer | null
+    subgrupo_nome_b:  Buffer | null
+    quantidade:       number
+    valor:            number
+    custo_medio:      number
+  }>(
+    `SELECT
+       l.grid::bigint          AS grid,
+       l.empresa::bigint       AS empresa_id,
+       l.data::date            AS data,
+       ${vendedorSel}          AS vendedor_id,
+       ${vendedorNome}         AS vendedor_nome_b,
+       ${cargoSel}             AS cargo_b,
+       l.produto::bigint       AS produto,
+       p.nome::bytea           AS produto_nome_b,
+       ${tipoSel}              AS produto_tipo,
+       gp.nome::bytea          AS grupo_nome_b,
+       ${subgrupoNome}         AS subgrupo_nome_b,
+       l.quantidade::float     AS quantidade,
+       l.valor::float          AS valor,
+       COALESCE(el.custo_medio, 0)::float AS custo_medio
+     FROM lancto l
+       LEFT JOIN estoque_lancto el ON el.lancto = l.grid
+       LEFT JOIN produto p         ON p.grid    = l.produto
+       LEFT JOIN grupo_produto gp  ON gp.grid   = p.grupo
+       ${subgrupoJoin}
+       ${vendedorJoin}
+       ${cargoJoin}
+     WHERE l.empresa = ANY($1::bigint[])
+       AND l.operacao = 'V'
+       AND l.data BETWEEN $2::date AND $3::date
+     ORDER BY l.data, l.grid
+     LIMIT ${limit}`,
+    [empresaIds, dataIni, dataFim],
+  )
+
+  return rows.map(r => ({
+    grid:                 Number(r.grid),
+    empresa_id:           Number(r.empresa_id),
+    data:                 typeof r.data === 'string' ? r.data : r.data.toISOString().slice(0, 10),
+    vendedor_id:          r.vendedor_id != null ? Number(r.vendedor_id) : null,
+    vendedor_nome:        decodeBytea(r.vendedor_nome_b).trim() || null,
+    cargo:                decodeBytea(r.cargo_b).trim() || null,
+    produto:              Number(r.produto),
+    produto_nome:         decodeBytea(r.produto_nome_b).trim(),
+    produto_tipo:         r.produto_tipo ? r.produto_tipo.trim() : null,
+    grupo_produto:        decodeBytea(r.grupo_nome_b).trim() || null,
+    subgrupo_produto:     decodeBytea(r.subgrupo_nome_b).trim() || null,
+    quantidade:           Number(r.quantidade) || 0,
+    valor_total:          Number(r.valor) || 0,
+    custo_medio_unitario: Number(r.custo_medio) || 0,
+  }))
+}
+
+// ─── Exportação contábil de lançamentos (movto) ─────────────────────────────
+//
+// Retorna TODOS os movimentos contábeis do período (sem filtro de conta),
+// já decodificados, para gerar arquivos de exportação (CSV/XLSX).
+//
+// Colunas opcionais (`documento`, `observacao`/`obs`/`historico`, FK de
+// pessoa) são detectadas defensivamente. O limit padrão é alto (200k)
+// porque o uso típico é uma exportação por mês.
+
+export interface MovtoExportacao extends Record<string, unknown> {
+  grid:           number
+  empresa_id:     number
+  data:           string  // YYYY-MM-DD
+  documento:      string | null
+  conta_debitar:  string | null
+  conta_creditar: string | null
+  valor:          number
+  pessoa_nome:    string | null
+  observacao:     string | null
+}
+
+export async function buscarMovtosParaExportacao(
+  empresaIds: number[],
+  dataIni:    string,
+  dataFim:    string,
+  limit:      number = 200000,
+): Promise<MovtoExportacao[]> {
+  if (!empresaIds.length) return []
+
+  const cols = await colunasExistentes('movto', [
+    'documento', 'observacao', 'obs', 'historico', 'pessoa', 'cliente',
+  ])
+  const obsCol      = cols.has('observacao') ? 'observacao'
+                    : cols.has('obs')         ? 'obs'
+                    : cols.has('historico')   ? 'historico'
+                    : null
+  const docCol      = cols.has('documento') ? 'documento' : null
+  const pessoaFkCol = cols.has('pessoa')    ? 'pessoa'
+                    : cols.has('cliente')   ? 'cliente'
+                    : null
+
+  const selectDoc    = docCol      ? `m.${docCol}::bytea AS doc_b`       : `NULL::bytea AS doc_b`
+  const selectObs    = obsCol      ? `m.${obsCol}::bytea AS obs_b`       : `NULL::bytea AS obs_b`
+  const selectPessoa = pessoaFkCol ? `p.nome::bytea       AS pessoa_b`   : `NULL::bytea AS pessoa_b`
+  const joinPessoa   = pessoaFkCol ? `LEFT JOIN pessoa p ON p.grid = m.${pessoaFkCol}` : ''
+
+  const rows = await query<{
+    grid:           number
+    empresa_id:     number
+    data:           string
+    conta_debitar:  string | null
+    conta_creditar: string | null
+    valor:          number
+    doc_b:    Buffer | null
+    obs_b:    Buffer | null
+    pessoa_b: Buffer | null
+  }>(
+    `SELECT m.grid::bigint                       AS grid,
+            m.empresa::bigint                    AS empresa_id,
+            to_char(m.data, 'YYYY-MM-DD')        AS data,
+            m.conta_debitar::text                AS conta_debitar,
+            m.conta_creditar::text               AS conta_creditar,
+            m.valor::float                       AS valor,
+            ${selectDoc},
+            ${selectObs},
+            ${selectPessoa}
+     FROM movto m
+     ${joinPessoa}
+     WHERE m.empresa = ANY($1::bigint[])
+       AND m.data BETWEEN $2::date AND $3::date
+     ORDER BY m.data ASC, m.grid ASC
+     LIMIT ${limit}`,
+    [empresaIds, dataIni, dataFim],
+  )
+
+  return rows.map(r => ({
+    grid:           Number(r.grid),
+    empresa_id:     Number(r.empresa_id),
+    data:           r.data,
+    documento:      decodeBytea(r.doc_b).trim() || null,
+    conta_debitar:  r.conta_debitar ? r.conta_debitar.trim() : null,
+    conta_creditar: r.conta_creditar ? r.conta_creditar.trim() : null,
+    valor:          Number(r.valor) || 0,
+    pessoa_nome:    decodeBytea(r.pessoa_b).trim() || null,
+    observacao:     decodeBytea(r.obs_b).trim() || null,
+  }))
 }

@@ -12,11 +12,12 @@ export async function GET(req: NextRequest) {
 
   const sp    = new URL(req.url).searchParams
   const busca = sp.get('busca') ?? undefined
+  const tipo  = sp.get('tipo')  ?? undefined  // ex.: 'C' p/ combustíveis
 
   try {
-    const produtos = await buscarProdutosAs(busca)
+    const produtos = await buscarProdutosAs(busca, 200, tipo)
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`[produtos-as] busca="${busca ?? ''}" → ${produtos.length} resultado(s)`)
+      console.log(`[produtos-as] busca="${busca ?? ''}" tipo="${tipo ?? ''}" → ${produtos.length} resultado(s)`)
     }
     return NextResponse.json({ produtos })
   } catch (e) {

@@ -82,7 +82,7 @@ function lerRef(sp: URLSearchParams): { refAno: number; refMes: number } {
 
 async function getEmpresaIds(
   admin: ReturnType<typeof createAdminClient>,
-  empresaFiltro: number | null = null,
+  empresaFiltro: number[] | null = null,
 ) {
   // Inclui postos inativos — análise histórica precisa cobrir todos os tenants
   // que tiveram movimento no período, mesmo que tenham sido encerrados depois.
@@ -93,8 +93,19 @@ async function getEmpresaIds(
   const all = Array.from(new Set(
     (postos ?? []).map(p => Number(p.codigo_empresa_externo)).filter(n => !Number.isNaN(n))
   ))
-  if (empresaFiltro !== null && all.includes(empresaFiltro)) return [empresaFiltro]
+  if (empresaFiltro && empresaFiltro.length > 0) {
+    const allowed = new Set(empresaFiltro)
+    const inter = all.filter(c => allowed.has(c))
+    return inter.length > 0 ? inter : []
+  }
   return all
+}
+
+// Lê `empresa` como CSV (ex.: "1,2,3"). Aceita valor único também.
+function parseEmpresaCsv(raw: string | null): number[] | null {
+  if (!raw) return null
+  const arr = raw.split(',').map(s => s.trim()).filter(s => /^\d+$/.test(s)).map(Number)
+  return arr.length > 0 ? arr : null
 }
 
 // ─── GET ──────────────────────────────────────────────────────
@@ -122,8 +133,7 @@ export async function GET(req: NextRequest) {
   const admin = createAdminClient()
 
   // Filtro opcional de empresa — propaga do front pra restringir o drill.
-  const empresaParam   = sp.get('empresa')
-  const empresaFiltro  = empresaParam && /^\d+$/.test(empresaParam) ? Number(empresaParam) : null
+  const empresaFiltro  = parseEmpresaCsv(sp.get('empresa'))
   const empresaIds = await getEmpresaIds(admin, empresaFiltro)
 
   // ── MODE: LINHA ───────────────────────────────────────────

@@ -13,7 +13,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   ArrowLeft, Plus, GripVertical, ChevronDown, ChevronRight, Layers,
-  Pencil, Trash2, Loader2, X, Equal,
+  Pencil, Trash2, Loader2, X, Equal, TrendingDown,
 } from 'lucide-react'
 import { MapeamentosPanel } from './MapeamentosPanel'
 import { Header } from '@/components/layout/Header'
@@ -155,6 +155,16 @@ function SortableRow({ item, projectedDepth, hasChildren, collapsed, onToggleCol
         {item.nome}
       </span>
 
+      {item.usar_em_analise_despesas && !isSubtotal && (
+        <span
+          className="text-[10.5px] font-medium px-2.5 py-1 rounded-full flex-shrink-0 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 inline-flex items-center gap-1"
+          title="Esta linha aparece na seção Análise de Despesas do relatório gerencial"
+        >
+          <TrendingDown className="w-3 h-3" />
+          Análise de Despesas
+        </span>
+      )}
+
       <span className={cn(
         'text-[10.5px] font-medium px-2.5 py-1 rounded-full flex-shrink-0',
         isSubtotal
@@ -225,6 +235,7 @@ export function MascaraEditor({ tipo, basePath, tituloTipo, mascaraId }: Props) 
   const [parentForNew, setParentForNew]     = useState<string | null>(null)
   const [linhaNome, setLinhaNome]           = useState('')
   const [linhaTipoCampo, setLinhaTipoCampo] = useState<TipoLinhaMascara>('grupo')
+  const [linhaAnaliseDespesas, setLinhaAnaliseDespesas] = useState(false)
   const [savingLinha, setSavingLinha]       = useState(false)
 
   // Excluir linha
@@ -382,6 +393,7 @@ export function MascaraEditor({ tipo, basePath, tituloTipo, mascaraId }: Props) 
     setParentForNew(parentId)
     setLinhaNome('')
     setLinhaTipoCampo('grupo')
+    setLinhaAnaliseDespesas(false)
     setShowLinhaModal(true)
   }
 
@@ -390,6 +402,7 @@ export function MascaraEditor({ tipo, basePath, tituloTipo, mascaraId }: Props) 
     setParentForNew(null)
     setLinhaNome(l.nome)
     setLinhaTipoCampo(l.tipo_linha)
+    setLinhaAnaliseDespesas(!!l.usar_em_analise_despesas)
     setShowLinhaModal(true)
   }
 
@@ -401,12 +414,18 @@ export function MascaraEditor({ tipo, basePath, tituloTipo, mascaraId }: Props) 
     }
     setSavingLinha(true)
 
+    // `usar_em_analise_despesas` só faz sentido para tipo_linha='grupo' em
+    // máscaras DRE. Para subtotais ou para máscaras de fluxo de caixa,
+    // força false para evitar lixo no banco.
+    const analiseDespesasFinal = (tipo === 'dre' && linhaTipoCampo === 'grupo') ? linhaAnaliseDespesas : false
+
     if (editingLinha) {
       const { error } = await supabase
         .from('mascaras_linhas')
         .update({
           nome: linhaNome.trim(),
           tipo_linha: linhaTipoCampo,
+          usar_em_analise_despesas: analiseDespesasFinal,
           atualizado_em: new Date().toISOString(),
         })
         .eq('id', editingLinha.id)
@@ -427,6 +446,7 @@ export function MascaraEditor({ tipo, basePath, tituloTipo, mascaraId }: Props) 
           ordem: proximaOrdem,
           nome: linhaNome.trim(),
           tipo_linha: linhaTipoCampo,
+          usar_em_analise_despesas: analiseDespesasFinal,
         })
       if (error) {
         toast({ variant: 'destructive', title: 'Erro ao criar linha', description: error.message })
@@ -633,6 +653,28 @@ export function MascaraEditor({ tipo, basePath, tituloTipo, mascaraId }: Props) 
                     : 'Subtotais somam grupos anteriores (ex: RECEITA OPERACIONAL LÍQUIDA).'}
                 </p>
               </div>
+
+              {/* Flag de análise de despesas — só aparece em máscaras DRE para grupos */}
+              {tipo === 'dre' && linhaTipoCampo === 'grupo' && (
+                <label className="flex items-start gap-3 p-3 rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-900/10 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={linhaAnaliseDespesas}
+                    onChange={e => setLinhaAnaliseDespesas(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-amber-600 flex-shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-[12.5px] font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-1.5">
+                      <TrendingDown className="w-3.5 h-3.5" />
+                      Usar em Análise de Despesas
+                    </p>
+                    <p className="text-[11px] text-amber-700/80 dark:text-amber-300/80 mt-0.5">
+                      Todas as contas e subgrupos vinculados a esta linha serão expandidos na seção <strong>Análise de Despesas</strong> do relatório gerencial em Contábil → Relatórios.
+                    </p>
+                  </div>
+                </label>
+              )}
+
               <div className="flex gap-3 pt-1">
                 <button
                   type="button"

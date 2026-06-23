@@ -13,6 +13,7 @@ export interface Esquema {
   atualizado_em:  string
   qtd_regras?:    number
   qtd_ativas?:    number
+  posto_ids?:     string[]
 }
 
 const STATUS_VALIDOS: readonly EsquemaStatus[] = ['rascunho', 'ativo', 'inativo']
@@ -24,9 +25,10 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
   const admin = createAdminClient()
-  const [esqResp, regResp] = await Promise.all([
+  const [esqResp, regResp, vincResp] = await Promise.all([
     admin.from('comissio_esquemas').select('*').order('criado_em', { ascending: false }),
     admin.from('comissio_regras').select('esquema_id, status'),
+    admin.from('comissio_esquema_postos').select('esquema_id, posto_id'),
   ])
 
   if (esqResp.error) return NextResponse.json({ error: esqResp.error.message }, { status: 500 })
@@ -40,10 +42,19 @@ export async function GET() {
     contagens.set(r.esquema_id, cur)
   }
 
+  // posto_ids por esquema
+  const postosPorEsquema = new Map<string, string[]>()
+  for (const v of vincResp.data ?? []) {
+    const lista = postosPorEsquema.get(v.esquema_id) ?? []
+    lista.push(v.posto_id as string)
+    postosPorEsquema.set(v.esquema_id, lista)
+  }
+
   const esquemas: Esquema[] = (esqResp.data ?? []).map((e: any) => ({
     ...e,
     qtd_regras: contagens.get(e.id)?.total  ?? 0,
     qtd_ativas: contagens.get(e.id)?.ativas ?? 0,
+    posto_ids:  postosPorEsquema.get(e.id) ?? [],
   }))
 
   return NextResponse.json({ esquemas })

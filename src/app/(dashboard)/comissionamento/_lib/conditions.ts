@@ -27,6 +27,7 @@ export type FieldKey =
   | 'grupo_produto'
   | 'subgrupo_produto'
   | 'vendedor'
+  | 'cargo'
   | 'posto'
   | 'margem'
   | 'atingimento_meta'
@@ -45,6 +46,7 @@ export const FIELD_DEFS: Record<FieldKey, FieldDef> = {
   grupo_produto:     { label: 'Grupo de Produto',    type: 'text'                },
   subgrupo_produto:  { label: 'Subgrupo de Produto', type: 'text'                },
   vendedor:          { label: 'Vendedor',            type: 'text'                },
+  cargo:             { label: 'Cargo',               type: 'text'                },
   posto:             { label: 'Posto',               type: 'text'                },
   margem:            { label: 'Margem',              type: 'number', unit: '%'   },
   atingimento_meta:  { label: 'Atingimento de meta', type: 'number', unit: '%'   },

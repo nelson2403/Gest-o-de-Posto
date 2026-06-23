@@ -7,8 +7,8 @@ import {
   Archive, Layers, CheckSquare, ScanSearch, ReceiptText, Lock,
   TrendingUp, Wallet, Receipt, Settings, Megaphone, Gift, Database,
   PackageSearch, Truck, CalendarDays, ShoppingCart,
-  Banknote, Hash, Target, Calculator, AlertTriangle, Croissant, Wheat, Factory,
-  Scale, GraduationCap,
+  Banknote, Hash, AlertTriangle, Croissant, Wheat, Factory,
+  Scale, GraduationCap, DollarSign,
 } from 'lucide-react'
 import type { Role } from '@/types/database.types'
 import type { Permission } from '@/lib/utils/permissions'
@@ -124,18 +124,6 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: 'Comissionamento',
-    onlyForRoles: ['master'],
-    items: [
-      { href: '/comissionamento',            label: 'Dashboard',  icon: LayoutDashboard, permission: null },
-      { href: '/comissionamento/membros',    label: 'Membros',    icon: Users,           permission: null },
-      { href: '/comissionamento/metas',      label: 'Metas',      icon: Target,          permission: null },
-      { href: '/comissionamento/esquemas',   label: 'Esquemas',   icon: ClipboardList,   permission: null },
-      { href: '/comissionamento/simulacao',  label: 'Simulação',  icon: Calculator,      permission: null },
-      { href: '/comissionamento/relatorios', label: 'Relatórios', icon: FileText,        permission: null },
-    ],
-  },
-  {
     label: 'Controle Geral',
     items: [
       {
@@ -174,6 +162,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Outros',
     items: [
+      { href: '/comissionamento', label: 'Comissionamento', icon: DollarSign, permission: null },
       { href: '/transpombal', label: 'Transpombal — Frota', icon: Truck, permission: 'transpombal.view' as Permission },
       { href: '/tanques',     label: 'Medição de Tanques',  icon: Fuel,  permission: 'tanques.view' as Permission },
       { href: '/precos-combustivel', label: 'Preços de Combustível', icon: Fuel, permission: 'precos_combustivel.lancar' as Permission, hideForRoles: ['master'] },

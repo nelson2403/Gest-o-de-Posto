@@ -247,7 +247,7 @@ function ConditionRow({ condition, onChange, onRemove }: ConditionRowProps) {
         </SelectContent>
       </Select>
 
-      {/* Valor 1 — combobox remoto p/ `produto`; input normal p/ os demais */}
+      {/* Valor 1 — combobox remoto p/ produto / grupo / subgrupo; input p/ os demais */}
       {condition.field === 'produto' ? (
         <RemoteCombobox
           value={typeof condition.value === 'string' ? condition.value : ''}
@@ -256,6 +256,26 @@ function ConditionRow({ condition, onChange, onRemove }: ConditionRowProps) {
           responseKey="produtos"
           placeholder="Selecione produto..."
           disabled={!condition.operator}
+        />
+      ) : condition.field === 'grupo_produto' ? (
+        <RemoteCombobox
+          value={typeof condition.value === 'string' ? condition.value : ''}
+          onChange={(v) => onChange({ ...condition, value: v })}
+          endpoint="/api/comissionamento/grupos-as"
+          responseKey="grupos"
+          placeholder="Selecione grupo..."
+          disabled={!condition.operator}
+          localFilter
+        />
+      ) : condition.field === 'subgrupo_produto' ? (
+        <RemoteCombobox
+          value={typeof condition.value === 'string' ? condition.value : ''}
+          onChange={(v) => onChange({ ...condition, value: v })}
+          endpoint="/api/comissionamento/grupos-as"
+          responseKey="subgrupos"
+          placeholder="Selecione subgrupo..."
+          disabled={!condition.operator}
+          localFilter
         />
       ) : (
         <Input
@@ -325,17 +345,31 @@ interface RemoteComboboxProps {
   responseKey:  string                     // chave do array no JSON (ex.: 'produtos')
   placeholder?: string
   disabled?:    boolean
+  // Quando true, o combobox busca a lista inteira uma única vez (sem `?busca`
+  // na URL) e filtra client-side. Útil para endpoints leves (grupos/subgrupos)
+  // que devolvem a coleção completa sem suporte a busca server-side.
+  localFilter?: boolean
 }
 
+// Cache de listas remotas em modo localFilter — uma fetch por (endpoint+key)
+// durante a vida do bundle. Evita re-buscar grupos/subgrupos a cada abertura.
+const remoteListCache = new Map<string, RemoteItem[]>()
+
 function RemoteCombobox({
-  value, onChange, endpoint, responseKey, placeholder, disabled,
+  value, onChange, endpoint, responseKey, placeholder, disabled, localFilter,
 }: RemoteComboboxProps) {
   const [open,    setOpen]    = useState(false)
   const [busca,   setBusca]   = useState('')
-  const [results, setResults] = useState<RemoteItem[]>([])
+  const [results, setResults] = useState<RemoteItem[]>(
+    () => (localFilter && remoteListCache.get(`${endpoint}::${responseKey}`)) || [],
+  )
   const [loading, setLoading] = useState(false)
   const [erro,    setErro]    = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
+  // Ref para o onChange atual — usado no listener nativo de pointerdown
+  // (a closure capturada na primeira montagem fica obsoleta entre re-renders).
+  const onChangeRef = useRef(onChange)
+  useEffect(() => { onChangeRef.current = onChange }, [onChange])
   const triggerRef = useRef<HTMLButtonElement>(null)
   // Posicionamento fixed do popover (rendered via portal pra escapar do
   // overflow-hidden do DialogContent).
@@ -366,22 +400,83 @@ function RemoteCombobox({
     }
   }, [open])
 
-  // Fecha quando clica fora (ignora cliques no trigger ou dentro do popover via data-attr)
+  // Listener nativo em fase de captura para:
+  //   - selecionar item ao clicar (ANTES de qualquer focus trap do Radix
+  //     Dialog roubar o evento): lê o valor de `data-combobox-value` no
+  //     elemento clicado, chama onChange e fecha o popover.
+  //   - fechar quando clica fora do popover (e fora do trigger).
+  //
+  // Roda em capture phase para preceder o pointerDownOutside do Radix.
   useEffect(() => {
     if (!open) return
-    function onClick(e: MouseEvent) {
-      const target = e.target as HTMLElement
+    function nativeCapture(e: PointerEvent | MouseEvent) {
+      const target = e.target as HTMLElement | null
+      if (!target) return
+      const item = target.closest('[data-combobox-item]') as HTMLElement | null
+      if (item) {
+        const val = item.getAttribute('data-combobox-value') ?? ''
+        e.preventDefault()
+        e.stopPropagation()
+        if (typeof (e as MouseEvent).stopImmediatePropagation === 'function') {
+          (e as MouseEvent).stopImmediatePropagation()
+        }
+        onChangeRef.current(val)
+        setOpen(false)
+        return
+      }
+      if (target.closest('[data-combobox-popover]')) {
+        // Clique dentro do popover (input, botão de scroll, etc.) — só
+        // silencia para o Radix não ver, sem fechar.
+        e.stopPropagation()
+        if (typeof (e as MouseEvent).stopImmediatePropagation === 'function') {
+          (e as MouseEvent).stopImmediatePropagation()
+        }
+        return
+      }
       if (triggerRef.current?.contains(target)) return
-      if (target.closest('[data-combobox-popover]')) return
+      // Fora: fecha o popover.
       setOpen(false)
     }
-    document.addEventListener('mousedown', onClick)
-    return () => document.removeEventListener('mousedown', onClick)
+    document.addEventListener('pointerdown', nativeCapture, true)
+    document.addEventListener('mousedown',   nativeCapture, true)
+    return () => {
+      document.removeEventListener('pointerdown', nativeCapture, true)
+      document.removeEventListener('mousedown',   nativeCapture, true)
+    }
   }, [open])
 
-  // Busca com debounce de 250ms
+  // Modo `localFilter`: busca uma vez quando abre (se cache vazio) e filtra
+  // client-side. Modo padrão (server-side): refaz fetch sempre que `busca`
+  // muda, com debounce de 250ms.
   useEffect(() => {
     if (!open) return
+
+    if (localFilter) {
+      const cacheKey = `${endpoint}::${responseKey}`
+      const cached = remoteListCache.get(cacheKey)
+      if (cached) { setResults(cached); return }
+      setLoading(true)
+      setErro(null)
+      fetch(endpoint)
+        .then(async r => {
+          const json = await r.json().catch(() => ({}))
+          if (!r.ok || json?.error) {
+            setErro(String(json?.error ?? `Erro HTTP ${r.status}`))
+            setResults([])
+            return
+          }
+          const lista = (json?.[responseKey] ?? []) as RemoteItem[]
+          remoteListCache.set(cacheKey, lista)
+          setResults(lista)
+        })
+        .catch(e => {
+          setErro(e instanceof Error ? e.message : String(e))
+          setResults([])
+        })
+        .finally(() => setLoading(false))
+      return
+    }
+
     const t = setTimeout(() => {
       setLoading(true)
       setErro(null)
@@ -404,13 +499,29 @@ function RemoteCombobox({
         .finally(() => setLoading(false))
     }, 250)
     return () => clearTimeout(t)
-  }, [open, busca, endpoint, responseKey])
+  }, [open, busca, endpoint, responseKey, localFilter])
+
+  // Lista efetivamente exibida — quando localFilter, aplica filtro em memória.
+  const resultsExibidos = (() => {
+    if (!localFilter) return results
+    const q = busca.trim().toLowerCase()
+    if (!q) return results
+    return results.filter(r =>
+      r.nome.toLowerCase().includes(q) ||
+      String(r.codigo ?? '').toLowerCase().includes(q),
+    )
+  })()
 
   const popover = open && (
     <div
       data-combobox-popover
       style={{ top: pos.top, left: pos.left, minWidth: pos.width }}
       className="fixed z-[100] w-72 bg-white border border-gray-200 rounded-lg shadow-2xl overflow-hidden"
+      // Bloqueia que o Radix Dialog detecte o clique como `pointerDownOutside`
+      // e roube o foco antes do onClick do item disparar. Usa capture phase
+      // para garantir que rodamos antes de qualquer outro listener.
+      onPointerDownCapture={(e) => e.stopPropagation()}
+      onMouseDownCapture={(e) => e.stopPropagation()}
     >
       <div className="p-2 border-b border-gray-100 relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
@@ -432,18 +543,26 @@ function RemoteCombobox({
             <p className="font-semibold mb-0.5">Erro ao buscar</p>
             <p className="text-[10.5px] opacity-80">{erro}</p>
           </div>
-        ) : results.length === 0 ? (
+        ) : resultsExibidos.length === 0 ? (
           <div className="px-3 py-4 text-center text-[11.5px] text-gray-400">
             {busca ? 'Nenhum resultado' : 'Sem registros'}
           </div>
         ) : (
-          results.map(item => {
+          resultsExibidos.map(item => {
             const selecionado = item.nome === value
             return (
               <button
                 key={`${item.grid}`}
                 type="button"
-                onClick={() => { onChange(item.nome); setOpen(false) }}
+                // A seleção é tratada pelo listener nativo capture em
+                // useEffect via `data-combobox-item` + `data-combobox-value`.
+                // Os handlers React abaixo são fallback (no-op) para mouse e
+                // touch — eles previnem a navegação/submit default mas a
+                // ação real já rodou no pointerdown.
+                data-combobox-item="true"
+                data-combobox-value={item.nome}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
                 className={cn(
                   'w-full text-left px-3 py-1.5 text-[12px] border-b border-gray-100 last:border-0 transition-colors',
                   selecionado ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-gray-50 text-gray-700',
