@@ -17,6 +17,9 @@ sistema-fechamento/
 .next/
 out/
 
+# typescript incremental build cache
+tsconfig.tsbuildinfo
+
 # misc
 *.log
 .DS_Store
