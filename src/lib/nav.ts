@@ -9,6 +9,7 @@ import {
   PackageSearch, Truck, CalendarDays, ShoppingCart,
   Banknote, Hash, AlertTriangle, Croissant, Wheat, Factory,
   Scale, GraduationCap, DollarSign,
+  BookOpen, FileBarChart, Download,
 } from 'lucide-react'
 import type { Role } from '@/types/database.types'
 import type { Permission } from '@/lib/utils/permissions'
@@ -92,6 +93,21 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/fiscal',         label: 'Painel Fiscal',      icon: Scale,         permission: 'fiscal.view' as Permission, hideForRoles: ['gerente', 'rh'] },
       { href: '/fiscal/tarefas', label: 'Tarefas Fiscal',     icon: ClipboardList, permission: 'fiscal.view' as Permission },
       { href: '/fiscal/geracao', label: 'Geração de Tarefas', icon: FileText,      permission: 'fiscal.geracao' as Permission },
+    ],
+  },
+  {
+    label: 'Contábil',
+    items: [
+      { href: '/contabil/visao-geral',      label: 'Visão Geral',          icon: BookOpen,     permission: null },
+      { href: '/contabil/relatorios',       label: 'Relatórios',           icon: FileBarChart, permission: null },
+      { href: '/contabil/exportacao-dados', label: 'Exportação de Dados', icon: Download,     permission: null },
+      {
+        label: 'Máscaras', icon: Layers, permission: 'mascaras.view' as Permission,
+        children: [
+          { href: '/mascaras/dre',         label: 'DRE',            icon: BarChart2,  permission: 'mascaras.view' as Permission },
+          { href: '/mascaras/fluxo-caixa', label: 'Fluxo de Caixa', icon: TrendingUp, permission: 'mascaras.view' as Permission },
+        ],
+      },
     ],
   },
   {
