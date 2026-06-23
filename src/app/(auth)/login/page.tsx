@@ -43,7 +43,10 @@ export default function LoginPage() {
   async function handleResetPassword(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
-    const redirectTo = `${window.location.origin}/auth/callback?next=/reset-password`
+    // Usa a URL pública do sistema (não a origem do navegador) para o link do
+    // email funcionar mesmo se o reset for pedido pelo localhost da máquina.
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
+    const redirectTo = `${baseUrl}/auth/callback?next=/reset-password`
     const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, { redirectTo })
     if (error) {
       toast({ variant: 'destructive', title: 'Erro ao enviar', description: error.message })
