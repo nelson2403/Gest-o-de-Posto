@@ -98,9 +98,9 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Contábil',
     items: [
-      { href: '/contabil/visao-geral',      label: 'Visão Geral',          icon: BookOpen,     permission: null },
-      { href: '/contabil/relatorios',       label: 'Relatórios',           icon: FileBarChart, permission: null },
-      { href: '/contabil/exportacao-dados', label: 'Exportação de Dados', icon: Download,     permission: null },
+      { href: '/contabil/visao-geral',      label: 'Visão Geral',          icon: BookOpen,     permission: 'contabil.view' as Permission },
+      { href: '/contabil/relatorios',       label: 'Relatórios',           icon: FileBarChart, permission: 'contabil.view' as Permission },
+      { href: '/contabil/exportacao-dados', label: 'Exportação de Dados', icon: Download,     permission: 'contabil.view' as Permission },
       {
         label: 'Máscaras', icon: Layers, permission: 'mascaras.view' as Permission,
         children: [
@@ -178,7 +178,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Outros',
     items: [
-      { href: '/comissionamento', label: 'Comissionamento', icon: DollarSign, permission: null },
+      { href: '/comissionamento', label: 'Comissionamento', icon: DollarSign, permission: 'comissionamento.view' as Permission },
       { href: '/transpombal', label: 'Transpombal — Frota', icon: Truck, permission: 'transpombal.view' as Permission },
       { href: '/tanques',     label: 'Medição de Tanques',  icon: Fuel,  permission: 'tanques.view' as Permission },
       { href: '/precos-combustivel', label: 'Preços de Combustível', icon: Fuel, permission: 'precos_combustivel.lancar' as Permission, hideForRoles: ['master'] },

@@ -5,6 +5,8 @@ export type Role =
   | 'adm_marketing'
   | 'adm_transpombal'
   | 'adm_contas_pagar'
+  | 'adm_gerente'
+  | 'adm_contabil'
   | 'operador_caixa'
   | 'operador_conciliador'
   | 'operador_contagem'

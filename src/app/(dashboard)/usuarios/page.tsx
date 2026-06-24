@@ -587,8 +587,8 @@ export default function UsuariosPage() {
   }
 
   const availableRoles: Role[] = role === 'master'
-    ? ['master', 'adm_financeiro', 'adm_fiscal', 'adm_marketing', 'adm_transpombal', 'adm_contas_pagar', 'operador_caixa', 'operador_conciliador', 'operador_contagem', 'gerente', 'rh']
-    : ['adm_financeiro', 'adm_fiscal', 'adm_marketing', 'adm_transpombal', 'adm_contas_pagar', 'operador_caixa', 'operador_conciliador', 'operador_contagem', 'gerente', 'rh']
+    ? ['master', 'adm_financeiro', 'adm_fiscal', 'adm_marketing', 'adm_transpombal', 'adm_contas_pagar', 'adm_gerente', 'adm_contabil', 'operador_caixa', 'operador_conciliador', 'operador_contagem', 'gerente', 'rh']
+    : ['adm_financeiro', 'adm_fiscal', 'adm_marketing', 'adm_transpombal', 'adm_contas_pagar', 'adm_gerente', 'adm_contabil', 'operador_caixa', 'operador_conciliador', 'operador_contagem', 'gerente', 'rh']
 
   const columns: ColumnDef<Usuario>[] = [
     {

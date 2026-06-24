@@ -25,4 +25,4 @@ export async function exigirRole(roles: string[]): Promise<Ok | Fail> {
 }
 
 // Conjuntos de funções comuns.
-export const ADMINS = ['master', 'adm_financeiro', 'adm_fiscal', 'adm_transpombal', 'adm_contas_pagar', 'adm_marketing']
+export const ADMINS = ['master', 'adm_financeiro', 'adm_fiscal', 'adm_transpombal', 'adm_contas_pagar', 'adm_marketing', 'adm_gerente']
