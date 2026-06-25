@@ -65,7 +65,7 @@ const STATUS_CFG = {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function PatrocinioPage() {
-  const { usuario } = useAuthContext()
+  const { usuario, posto_ativo_id, setPostoAtivo } = useAuthContext()
   const podeAprovar  = can(usuario?.role, 'marketing.aprovar')
   const podeCriar    = can(usuario?.role, 'marketing.create_patrocinio')
   // gerente tem o posto fixo no campo posto_fechamento_id
@@ -136,12 +136,12 @@ export default function PatrocinioPage() {
     }
   }, [load, isGerente, postoFixoId])
 
-  // Gerente multi-posto: se ainda não há posto escolhido, usa o primeiro vinculado
+  // Gerente: o posto do formulário segue o posto ativo global (seletor da home)
   useEffect(() => {
-    if (isGerente && saldos.length && !form.posto_id) {
-      setForm(f => ({ ...f, posto_id: saldos[0].posto_id }))
+    if (isGerente && posto_ativo_id) {
+      setForm(f => (f.posto_id === posto_ativo_id ? f : { ...f, posto_id: posto_ativo_id }))
     }
-  }, [isGerente, saldos, form.posto_id])
+  }, [isGerente, posto_ativo_id])
 
   async function salvar() {
     if (!form.posto_id || !form.valor || !form.data_evento || !form.patrocinado) {
@@ -446,8 +446,8 @@ export default function PatrocinioPage() {
                 <div className="col-span-2">
                   <SeletorPostoAtivo
                     postos={saldos.map(s => ({ id: s.posto_id, nome: s.posto_nome }))}
-                    value={form.posto_id}
-                    onChange={id => setForm(f => ({ ...f, posto_id: id }))}
+                    value={posto_ativo_id || form.posto_id}
+                    onChange={setPostoAtivo}
                     label="Criando patrocínio para"
                   />
                 </div>

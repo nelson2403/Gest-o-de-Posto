@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Fuel, Check, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import { SeletorPostoAtivo } from '@/components/shared/SeletorPostoAtivo'
+import { useAuthContext } from '@/contexts/AuthContext'
 
 type Posto  = { id: string; nome: string }
 type Preco  = { posto_id: string; produto: string; preco: number; atualizado_em: string | null }
@@ -23,11 +24,13 @@ function fmtPreco(v: number | null | undefined) {
 }
 
 export default function PrecosCombustivelPage() {
+  const { posto_ativo_id, setPostoAtivo } = useAuthContext()
   const [postos,   setPostos]   = useState<Posto[]>([])
   const [precos,   setPrecos]   = useState<Preco[]>([])
   const [produtos, setProdutos] = useState<string[]>([])
-  const [postoId,  setPostoId]  = useState('')
   const [loading,  setLoading]  = useState(true)
+  // Posto ativo vem do seletor global (home/cabeçalho); fallback ao 1º da lista
+  const postoId = posto_ativo_id || postos[0]?.id || ''
 
   // valor digitado por produto e estado de salvamento
   const [valores,  setValores]  = useState<Record<string, string>>({})
@@ -44,7 +47,6 @@ export default function PrecosCombustivelPage() {
       setPostos(lista)
       setPrecos(d.precos ?? [])
       setProdutos(d.produtos ?? [])
-      setPostoId(prev => prev || (lista[0]?.id ?? ''))
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Erro ao carregar', description: e.message })
     } finally {
@@ -124,7 +126,7 @@ export default function PrecosCombustivelPage() {
       <SeletorPostoAtivo
         postos={postos}
         value={postoId}
-        onChange={setPostoId}
+        onChange={setPostoAtivo}
         label="Lançando preços para"
       />
 

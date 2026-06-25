@@ -1493,12 +1493,12 @@ function BotaoReprocessarBoletos() {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function FiscalTarefasPage() {
-  const { usuario } = useAuthContext()
+  const { usuario, posto_ativo_id } = useAuthContext()
   const role             = usuario?.role
   const isGerente        = role === 'gerente'
   const canFiscal        = role === 'master' || role === 'adm_fiscal'
   const canView          = canFiscal || isGerente
-  const postoIdGerente   = usuario?.posto_fechamento_id ?? null
+  const postoIdGerente   = posto_ativo_id || (usuario?.posto_fechamento_id ?? null)
 
   const [tarefas,      setTarefas]      = useState<any[]>([])
   const [loading,      setLoading]      = useState(true)

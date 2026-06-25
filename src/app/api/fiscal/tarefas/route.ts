@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { getPostosGerente } from '@/lib/postos-gerente'
 
 export async function GET(req: NextRequest) {
   try {
@@ -44,10 +45,14 @@ export async function GET(req: NextRequest) {
       query = query.not('status', 'in', '(concluida,desconhecida)')
     }
 
-    // Gerente vê apenas tarefas do próprio posto — filtro obrigatório no servidor
+    // Gerente vê tarefas dos postos vinculados a ele — filtro obrigatório no servidor
     if (usuario.role === 'gerente') {
-      if (!usuario.posto_fechamento_id) return NextResponse.json([])
-      query = query.eq('posto_id', usuario.posto_fechamento_id)
+      const ids = await getPostosGerente(supabase, user.id, usuario.posto_fechamento_id)
+      if (!ids.length) return NextResponse.json([])
+      // Se a tela enviar o posto ativo (e for um dos dele), escopa só nele; senão todos
+      const sel = searchParams.get('posto_id')
+      const finalIds = sel && ids.includes(sel) ? [sel] : ids
+      query = query.in('posto_id', finalIds)
     } else {
       // Outros roles podem filtrar por posto opcional
       const posto_id = searchParams.get('posto_id')
