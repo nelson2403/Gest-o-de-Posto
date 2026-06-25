@@ -307,23 +307,43 @@ export async function POST(
   // ── Busca código da conta no AUTOSYSTEM ───────────────────────────────────
   const admin = createAdminClient()
   let contaCodigo: string | null = null
+  let contaBanco:  string | null = null
   if (contaBancariaId) {
     // Conta bancária específica da tarefa (multi-banco)
     const { data: cb } = await admin
       .from('contas_bancarias')
-      .select('codigo_conta_externo')
+      .select('codigo_conta_externo, banco')
       .eq('id', contaBancariaId)
       .single()
     contaCodigo = (cb as any)?.codigo_conta_externo ?? null
+    contaBanco  = (cb as any)?.banco ?? null
   } else if (postoId) {
     // Legado: pega o primeiro banco do posto
     const { data: contas } = await admin
       .from('contas_bancarias')
-      .select('codigo_conta_externo')
+      .select('codigo_conta_externo, banco')
       .eq('posto_id', postoId)
       .not('codigo_conta_externo', 'is', null)
       .limit(1)
     contaCodigo = (contas?.[0] as any)?.codigo_conta_externo ?? null
+    contaBanco  = (contas?.[0] as any)?.banco ?? null
+  }
+
+  // ── Valida que o BANCO do extrato bate com o BANCO da tarefa ──────────────
+  // Impede, por exemplo, comparar um extrato Stone contra a conta Sicoob da
+  // tarefa (foi o que aconteceu: extrato Stone anexado numa tarefa do Sicoob).
+  if (contaBanco) {
+    const contaEhStone = /stone/i.test(contaBanco)
+    if (extratoEhStone && !contaEhStone) {
+      return NextResponse.json({
+        error: `Este arquivo é um extrato da STONE, mas esta tarefa é de conciliação do ${contaBanco} (conta ${contaCodigo ?? '—'}). Anexe o extrato do banco correto — ou use a tarefa Stone deste posto.`,
+      }, { status: 422 })
+    }
+    if (!extratoEhStone && contaEhStone) {
+      return NextResponse.json({
+        error: `Esta tarefa é de conciliação da STONE, mas o arquivo enviado não parece um extrato Stone (OFX). Anexe o extrato Stone deste posto.`,
+      }, { status: 422 })
+    }
   }
 
   const empresaId = postoResolvido?.codigo_empresa_externo
