@@ -45,6 +45,29 @@ function parseDataStone(raw: unknown): string | null {
   return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
 }
 
+// ─── Parser de OFX (SGML) — usado pela Stone (e bancos que exportam .ofx) ─────
+type OfxTxn = { tipo: string; data: string; valor: number; memo: string }
+function parseOFX(texto: string): { txns: OfxTxn[]; saldoFinal: number | null } {
+  // Valores OFX usam tags sem fechamento (SGML): pega o conteúdo até < ou quebra
+  const tag = (bloco: string, t: string): string => {
+    const m = bloco.match(new RegExp(`<${t}>\\s*([^<\\r\\n]+)`, 'i'))
+    return m ? m[1].trim() : ''
+  }
+  const txns: OfxTxn[] = []
+  const blocos = texto.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi) ?? []
+  for (const b of blocos) {
+    const dt = tag(b, 'DTPOSTED')               // YYYYMMDDHHMMSS
+    const data = dt.length >= 8 ? `${dt.slice(0, 4)}-${dt.slice(4, 6)}-${dt.slice(6, 8)}` : ''
+    const valor = parseFloat(tag(b, 'TRNAMT').replace(',', '.'))
+    if (!data || isNaN(valor)) continue
+    txns.push({ tipo: tag(b, 'TRNTYPE').toUpperCase(), data, valor, memo: tag(b, 'MEMO') })
+  }
+  // Saldo final do extrato (LEDGERBAL → BALAMT)
+  const bal = texto.match(/<LEDGERBAL>[\s\S]*?<BALAMT>\s*([^<\r\n]+)/i)
+  const saldoFinal = bal ? parseFloat(bal[1].replace(',', '.')) : null
+  return { txns, saldoFinal: saldoFinal != null && !isNaN(saldoFinal) ? saldoFinal : null }
+}
+
 // ─── POST /api/tarefas/[id]/extrato ──────────────────────────────────────────
 export async function POST(
   req: NextRequest,
@@ -94,18 +117,15 @@ export async function POST(
   // Data esperada da tarefa (YYYY-MM-DD)
   const dataEsperada: string | null = (tarefa.data_conclusao_prevista as string | null)?.slice(0, 10) ?? null
 
-  // ── Lê o arquivo (Excel ou CSV) ───────────────────────────────────────────
+  // ── Lê o arquivo (OFX, Excel ou CSV) ──────────────────────────────────────
   const formData = await req.formData()
   const file = formData.get('file') as File | null
   if (!file) return NextResponse.json({ error: 'Arquivo não enviado' }, { status: 400 })
 
   const buffer = await file.arrayBuffer()
-  const wb     = XLSX.read(buffer, { type: 'array', cellDates: false })
-  const ws     = wb.Sheets[wb.SheetNames[0]]
-  const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
-
-  // ── Detecta formato: Stone (CSV) ou Sicoob (Excel) ────────────────────────
-  const isStone = rows.some(row => /^(Débito|Crédito)$/i.test(String(row[0] ?? '').trim()))
+  const bytes  = new Uint8Array(buffer)
+  // OFX é texto SGML — detecta pelo cabeçalho ANTES de tentar abrir como Excel
+  const isOFX = /OFXHEADER|<OFX>/i.test(new TextDecoder('latin1').decode(bytes.slice(0, 512)))
 
   let extratoData = ''
   let saldoDia    = 0
@@ -113,6 +133,59 @@ export async function POST(
   let movimentoExtrato = 0
   let datasAS: string[] = []
   let extratoEhStone = false
+
+  if (isOFX) {
+    // ── Parser OFX (Stone) ─────────────────────────────────────────────────
+    const texto = new TextDecoder('latin1').decode(bytes)   // CHARSET:1252
+    const { txns, saldoFinal } = parseOFX(texto)
+    if (!txns.length) {
+      return NextResponse.json({ error: 'Arquivo OFX sem transações (STMTTRN). Verifique se é o extrato correto.' }, { status: 422 })
+    }
+    const datasNoArquivo = [...new Set(txns.map(t => t.data))]
+
+    let targetDate: string
+    if (dataEsperada) {
+      if (!datasNoArquivo.includes(dataEsperada)) {
+        const lista = datasNoArquivo.map(s => s.split('-').reverse().join('/')).join(', ')
+        return NextResponse.json({
+          error: `O extrato OFX não contém a data ${dataEsperada.split('-').reverse().join('/')} (data desta tarefa). Datas encontradas: ${lista || 'nenhuma'}.`,
+        }, { status: 422 })
+      }
+      targetDate = dataEsperada
+    } else {
+      const sorted = datasNoArquivo.slice().sort()
+      targetDate = sorted[sorted.length - 1] ?? ''
+      if (!targetDate) return NextResponse.json({ error: 'Extrato OFX vazio ou inválido.' }, { status: 422 })
+    }
+
+    // Feriado/fim de semana: agrega o dia-alvo + dias não-úteis anteriores que existam no arquivo
+    const datasAgregadas = datasConciliacao(targetDate).filter(d => d === targetDate || datasNoArquivo.includes(d))
+    const txnsForDate = txns.filter(t => datasAgregadas.includes(t.data))
+    const txnsTarget  = txns.filter(t => t.data === targetDate)
+
+    // O AUTOSYSTEM registra só os recebíveis de cartão (CREDITs de venda entrando).
+    // Os DEBITs "Recebimento Guardado - Taxas Inteligentes" são transferências internas
+    // (reserva de taxas) e não entram. Soma os CREDITs de venda; fallback: todos os CREDITs.
+    const ehVenda = (t: OfxTxn) => t.tipo === 'CREDIT' && /receb/i.test(t.memo) && /venda/i.test(t.memo)
+    const vendas  = txnsForDate.filter(ehVenda)
+    const baseCredito = vendas.length ? vendas : txnsForDate.filter(t => t.tipo === 'CREDIT')
+    movimentoExtrato = parseFloat(baseCredito.reduce((s, t) => s + t.valor, 0).toFixed(2))
+    extratoEhStone = true
+
+    // Saldo: usa o LEDGERBAL do arquivo; saldo anterior = saldo − movimento líquido do dia
+    const movLiquidoDia = txnsTarget.reduce((s, t) => s + t.valor, 0)
+    saldoDia      = parseFloat((saldoFinal != null ? saldoFinal : movLiquidoDia).toFixed(2))
+    saldoAnterior = parseFloat((saldoDia - movLiquidoDia).toFixed(2))
+    extratoData   = targetDate
+    datasAS       = datasAgregadas
+
+  } else {
+  const wb     = XLSX.read(buffer, { type: 'array', cellDates: false })
+  const ws     = wb.Sheets[wb.SheetNames[0]]
+  const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+
+  // ── Detecta formato: Stone (CSV) ou Sicoob (Excel) ────────────────────────
+  const isStone = rows.some(row => /^(Débito|Crédito)$/i.test(String(row[0] ?? '').trim()))
 
   if (isStone) {
     // ── Parser Stone ──────────────────────────────────────────────────────
@@ -223,6 +296,7 @@ export async function POST(
     }
 
     movimentoExtrato = parseFloat((saldoDia - saldoAnterior).toFixed(2))
+  }
   }
 
   // ── Busca código da conta no AUTOSYSTEM ───────────────────────────────────
