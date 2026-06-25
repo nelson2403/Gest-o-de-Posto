@@ -257,6 +257,7 @@ function TarefasPageInner() {
     saldoAnterior: number; saldoDia: number; movimentoExtrato: number
     entradasAS: number | null; saidasAS: number | null; movimentoExterno: number
     contaCodigo: string | null; diferenca: number; asAcessivel: boolean
+    extratoEhStone?: boolean
   } | null>(null)
 
   // Filtros
@@ -464,6 +465,7 @@ function TarefasPageInner() {
       contaCodigo:     json.contaCodigo,
       diferenca:       json.diferenca,
       asAcessivel:     json.asAcessivel,
+      extratoEhStone:  json.extratoEhStone,
     })
     onDone?.()
     load()
@@ -1599,27 +1601,36 @@ function TarefasPageInner() {
             const fmtV = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
             const fmtVS = (v: number) => (v >= 0 ? '+' : '') + v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
             const isOk = extratoResultado.status === 'ok'
+            const ehStone = !!extratoResultado.extratoEhStone
             return (
               <div className="space-y-3">
-                {/* Extrato Excel */}
+                {/* Extrato */}
                 <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
                   <p className="text-[11px] font-semibold text-blue-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                    <FileSpreadsheet className="w-3.5 h-3.5" /> Extrato Excel
+                    <FileSpreadsheet className="w-3.5 h-3.5" /> {ehStone ? 'Extrato Stone (cartão)' : 'Extrato'}
                   </p>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-white rounded-lg border border-blue-100 p-2">
-                      <p className="text-[10px] text-gray-400 mb-1">Saldo Anterior</p>
-                      <p className="text-[13px] font-mono font-semibold text-gray-700">{fmtV(extratoResultado.saldoAnterior)}</p>
+                  {ehStone ? (
+                    // Stone: a conta passa por reserva e some — só o recebível de cartão importa
+                    <div className="bg-blue-100 rounded-lg border border-blue-200 p-2.5 text-center">
+                      <p className="text-[10px] text-blue-600 mb-1">Recebível de cartão no dia</p>
+                      <p className="text-[16px] font-mono font-bold text-blue-800">{fmtV(extratoResultado.movimentoExtrato)}</p>
                     </div>
-                    <div className="bg-white rounded-lg border border-blue-100 p-2">
-                      <p className="text-[10px] text-gray-400 mb-1">Saldo do Dia</p>
-                      <p className="text-[13px] font-mono font-semibold text-gray-700">{fmtV(extratoResultado.saldoDia)}</p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-white rounded-lg border border-blue-100 p-2">
+                        <p className="text-[10px] text-gray-400 mb-1">Saldo Anterior</p>
+                        <p className="text-[13px] font-mono font-semibold text-gray-700">{fmtV(extratoResultado.saldoAnterior)}</p>
+                      </div>
+                      <div className="bg-white rounded-lg border border-blue-100 p-2">
+                        <p className="text-[10px] text-gray-400 mb-1">Saldo do Dia</p>
+                        <p className="text-[13px] font-mono font-semibold text-gray-700">{fmtV(extratoResultado.saldoDia)}</p>
+                      </div>
+                      <div className="bg-blue-100 rounded-lg border border-blue-200 p-2">
+                        <p className="text-[10px] text-blue-600 mb-1">Movimento</p>
+                        <p className="text-[13px] font-mono font-bold text-blue-800">{fmtVS(extratoResultado.movimentoExtrato)}</p>
+                      </div>
                     </div>
-                    <div className="bg-blue-100 rounded-lg border border-blue-200 p-2">
-                      <p className="text-[10px] text-blue-600 mb-1">Movimento</p>
-                      <p className="text-[13px] font-mono font-bold text-blue-800">{fmtVS(extratoResultado.movimentoExtrato)}</p>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* AUTOSYSTEM */}
@@ -1633,7 +1644,13 @@ function TarefasPageInner() {
                         </span>
                       )}
                     </p>
-                    {extratoResultado.entradasAS !== null && extratoResultado.saidasAS !== null ? (
+                    {ehStone && extratoResultado.entradasAS !== null ? (
+                      // Stone: compara contra as ENTRADAS (recebíveis de cartão) do AUTOSYSTEM
+                      <div className="bg-purple-100 rounded-lg border border-purple-200 p-2.5 text-center">
+                        <p className="text-[10px] text-purple-600 mb-1">Entradas (recebíveis) no dia</p>
+                        <p className="text-[16px] font-mono font-bold text-purple-800">{fmtV(extratoResultado.entradasAS)}</p>
+                      </div>
+                    ) : extratoResultado.entradasAS !== null && extratoResultado.saidasAS !== null ? (
                       <div className="grid grid-cols-3 gap-2 text-center">
                         <div className="bg-white rounded-lg border border-purple-100 p-2">
                           <p className="text-[10px] text-gray-400 mb-1">Entradas</p>
@@ -1669,12 +1686,33 @@ function TarefasPageInner() {
                       <p className="text-[14px] font-bold text-green-800">Valores conferem — Tarefa concluída!</p>
                     </div>
                   ) : (
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       <div className="flex items-center justify-center gap-2">
                         <AlertTriangle className="w-5 h-5 text-red-600" />
                         <p className="text-[14px] font-bold text-red-800">Divergência de {fmtV(Math.abs(extratoResultado.diferenca))}</p>
                       </div>
-                      <p className="text-[11px] text-red-500">Verifique o extrato ou os lançamentos no AUTOSYSTEM.</p>
+                      {/* A conta da diferença — deixa claro o porquê */}
+                      {extratoResultado.asAcessivel && (
+                        <div className="mx-auto max-w-[280px] bg-white/70 rounded-lg border border-red-200 px-3 py-2 text-[12px] font-mono">
+                          <div className="flex items-center justify-between text-gray-700">
+                            <span>{ehStone ? 'Recebível (extrato)' : 'Movimento (extrato)'}</span>
+                            <span className="font-semibold">{fmtV(extratoResultado.movimentoExtrato)}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-gray-700">
+                            <span>− {ehStone ? 'Entradas (AUTOSYSTEM)' : 'AUTOSYSTEM'}</span>
+                            <span className="font-semibold">{fmtV(extratoResultado.movimentoExterno)}</span>
+                          </div>
+                          <div className="flex items-center justify-between border-t border-red-200 mt-1 pt-1 font-bold text-red-700">
+                            <span>= Diferença</span>
+                            <span>{fmtVS(extratoResultado.diferenca)}</span>
+                          </div>
+                        </div>
+                      )}
+                      <p className="text-[11px] text-red-500">
+                        {ehStone
+                          ? 'O recebível de cartão do extrato não bate com as entradas lançadas no AUTOSYSTEM nesse dia.'
+                          : 'Verifique o extrato ou os lançamentos no AUTOSYSTEM.'}
+                      </p>
                     </div>
                   )}
                 </div>

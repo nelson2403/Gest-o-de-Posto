@@ -406,6 +406,7 @@ export async function POST(
     contaCodigo,
     asAcessivel,
     diferenca,
+    extratoEhStone,
     status:           statusExtrato,
     concluidoAuto:    statusExtrato === 'ok',
   })
