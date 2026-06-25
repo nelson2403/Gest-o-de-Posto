@@ -172,8 +172,8 @@ export function ImportarPlanoModal({ onClose, onImported }: Props) {
                 A primeira linha é o cabeçalho. Use <strong>códigos hierárquicos separados por ponto</strong> (ex.: <code className="bg-white px-1 rounded">1.1.001</code>) para que o plano apareça em árvore.
               </p>
 
-              <div className="rounded border border-blue-200 bg-white overflow-hidden">
-                <table className="w-full text-[11.5px]">
+              <div className="rounded border border-blue-200 bg-white overflow-x-auto">
+                <table className="w-full text-[11.5px] min-w-[420px]">
                   <thead className="bg-blue-100/60">
                     <tr className="text-blue-900 text-[10.5px] uppercase tracking-wide">
                       <th className="text-left font-semibold px-3 py-1.5 w-[110px]">Código</th>
@@ -258,8 +258,8 @@ export function ImportarPlanoModal({ onClose, onImported }: Props) {
                 <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold mb-1.5">
                   Pré-visualização (primeiras 6 linhas)
                 </p>
-                <div className="border border-gray-200 rounded overflow-hidden">
-                  <table className="w-full text-[12px]">
+                <div className="border border-gray-200 rounded overflow-x-auto">
+                  <table className="w-full text-[12px] min-w-[420px]">
                     <thead className="bg-gray-50">
                       <tr className="text-gray-500 text-[10.5px] uppercase tracking-wide">
                         <th className="text-left font-semibold px-3 py-1.5 w-[140px]">Código</th>
