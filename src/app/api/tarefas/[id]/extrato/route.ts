@@ -163,13 +163,18 @@ export async function POST(
     const txnsForDate = txns.filter(t => datasAgregadas.includes(t.data))
     const txnsTarget  = txns.filter(t => t.data === targetDate)
 
-    // O AUTOSYSTEM registra só os recebíveis de cartão (CREDITs de venda entrando).
-    // Os DEBITs "Recebimento Guardado - Taxas Inteligentes" são transferências internas
-    // (reserva de taxas) e não entram. Soma os CREDITs de venda; fallback: todos os CREDITs.
-    const ehVenda = (t: OfxTxn) => t.tipo === 'CREDIT' && /receb/i.test(t.memo) && /venda/i.test(t.memo)
-    const vendas  = txnsForDate.filter(ehVenda)
-    const baseCredito = vendas.length ? vendas : txnsForDate.filter(t => t.tipo === 'CREDIT')
-    movimentoExtrato = parseFloat(baseCredito.reduce((s, t) => s + t.valor, 0).toFixed(2))
+    // O AUTOSYSTEM registra os recebíveis QUE FICARAM DISPONÍVEIS (entram de fato
+    // na conta), não a venda bruta. Na Stone:
+    //  - "Recebimento vendas" (CREDIT) + "Recebimento Guardado - Taxas Inteligentes"
+    //    (DEBIT) formam um par de MESMO valor que se anula: a venda é registrada e
+    //    reservada na mesma hora → NÃO é dinheiro real entrando.
+    //  - "Recebimento Disponível" (CREDIT) = recebível liberado, dinheiro entrando
+    //    (depois sai via "Transferência automática" para a conta principal).
+    // Então o movimento a comparar com as ENTRADAS do AUTOSYSTEM = soma dos
+    // "Recebimento Disponível". (Equivale à coluna "Recebível de Cartão" do CSV.)
+    const ehDisponivel = (t: OfxTxn) => t.tipo === 'CREDIT' && /dispon/i.test(t.memo)
+    const disponiveis  = txnsForDate.filter(ehDisponivel)
+    movimentoExtrato = parseFloat(disponiveis.reduce((s, t) => s + t.valor, 0).toFixed(2))
     extratoEhStone = true
 
     // Saldo: usa o LEDGERBAL do arquivo; saldo anterior = saldo − movimento líquido do dia
