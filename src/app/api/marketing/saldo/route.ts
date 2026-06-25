@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getPostosGerente } from '@/lib/postos-gerente'
 
 // GET /api/marketing/saldo
 // master/admin/marketing: retorna todos os postos
-// gerente/operador: retorna apenas o próprio posto (posto_fechamento_id)
+// gerente: retorna apenas os postos vinculados ao gerente (multi-posto)
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -21,9 +22,10 @@ export async function GET() {
 
   let query = admin.from('vw_marketing_saldo').select('*').order('posto_nome')
 
-  // Gerente e operador veem apenas o próprio posto
-  if (usr && usr.role === 'gerente' && usr.posto_fechamento_id) {
-    query = query.eq('posto_id', usr.posto_fechamento_id)
+  // Gerente vê todos os postos vinculados a ele (junção; fallback ao posto único)
+  if (usr && usr.role === 'gerente') {
+    const ids = await getPostosGerente(admin, user.id, usr.posto_fechamento_id)
+    query = query.in('posto_id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000'])
   }
 
   const { data, error } = await query

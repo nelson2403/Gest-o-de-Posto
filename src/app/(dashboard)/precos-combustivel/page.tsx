@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Fuel, Check, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
+import { SeletorPostoAtivo } from '@/components/shared/SeletorPostoAtivo'
 
 type Posto  = { id: string; nome: string }
 type Preco  = { posto_id: string; produto: string; preco: number; atualizado_em: string | null }
@@ -119,19 +120,13 @@ export default function PrecosCombustivelPage() {
         </button>
       </div>
 
-      {/* Seletor de posto (quando tem mais de um) */}
-      {postos.length > 1 && (
-        <div>
-          <label className="block text-[12px] font-medium text-gray-600 mb-1">Posto</label>
-          <select
-            value={postoId}
-            onChange={e => setPostoId(e.target.value)}
-            className="w-full h-11 border border-gray-200 rounded-xl px-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-orange-400/30"
-          >
-            {postos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-          </select>
-        </div>
-      )}
+      {/* Posto ativo — sempre visível para não ter dúvida de onde está lançando */}
+      <SeletorPostoAtivo
+        postos={postos}
+        value={postoId}
+        onChange={setPostoId}
+        label="Lançando preços para"
+      />
 
       {/* Lista de combustíveis */}
       <div className="space-y-3">
