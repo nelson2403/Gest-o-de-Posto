@@ -259,10 +259,19 @@ export async function POST(
     const saldosDia: Array<{ data: string; valor: number }> = []
     let saldoAnteriorArquivo: number | null = null
 
+    // Algumas exportações do Sicoob trazem a linha "SALDO DO DIA" no rodapé SEM
+    // data na coluna A (extrato de um dia só). Nesse caso usamos a data esperada
+    // da tarefa — ou a maior data de lançamento do arquivo — como referência.
+    let dataMaxArquivo: string | null = null
+    for (const row of rows) {
+      const d0 = parseDataExcel(row[0])
+      if (d0 && (!dataMaxArquivo || d0 > dataMaxArquivo)) dataMaxArquivo = d0
+    }
+
     for (const row of rows) {
       const colC = String(row[2] ?? '').trim().toUpperCase()
       if (colC === 'SALDO DO DIA') {
-        const d = parseDataExcel(row[0])
+        const d = parseDataExcel(row[0]) ?? dataEsperada ?? dataMaxArquivo
         if (d) saldosDia.push({ data: d, valor: parseValorBRSigned(row[3]) })
       }
       if (colC === 'SALDO ANTERIOR' && saldoAnteriorArquivo === null) {
