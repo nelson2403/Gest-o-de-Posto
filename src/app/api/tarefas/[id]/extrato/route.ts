@@ -255,31 +255,50 @@ export async function POST(
     datasAS       = datasAgregadas
 
   } else {
-    // ── Parser Sicoob Excel ───────────────────────────────────────────────
+    // ── Parser Sicoob Excel (robusto a variações de coluna/layout) ────────
     const saldosDia: Array<{ data: string; valor: number }> = []
     let saldoAnteriorArquivo: number | null = null
 
-    // Algumas exportações do Sicoob trazem a linha "SALDO DO DIA" no rodapé SEM
-    // data na coluna A (extrato de um dia só). Nesse caso usamos a data esperada
-    // da tarefa — ou a maior data de lançamento do arquivo — como referência.
+    // Procura o rótulo em QUALQUER coluna (há extratos com coluna inicial vazia,
+    // célula mesclada, etc.). A DATA é a primeira célula de data da linha — se não
+    // houver, usa a data da tarefa. O VALOR do saldo é o último número da linha.
+    const dataDaLinha = (row: unknown[]): string | null => {
+      for (const c of row) { const d = parseDataExcel(c); if (d) return d }
+      return null
+    }
+    const valorDaLinha = (row: unknown[]): number => {
+      for (let i = row.length - 1; i >= 0; i--) {
+        const s = String(row[i] ?? '').trim()
+        if (s && /\d/.test(s) && /^[-+\d.,\s]*\d[-+\d.,\sCDcd*]*$/.test(s)) return parseValorBRSigned(s)
+      }
+      return 0
+    }
+
     let dataMaxArquivo: string | null = null
     for (const row of rows) {
-      const d0 = parseDataExcel(row[0])
+      const d0 = dataDaLinha(row)
       if (d0 && (!dataMaxArquivo || d0 > dataMaxArquivo)) dataMaxArquivo = d0
     }
 
     for (const row of rows) {
-      const colC = String(row[2] ?? '').trim().toUpperCase()
-      if (colC === 'SALDO DO DIA') {
-        const d = parseDataExcel(row[0]) ?? dataEsperada ?? dataMaxArquivo
-        if (d) saldosDia.push({ data: d, valor: parseValorBRSigned(row[3]) })
+      const cels = row.map(c => String(c ?? '').trim().toUpperCase())
+      const temSaldoDia      = cels.some(c => c.includes('SALDO DO DIA'))
+      const temSaldoAnterior = cels.some(c => c.includes('SALDO ANTERIOR') && !c.includes('BLOQUEAD'))
+      if (temSaldoDia) {
+        const d = dataDaLinha(row) ?? dataEsperada ?? dataMaxArquivo
+        if (d) saldosDia.push({ data: d, valor: valorDaLinha(row) })
       }
-      if (colC === 'SALDO ANTERIOR' && saldoAnteriorArquivo === null) {
-        saldoAnteriorArquivo = parseValorBRSigned(row[3])
+      if (temSaldoAnterior && saldoAnteriorArquivo === null) {
+        saldoAnteriorArquivo = valorDaLinha(row)
       }
     }
 
     if (saldosDia.length === 0 || saldoAnteriorArquivo === null) {
+      // Loga a estrutura real do arquivo para diagnosticar layouts novos do Sicoob.
+      const amostra = rows.filter(r => r.some(c => String(c ?? '').trim() !== '')).slice(0, 40)
+      console.error('[extrato-sicoob] SALDO DO DIA/ANTERIOR nao encontrado. saldosDia=' +
+        saldosDia.length + ' saldoAnterior=' + saldoAnteriorArquivo +
+        ' | amostra de linhas: ' + JSON.stringify(amostra))
       return NextResponse.json({
         error: 'Não foram encontradas as linhas "SALDO DO DIA" e "SALDO ANTERIOR". Verifique se o arquivo é o extrato correto.',
       }, { status: 422 })
