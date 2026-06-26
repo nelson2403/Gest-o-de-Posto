@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { registrarHeartbeat } from '@/lib/heartbeat'
+import { fetchAll } from '@/lib/supabase/fetch-all'
 import { buscarMovtosAutosystem, calcularMovimento } from '@/lib/autosystem'
 
 const CRON_SECRET = process.env.CRON_SECRET
@@ -15,8 +16,8 @@ export async function POST(req: NextRequest) {
   const t0 = Date.now()
   const admin = createAdminClient()
 
-  // ── 1. Todos os extratos validados ────────────────────────────────────────
-  const { data: tarefas } = await admin
+  // ── 1. Todos os extratos validados (paginado — sem o limite de 1000) ──────
+  const tarefas = await fetchAll<any>((from, to) => admin
     .from('tarefas')
     .select(`
       id, titulo, banco, conta_bancaria_id,
@@ -33,8 +34,9 @@ export async function POST(req: NextRequest) {
     .in('extrato_status', ['ok', 'divergente'])
     .not('extrato_arquivo_path', 'is', null)
     .not('extrato_data', 'is', null)
+    .range(from, to))
 
-  if (!tarefas?.length) {
+  if (!tarefas.length) {
     await registrarHeartbeat('verificar-extratos', 'ok', { verificadas: 0, divergentes: 0 }, Date.now() - t0)
     return NextResponse.json({ verificadas: 0, divergentes: 0 })
   }
