@@ -9,7 +9,7 @@ import {
   PackageSearch, Truck, CalendarDays, ShoppingCart,
   Banknote, Hash, AlertTriangle, Croissant, Wheat, Factory,
   Scale, GraduationCap, DollarSign,
-  BookOpen, FileBarChart, Download,
+  BookOpen, FileBarChart, Download, Activity,
 } from 'lucide-react'
 import type { Role } from '@/types/database.types'
 import type { Permission } from '@/lib/utils/permissions'
@@ -166,6 +166,7 @@ export const NAV_GROUPS: NavGroup[] = [
         ],
       },
       { href: '/relatorios', label: 'Relatórios', icon: FileText, permission: 'relatorios.view' as Permission },
+      { href: '/monitoramento', label: 'Monitoramento', icon: Activity, permission: 'monitoramento.view' as Permission },
     ],
   },
   {

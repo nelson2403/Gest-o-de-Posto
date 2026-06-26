@@ -157,6 +157,9 @@ export const PERMISSIONS = {
   // Audit
   'audit.view': ['master'],
 
+  // Monitoramento de integrações/sincronizações — somente master
+  'monitoramento.view': ['master'],
+
   // Contas a Pagar — adm_contabil também (área Financeiro)
   'contas_pagar.view':        ['master', 'adm_contas_pagar', 'adm_contabil'],
   'contas_pagar.lancar':      ['master', 'adm_contas_pagar', 'adm_contabil'],
