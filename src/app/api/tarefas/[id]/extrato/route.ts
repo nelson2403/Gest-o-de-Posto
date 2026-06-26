@@ -405,13 +405,16 @@ export async function POST(
     updates.data_conclusao_real = new Date().toISOString()
   }
 
-  await supabase.from('tarefas').update(updates).eq('id', id)
+  // Usa o admin (service role) para gravar — assim a conclusão "gruda" mesmo
+  // para operador_conciliador (a sessão do usuário esbarrava no RLS e o status
+  // não virava 'concluido' apesar do extrato ficar 'ok').
+  await admin.from('tarefas').update(updates).eq('id', id)
 
   // Guarda o intervalo de datas do AUTOSYSTEM usado (feriados/fins de semana),
   // para a re-sincronização comparar o mesmo período. Resiliente caso a
   // migration 117 ainda não tenha sido aplicada (erro é ignorado).
   if (datasAS.length > 1) {
-    await supabase.from('tarefas').update({ extrato_datas_as: datasAS }).eq('id', id)
+    await admin.from('tarefas').update({ extrato_datas_as: datasAS }).eq('id', id)
   }
 
   return NextResponse.json({
