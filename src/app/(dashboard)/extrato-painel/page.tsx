@@ -133,6 +133,27 @@ export default function ExtratoPainelPage() {
     } else {
       setRows((data ?? []) as unknown as ExtratoRow[])
     }
+
+    // Contagens reais (não limitadas a 1000 como a listagem acima)
+    const NAO_RESOLVIDA = '("concluido","concluida","cancelado")'
+    const base = () => supabase.from('tarefas').select('*', { count: 'exact', head: true }).eq('categoria', 'conciliacao_bancaria')
+    const [tot, divc, pendc] = await Promise.all([
+      base(),
+      // Mesmo filtro da aba Divergências: diferença significativa + não concluída
+      base()
+        .not('extrato_arquivo_path', 'is', null)
+        .not('extrato_data', 'is', null)
+        .not('extrato_diferenca', 'is', null)
+        .or('extrato_diferenca.gt.0.02,extrato_diferenca.lt.-0.02')
+        .not('status', 'in', NAO_RESOLVIDA),
+      // Pendentes: ainda sem extrato e não concluída
+      base().is('extrato_status', null).not('status', 'in', NAO_RESOLVIDA),
+    ])
+    const total      = tot.count   ?? 0
+    const divergente = divc.count  ?? 0
+    const pendente   = pendc.count ?? 0
+    setResumo({ total, divergente, pendente, ok: total - divergente - pendente })
+
     setLoading(false)
   }
 
@@ -165,9 +186,11 @@ export default function ExtratoPainelPage() {
   const filtered = useMemo(() => {
     return rows.filter(r => {
       if (filtroStatus !== 'todos') {
+        const resolvida = ['concluido', 'concluida', 'cancelado'].includes(r.status)
         if (filtroStatus === 'pendente' && r.extrato_status !== null) return false
         if (filtroStatus === 'ok'        && r.extrato_status !== 'ok') return false
-        if (filtroStatus === 'divergente' && r.extrato_status !== 'divergente') return false
+        // "Divergentes" = só as ainda EM ABERTO (não concluídas), igual ao card e à aba Divergências
+        if (filtroStatus === 'divergente' && !(r.extrato_status === 'divergente' && !resolvida)) return false
       }
       if (filtroPosto !== 'todos' && r.posto?.nome !== filtroPosto) return false
       if (search) {
@@ -181,13 +204,12 @@ export default function ExtratoPainelPage() {
     })
   }, [rows, filtroStatus, filtroPosto, search])
 
-  // ── Resumo ─────────────────────────────────────────────────────────────────
-  const resumo = useMemo(() => ({
-    total:       rows.length,
-    ok:          rows.filter(r => r.extrato_status === 'ok').length,
-    divergente:  rows.filter(r => r.extrato_status === 'divergente').length,
-    pendente:    rows.filter(r => r.extrato_status === null).length,
-  }), [rows])
+  // ── Resumo ───────────────────────────────────────────────────────────────
+  // Vem de contagens reais no banco (sem o limite de 1000 da listagem). A
+  // contagem de "Divergentes" replica EXATAMENTE o filtro da aba "Divergências
+  // — Conciliação" (diferença significativa E tarefa não concluída), para os
+  // dois números baterem.
+  const [resumo, setResumo] = useState({ total: 0, ok: 0, divergente: 0, pendente: 0 })
 
   return (
     <div className="animate-fade-in">
