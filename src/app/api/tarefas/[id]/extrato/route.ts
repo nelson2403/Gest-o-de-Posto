@@ -261,16 +261,19 @@ export async function POST(
 
     // Procura o rótulo em QUALQUER coluna (há extratos com coluna inicial vazia,
     // célula mesclada, etc.). A DATA é a primeira célula de data da linha — se não
-    // houver, usa a data da tarefa. O VALOR do saldo é o último número da linha.
+    // houver, usa a data da tarefa.
     const dataDaLinha = (row: unknown[]): string | null => {
       for (const c of row) { const d = parseDataExcel(c); if (d) return d }
       return null
     }
-    const valorDaLinha = (row: unknown[]): number => {
-      for (let i = row.length - 1; i >= 0; i--) {
-        const s = String(row[i] ?? '').trim()
-        if (s && /\d/.test(s) && /^[-+\d.,\s]*\d[-+\d.,\sCDcd*]*$/.test(s)) return parseValorBRSigned(s)
-      }
+    // O VALOR do saldo é a primeira célula em formato BRASILEIRO (vírgula decimal
+    // ou sufixo C/D) DEPOIS do rótulo. Isso ignora colunas auxiliares em formato
+    // US que algumas exportações trazem no fim da linha (ex.: "5878.6",
+    // "-14101.19"), que o parser BR leria errado (ponto = milhar).
+    const ehMonetarioBR = (s: string) => !!s && /\d/.test(s) && (/,/.test(s) || /[CDcd*]\s*$/.test(s))
+    const valorAposRotulo = (cels: string[], idxRotulo: number): number => {
+      for (let j = idxRotulo + 1; j < cels.length; j++) if (ehMonetarioBR(cels[j])) return parseValorBRSigned(cels[j])
+      for (const c of cels) if (ehMonetarioBR(c)) return parseValorBRSigned(c) // fallback
       return 0
     }
 
@@ -281,15 +284,16 @@ export async function POST(
     }
 
     for (const row of rows) {
-      const cels = row.map(c => String(c ?? '').trim().toUpperCase())
-      const temSaldoDia      = cels.some(c => c.includes('SALDO DO DIA'))
-      const temSaldoAnterior = cels.some(c => c.includes('SALDO ANTERIOR') && !c.includes('BLOQUEAD'))
-      if (temSaldoDia) {
+      const cels = row.map(c => String(c ?? '').trim())
+      const up   = cels.map(c => c.toUpperCase())
+      const idxDia = up.findIndex(c => c.includes('SALDO DO DIA'))
+      const idxAnt = up.findIndex(c => c.includes('SALDO ANTERIOR') && !c.includes('BLOQUEAD'))
+      if (idxDia >= 0) {
         const d = dataDaLinha(row) ?? dataEsperada ?? dataMaxArquivo
-        if (d) saldosDia.push({ data: d, valor: valorDaLinha(row) })
+        if (d) saldosDia.push({ data: d, valor: valorAposRotulo(cels, idxDia) })
       }
-      if (temSaldoAnterior && saldoAnteriorArquivo === null) {
-        saldoAnteriorArquivo = valorDaLinha(row)
+      if (idxAnt >= 0 && saldoAnteriorArquivo === null) {
+        saldoAnteriorArquivo = valorAposRotulo(cels, idxAnt)
       }
     }
 
