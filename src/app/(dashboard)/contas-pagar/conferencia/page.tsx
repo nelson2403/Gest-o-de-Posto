@@ -475,10 +475,10 @@ export default function ConferenciaPage() {
                                   </Badge>
                                 )}
                                 {(() => {
-                                  const boletosDoDia = (e.boletos_fiscais ?? []).filter(b => String(b.data_vencimento) === selectedData)
-                                  return boletosDoDia.length > 0 && (
+                                  const nBoletos = (e.boletos_fiscais ?? []).length
+                                  return nBoletos > 0 && (
                                     <Badge variant="outline" className="ml-1 text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200 print:hidden flex items-center gap-0.5">
-                                      <Paperclip className="w-2.5 h-2.5" /> {boletosDoDia.length} boleto{boletosDoDia.length !== 1 ? 's' : ''}
+                                      <Paperclip className="w-2.5 h-2.5" /> {nBoletos} boleto{nBoletos !== 1 ? 's' : ''}
                                     </Badge>
                                   )
                                 })()}
@@ -496,16 +496,6 @@ export default function ConferenciaPage() {
                             <tr>
                               <td colSpan={3} className="p-0 bg-gray-50/50 border-b border-gray-100 print:bg-transparent">
                                 <div className="px-4 py-3 print:px-0 print:py-1">
-                                  {(() => {
-                                    const boletosDoDia = (e.boletos_fiscais ?? []).filter(b =>
-                                      String(b.data_vencimento) === selectedData
-                                    )
-                                    return boletosDoDia.length > 0 && (
-                                      <div className="mb-3 print:hidden">
-                                        <BoletosFiscaisSection boletos={boletosDoDia} />
-                                      </div>
-                                    )
-                                  })()}
                                   <table className="w-full text-[12.5px] print:text-[8pt] print:table-fixed">
                                     <thead>
                                       <tr className="border-b border-gray-200 text-[10.5px] text-gray-400 uppercase tracking-wide print:text-[7.5pt] print:text-gray-600">
