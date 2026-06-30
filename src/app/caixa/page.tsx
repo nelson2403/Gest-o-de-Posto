@@ -529,7 +529,10 @@ export default function CaixaPage() {
     // NO SISTEMA (AUTOSYSTEM) — ou seja, o valor do lado "Sist." (valor_as) > 0.
     // Isso força o frentista a lançar a sangria/depósito no sistema antes de fechar.
     const camposSD = itens.filter(i => i.tipo === 'dinheiro' || i.tipo === 'deposito_cofre')
-    if (camposSD.length > 0 && !camposSD.some(i => (i.valor_as ?? 0) > 0)) {
+    // Só exige lançar a sangria/depósito se o frentista DECLAROU dinheiro (há o que
+    // depositar). Sem dinheiro no caixa, não há o que lançar — não bloqueia.
+    const dinheiroDeclarado = camposSD.reduce((s, i) => s + (parseFloat(String(i.valor_frentista).replace(',', '.')) || 0), 0)
+    if (dinheiroDeclarado > 0 && !camposSD.some(i => (i.valor_as ?? 0) > 0)) {
       setErro('Lance a Sangria ou o Depósito (Dep. Cofre) no sistema antes de finalizar o fechamento.')
       return
     }

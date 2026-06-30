@@ -38,7 +38,10 @@ export async function POST(req: NextRequest) {
     const camposSangriaDeposito = body.itens.filter(
       i => i.tipo === 'dinheiro' || i.tipo === 'deposito_cofre',
     )
-    if (camposSangriaDeposito.length > 0 &&
+    // Só exige o lançamento se o frentista DECLAROU dinheiro (há o que depositar).
+    // Caixa sem dinheiro não tem o que sangrar/depositar — não bloqueia.
+    const dinheiroDeclarado = camposSangriaDeposito.reduce((s, i) => s + (Number(i.valor_frentista) || 0), 0)
+    if (dinheiroDeclarado > 0 &&
         !camposSangriaDeposito.some(i => (i.valor_as ?? 0) > 0)) {
       return NextResponse.json(
         { error: 'Lance a Sangria ou o Depósito (Dep. Cofre) no sistema antes de finalizar o fechamento.' },
