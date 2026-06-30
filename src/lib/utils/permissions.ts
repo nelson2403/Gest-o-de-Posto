@@ -61,11 +61,12 @@ export const PERMISSIONS = {
   'formas_pagamento.edit':   ['master', 'adm_financeiro'],
   'formas_pagamento.delete': ['master', 'adm_financeiro'],
 
-  // Portais
-  'portais.view':   [...ACESSO_ALL],
-  'portais.create': [...ADM_ALL],
-  'portais.edit':   [...ADM_ALL],
-  'portais.delete': [...ADM_ALL],
+  // Portais — aba restrita a master + adm_financeiro (os demais acessam o link
+  // do portal direto pela aba "Acessos"). A LEITURA dos dados continua via RLS.
+  'portais.view':   ['master', 'adm_financeiro'],
+  'portais.create': ['master', 'adm_financeiro'],
+  'portais.edit':   ['master', 'adm_financeiro'],
+  'portais.delete': ['master', 'adm_financeiro'],
 
   // Acessos
   'acessos.view':       [...ACESSO_ALL],

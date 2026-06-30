@@ -16,12 +16,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from '@/hooks/use-toast'
 import { useAuthContext } from '@/contexts/AuthContext'
 import { can } from '@/lib/utils/permissions'
-import { Plus, Pencil, Trash2, KeyRound, Loader2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, KeyRound, Loader2, ExternalLink } from 'lucide-react'
 import { CopyButton } from '@/components/shared/CopyButton'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { AcessoUnificado, Portal, Empresa, Role } from '@/types/database.types'
 
-type AcessoRow = AcessoUnificado & { portal?: { nome: string }; empresa?: { nome: string } }
+type AcessoRow = AcessoUnificado & { portal?: { nome: string; url?: string | null }; empresa?: { nome: string } }
 
 const EMPTY = { empresa_id: '', portal_id: '', login: '', senha: '', observacoes: '' }
 
@@ -51,7 +51,7 @@ export default function AcessosUnificadosPage() {
     setLoading(true)
     const { data } = await supabase
       .from('acessos_unificados')
-      .select('*, portal:portais(id, nome), empresa:empresas(id, nome)')
+      .select('*, portal:portais(id, nome, url), empresa:empresas(id, nome)')
       .order('criado_em', { ascending: false })
     if (data) setAcessos(data as AcessoRow[])
     setLoading(false)
@@ -140,7 +140,16 @@ export default function AcessosUnificadosPage() {
       id: 'portal',
       header: 'Portal',
       accessorFn: (row: AcessoRow) => row.portal?.nome ?? '—',
-      cell: ({ row }) => <span className="font-medium text-[13px]">{row.original.portal?.nome ?? '—'}</span>,
+      cell: ({ row }) => {
+        const p = row.original.portal
+        if (p?.url) return (
+          <a href={p.url.startsWith('http') ? p.url : `https://${p.url}`} target="_blank" rel="noopener noreferrer"
+            className="font-medium text-[13px] text-blue-600 hover:underline inline-flex items-center gap-1">
+            {p.nome} <ExternalLink className="w-3 h-3 flex-shrink-0" />
+          </a>
+        )
+        return <span className="font-medium text-[13px]">{p?.nome ?? '—'}</span>
+      },
     },
     {
       accessorKey: 'login',

@@ -15,11 +15,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from '@/hooks/use-toast'
 import { useAuthContext } from '@/contexts/AuthContext'
 import { can } from '@/lib/utils/permissions'
-import { Plus, Pencil, Trash2, KeyRound, Loader2, ChevronDown, ChevronRight, Building2, Search } from 'lucide-react'
+import { Plus, Pencil, Trash2, KeyRound, Loader2, ChevronDown, ChevronRight, Building2, Search, ExternalLink } from 'lucide-react'
 import { CopyButton } from '@/components/shared/CopyButton'
 import type { AcessoPosto, Posto, Portal, Role } from '@/types/database.types'
 
-type AcessoRow = AcessoPosto & { posto?: { nome: string }; portal?: { nome: string } }
+type AcessoRow = AcessoPosto & { posto?: { nome: string }; portal?: { nome: string; url?: string | null } }
 
 const EMPTY = { posto_id: '', portal_id: '', login: '', senha: '', observacoes: '' }
 
@@ -51,7 +51,7 @@ export default function AcessosPostosPage() {
     setLoading(true)
     const { data } = await supabase
       .from('acessos_postos')
-      .select('*, posto:postos(id, nome), portal:portais(id, nome)')
+      .select('*, posto:postos(id, nome), portal:portais(id, nome, url)')
       .order('criado_em', { ascending: false })
     if (data) {
       const rows = data as AcessoRow[]
@@ -226,7 +226,15 @@ export default function AcessosPostosPage() {
                           {/* Portal */}
                           <div className="w-36 flex-shrink-0">
                             <div className="text-[11px] text-gray-400 mb-0.5">Portal</div>
-                            <span className="text-[13px] font-medium text-gray-700">{a.portal?.nome ?? '—'}</span>
+                            {a.portal?.url ? (
+                              <a href={a.portal.url.startsWith('http') ? a.portal.url : `https://${a.portal.url}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-[13px] font-medium text-blue-600 hover:underline inline-flex items-center gap-1">
+                                {a.portal.nome} <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                              </a>
+                            ) : (
+                              <span className="text-[13px] font-medium text-gray-700">{a.portal?.nome ?? '—'}</span>
+                            )}
                           </div>
 
                           {/* Login */}
