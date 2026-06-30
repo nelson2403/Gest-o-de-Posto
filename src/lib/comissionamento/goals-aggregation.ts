@@ -53,8 +53,24 @@ function realizadoNoCampo(vendas: Venda[], meta: Meta): number {
   if (meta.campo === 'mix') {
     // Mix = participação relativa do numerador no denominador, em %.
     //   realizado = (Σ qtd das vendas do numerador) / (Σ qtd das vendas do denominador) × 100
-    // Se algum dos conjuntos não estiver configurado, devolve 0 (meta não
-    // computável).
+    // Preferimos comparar GRIDS (identificador único do AUTOSYSTEM) quando
+    // disponíveis — robusto contra divergência de string entre o nome
+    // cadastrado na categoria e o nome que vem da venda. Cai para nomes
+    // (lowercase + trim) só quando os grids são null (meta legada).
+    const numGrids = meta.mix_numerador_grids   ?? null
+    const denGrids = meta.mix_denominador_grids ?? null
+    if (numGrids && denGrids) {
+      if (numGrids.length === 0 || denGrids.length === 0) return 0
+      const numSet = new Set(numGrids)
+      const denSet = new Set(denGrids)
+      let qNum = 0, qDen = 0
+      for (const v of vendas) {
+        if (denSet.has(v.produto)) qDen += v.quantidade
+        if (numSet.has(v.produto)) qNum += v.quantidade
+      }
+      return qDen > 0 ? (qNum / qDen) * 100 : 0
+    }
+    // Fallback legado por nome
     const num = (meta.mix_numerador   ?? []).map(s => s.trim().toLowerCase())
     const den = (meta.mix_denominador ?? []).map(s => s.trim().toLowerCase())
     if (num.length === 0 || den.length === 0) return 0

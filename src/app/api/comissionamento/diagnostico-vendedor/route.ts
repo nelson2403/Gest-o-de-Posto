@@ -249,6 +249,12 @@ export async function GET(req: NextRequest) {
       // os produtos vendidos no período (top por quantidade), marcando
       // quais casaram com numerador/denominador. Resolve o caso clássico
       // "categoria tem 'Gasolina Comum' mas AUTOSYSTEM manda 'GASOLINA C COMUM'".
+      // Preferir comparação por grid quando disponível (igual ao engine).
+      const numGrids = m.mix_numerador_grids   ?? null
+      const denGrids = m.mix_denominador_grids ?? null
+      const usaGrids = !!(numGrids && denGrids && numGrids.length > 0 && denGrids.length > 0)
+      const numSetGrid = new Set<number>(numGrids ?? [])
+      const denSetGrid = new Set<number>(denGrids ?? [])
       const num = (m.mix_numerador   ?? []).map(s => s.trim().toLowerCase())
       const den = (m.mix_denominador ?? []).map(s => s.trim().toLowerCase())
       const numSet = new Set(num)
@@ -276,33 +282,44 @@ export async function GET(req: NextRequest) {
         return true
       })
 
-      // Agrega vendidos por produto_nome com qtd e flags de casamento
-      const agg = new Map<string, { qtd: number; bate_num: boolean; bate_den: boolean }>()
+      // Agrega vendidos por produto (grid) com qtd e flags de casamento.
+      // Marcação prefere grid; cai pra nome só se grids estão vazios.
+      const agg = new Map<number, { nome: string; grid: number; qtd: number; bate_num: boolean; bate_den: boolean }>()
       for (const v of vendasDaMeta) {
+        const grid = v.produto
         const nome = (v.produto_nome ?? '').trim()
-        const key = nome.toLowerCase()
-        const cur = agg.get(nome) ?? { qtd: 0, bate_num: numSet.has(key), bate_den: denSet.has(key) }
+        const nomeKey = nome.toLowerCase()
+        const bateNum = usaGrids ? numSetGrid.has(grid) : numSet.has(nomeKey)
+        const bateDen = usaGrids ? denSetGrid.has(grid) : denSet.has(nomeKey)
+        const cur = agg.get(grid) ?? { nome, grid, qtd: 0, bate_num: bateNum, bate_den: bateDen }
         cur.qtd += v.quantidade
-        agg.set(nome, cur)
+        agg.set(grid, cur)
       }
-      const vendidos = Array.from(agg.entries())
-        .map(([nome, info]) => ({ nome, qtd: info.qtd, bate_num: info.bate_num, bate_den: info.bate_den }))
+      const vendidos = Array.from(agg.values())
         .sort((a, b) => b.qtd - a.qtd)
         .slice(0, 30)
 
       let qNum = 0, qDen = 0
       for (const v of vendasDaMeta) {
-        const nome = (v.produto_nome ?? '').trim().toLowerCase()
-        if (denSet.has(nome)) qDen += v.quantidade
-        if (numSet.has(nome)) qNum += v.quantidade
+        if (usaGrids) {
+          if (denSetGrid.has(v.produto)) qDen += v.quantidade
+          if (numSetGrid.has(v.produto)) qNum += v.quantidade
+        } else {
+          const nome = (v.produto_nome ?? '').trim().toLowerCase()
+          if (denSet.has(nome)) qDen += v.quantidade
+          if (numSet.has(nome)) qNum += v.quantidade
+        }
       }
       const realizado = qDen > 0 ? (qNum / qDen) * 100 : 0
 
       return {
         ...base,
         mix_detalhe: {
+          usa_grids:              usaGrids,
           numerador_cadastrado:   (m.mix_numerador   ?? []),
           denominador_cadastrado: (m.mix_denominador ?? []),
+          numerador_grids:        numGrids ?? [],
+          denominador_grids:      denGrids ?? [],
           qtd_numerador:          qNum,
           qtd_denominador:        qDen,
           realizado_pct:          realizado,

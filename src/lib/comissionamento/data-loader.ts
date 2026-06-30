@@ -94,19 +94,30 @@ export async function carregarMetasDoPosto(
     if (m.mix_denominador_categoria_id) categoriaIds.add(m.mix_denominador_categoria_id as string)
   }
   const produtosPorCategoria = new Map<string, string[]>()
+  // Espelho em grids — o engine prefere comparar v.produto (grid) com esses
+  // valores, evitando o casamento por string que falha quando nome cadastrado
+  // ≠ nome no AUTOSYSTEM ("GASOLINA C COMUM" vs "Gasolina Comum").
+  const gridsPorCategoria = new Map<string, number[]>()
   if (categoriaIds.size > 0) {
     const { data: links, error: erLinks } = await admin
       .from('comissio_categoria_produtos')
-      .select('categoria_id, produto_nome')
+      .select('categoria_id, produto_grid, produto_nome')
       .in('categoria_id', Array.from(categoriaIds))
     if (erLinks) throw new Error(`Erro ao buscar produtos de categorias: ${erLinks.message}`)
     for (const l of links ?? []) {
       const cid = l.categoria_id as string
       const nome = String(l.produto_nome ?? '')
-      if (!nome) continue
-      const arr = produtosPorCategoria.get(cid) ?? []
-      arr.push(nome)
-      produtosPorCategoria.set(cid, arr)
+      const grid = Number(l.produto_grid)
+      if (Number.isFinite(grid) && grid > 0) {
+        const arr = gridsPorCategoria.get(cid) ?? []
+        arr.push(grid)
+        gridsPorCategoria.set(cid, arr)
+      }
+      if (nome) {
+        const arr = produtosPorCategoria.get(cid) ?? []
+        arr.push(nome)
+        produtosPorCategoria.set(cid, arr)
+      }
     }
   }
 
@@ -135,9 +146,16 @@ export async function carregarMetasDoPosto(
     }
 
     // Mix: prefere lista vinda de categoria; cai pra mix_* (legado) só
-    // quando a categoria não está setada.
+    // quando a categoria não está setada. Carregamos GRIDS e NOMES — o
+    // engine usa grids quando disponíveis (robusto), nomes quando não.
     const numCatId = (m.mix_numerador_categoria_id   as string | null) ?? null
     const denCatId = (m.mix_denominador_categoria_id as string | null) ?? null
+    const mixNumeradorGrids: number[] | null = numCatId
+      ? (gridsPorCategoria.get(numCatId) ?? [])
+      : null
+    const mixDenominadorGrids: number[] | null = denCatId
+      ? (gridsPorCategoria.get(denCatId) ?? [])
+      : null
     const mixNumerador: string[] | null = numCatId
       ? (produtosPorCategoria.get(numCatId) ?? [])
       : (Array.isArray(m.mix_numerador) ? (m.mix_numerador as unknown[]).map(v => String(v)) : null)
@@ -157,6 +175,8 @@ export async function carregarMetasDoPosto(
       filtro_modo:     m.filtro_modo ?? 'incluir',
       mix_numerador_categoria_id:   numCatId,
       mix_denominador_categoria_id: denCatId,
+      mix_numerador_grids:   mixNumeradorGrids,
+      mix_denominador_grids: mixDenominadorGrids,
       mix_numerador:   mixNumerador,
       mix_denominador: mixDenominador,
       valor_meta:      Number(m.valor_meta),

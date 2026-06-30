@@ -623,12 +623,15 @@ function DiagnosticoModal({ vendedorNome, loading, erro, data, onClose }: Diagno
       id: string; nome: string; campo: string; valor_meta: number;
       atingimento_total: number | null; atingimento_vendedor: number | null;
       mix_detalhe?: {
+        usa_grids:              boolean
         numerador_cadastrado:   string[]
         denominador_cadastrado: string[]
+        numerador_grids:        number[]
+        denominador_grids:      number[]
         qtd_numerador:          number
         qtd_denominador:        number
         realizado_pct:          number
-        produtos_vendidos: Array<{ nome: string; qtd: number; bate_num: boolean; bate_den: boolean }>
+        produtos_vendidos: Array<{ nome: string; grid: number; qtd: number; bate_num: boolean; bate_den: boolean }>
       }
     }>
     regras: Array<{
@@ -697,15 +700,22 @@ function DiagnosticoModal({ vendedorNome, loading, erro, data, onClose }: Diagno
                               {m.mix_detalhe && (
                                 <tr>
                                   <td colSpan={5} className="bg-purple-50/30 px-3 py-2 border-t border-purple-100">
-                                    <p className="text-[10.5px] uppercase tracking-wide text-purple-700 font-semibold mb-1">Detalhe mix · realizado = {m.mix_detalhe.qtd_numerador.toFixed(2)} / {m.mix_detalhe.qtd_denominador.toFixed(2)} × 100 = {m.mix_detalhe.realizado_pct.toFixed(2)}%</p>
+                                    <p className="text-[10.5px] uppercase tracking-wide text-purple-700 font-semibold mb-1">
+                                      Detalhe mix · realizado = {m.mix_detalhe.qtd_numerador.toFixed(2)} / {m.mix_detalhe.qtd_denominador.toFixed(2)} × 100 = {m.mix_detalhe.realizado_pct.toFixed(2)}%
+                                      <span className="ml-2 text-[10px] font-normal text-gray-600 normal-case">
+                                        ({m.mix_detalhe.usa_grids ? 'comparando por grid' : 'comparando por nome (legado)'})
+                                      </span>
+                                    </p>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
                                       <div>
                                         <p className="text-[10px] uppercase text-gray-500 mb-0.5">Numerador cadastrado</p>
                                         <p className="font-mono text-[10.5px] text-gray-700 break-words">{m.mix_detalhe.numerador_cadastrado.length === 0 ? '— vazio —' : m.mix_detalhe.numerador_cadastrado.join(' · ')}</p>
+                                        {m.mix_detalhe.usa_grids && <p className="text-[9.5px] text-gray-400 mt-0.5">grids: {m.mix_detalhe.numerador_grids.join(', ')}</p>}
                                       </div>
                                       <div>
                                         <p className="text-[10px] uppercase text-gray-500 mb-0.5">Denominador cadastrado</p>
                                         <p className="font-mono text-[10.5px] text-gray-700 break-words">{m.mix_detalhe.denominador_cadastrado.length === 0 ? '— vazio —' : m.mix_detalhe.denominador_cadastrado.join(' · ')}</p>
+                                        {m.mix_detalhe.usa_grids && <p className="text-[9.5px] text-gray-400 mt-0.5">grids: {m.mix_detalhe.denominador_grids.join(', ')}</p>}
                                       </div>
                                     </div>
                                     <p className="text-[10px] uppercase text-gray-500 mb-0.5">Produtos vendidos no período (top {m.mix_detalhe.produtos_vendidos.length})</p>
@@ -716,8 +726,11 @@ function DiagnosticoModal({ vendedorNome, loading, erro, data, onClose }: Diagno
                                             <tr><td className="px-2 py-2 text-rose-700 italic">Nenhuma venda no período/filtro da meta</td></tr>
                                           )}
                                           {m.mix_detalhe.produtos_vendidos.map(p => (
-                                            <tr key={p.nome} className={cn('border-b border-gray-50', (p.bate_num || p.bate_den) ? 'bg-emerald-50/40' : 'bg-white')}>
-                                              <td className="px-2 py-0.5 font-mono">{p.nome}</td>
+                                            <tr key={p.grid} className={cn('border-b border-gray-50', (p.bate_num || p.bate_den) ? 'bg-emerald-50/40' : 'bg-white')}>
+                                              <td className="px-2 py-0.5">
+                                                <span className="font-mono">{p.nome}</span>
+                                                <span className="text-gray-400 ml-1.5">#{p.grid}</span>
+                                              </td>
                                               <td className="px-2 py-0.5 text-right tabular-nums w-20">{p.qtd.toFixed(2)}</td>
                                               <td className="px-2 py-0.5 w-16 text-center">
                                                 {p.bate_num && <span className="text-emerald-700 font-bold" title="Casou com numerador">N</span>}

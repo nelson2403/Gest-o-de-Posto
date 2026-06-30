@@ -153,6 +153,14 @@ export interface Meta {
   // não há categoria vinculada, cai em `mix_*` (legado: nomes literais).
   mix_numerador_categoria_id:   string | null
   mix_denominador_categoria_id: string | null
+  // Grids dos produtos (vindos de comissio_categoria_produtos.produto_grid).
+  // Preferidos pelo engine: comparam Venda.produto (grid) direto, sem casar
+  // por string — robusto contra variação de nome ("GASOLINA C COMUM" vs
+  // "Gasolina Comum"). Populados quando há categoria_id; null no legado.
+  mix_numerador_grids:   number[] | null
+  mix_denominador_grids: number[] | null
+  // Nomes (legado pré-categoria). Usados como fallback quando os grids são
+  // null. Preservados também para exibição no diagnóstico.
   mix_numerador:   string[] | null
   mix_denominador: string[] | null
   valor_meta:      number   // total da empresa/posto
