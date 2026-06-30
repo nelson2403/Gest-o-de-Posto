@@ -18,9 +18,9 @@ export interface SaldoConta {
   status:                 'ok' | 'diverge' | 'sem_inicial' | 'sem_extrato'
 }
 
-// Tolerância de divergência (R$) — pequenas diferenças de timing entre extrato
-// e lançamento no AUTOSYSTEM não contam como divergência real.
-const TOLERANCIA = 1.0
+// Tolerância de divergência (R$) — diferenças pequenas (centavos / lançamentos
+// pendentes) não contam como divergência real; acima disso é item de conciliação.
+const TOLERANCIA = 50.0
 
 // GET /api/monitoramento/saldos — somente master
 export async function GET() {
@@ -100,12 +100,12 @@ export async function GET() {
       )
       for (const r of movRows) movByCode.set(r.code, Number(r.saldo_mov))
 
-      // Saldo inicial cadastrado (se já lançado) — pega o mais recente por conta
+      // Saldo inicial cadastrado no plano de contas do AUTOSYSTEM (conta.saldo_inicial).
+      // É onde o AUTOSYSTEM grava o saldo inicial lançado na conta (chave = código da conta).
       const iniRows = await queryAS<{ conta: string; si: number }>(
-        `SELECT DISTINCT ON (conta) conta, saldo_ini::float AS si
-           FROM conta_saldo
-          WHERE conta = ANY($1::text[])
-          ORDER BY conta, data DESC`,
+        `SELECT codigo AS conta, COALESCE(saldo_inicial, 0)::float AS si
+           FROM conta
+          WHERE codigo = ANY($1::text[])`,
         [codes],
       )
       for (const r of iniRows) iniByCode.set(r.conta, Number(r.si))

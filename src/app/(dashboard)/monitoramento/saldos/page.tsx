@@ -151,9 +151,9 @@ export default function MonitoramentoSaldosPage() {
                   <td className="px-3 py-2.5 text-right font-mono text-gray-800">{fmt(c.saldo_banco)}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-gray-600">{fmt(c.saldo_autosystem)}</td>
                   <td className={`px-3 py-2.5 text-right font-mono font-semibold ${
-                    c.divergencia == null ? 'text-gray-300'
-                    : Math.abs(c.divergencia) <= 1 ? 'text-green-600'
-                    : 'text-red-600'
+                    c.status === 'ok' ? 'text-green-600'
+                    : c.status === 'diverge' ? 'text-red-600'
+                    : 'text-gray-300'
                   }`}>
                     {fmt(c.divergencia)}
                   </td>
