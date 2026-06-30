@@ -85,13 +85,15 @@ export async function GET(req: NextRequest) {
   // Tenta selecionar posto_id (migration 090); se a coluna não existir, faz fallback
   let rawBoletos: any[] = []
   {
+    // Casamos por fornecedor+valor (não por vencimento), então NÃO filtramos por
+    // data — só pegamos os boletos fiscais com arquivo e valor, ainda não pagos.
     const { data, error } = await admin
       .from('solicitacoes_pagamento')
       .select('id, titulo, fornecedor, valor, data_vencimento, arquivo_url, arquivo_nome, status, posto_id, descricao')
       .eq('setor', 'fiscal')
-      .lte('data_vencimento', fim)
       .not('status', 'in', '(pago,rejeitado)')
-      .not('data_vencimento', 'is', null)
+      .not('arquivo_url', 'is', null)
+      .not('valor', 'is', null)
 
     if (!error) {
       rawBoletos = data ?? []
@@ -101,9 +103,9 @@ export async function GET(req: NextRequest) {
         .from('solicitacoes_pagamento')
         .select('id, titulo, fornecedor, valor, data_vencimento, arquivo_url, arquivo_nome, status, descricao')
         .eq('setor', 'fiscal')
-        .lte('data_vencimento', fim)
         .not('status', 'in', '(pago,rejeitado)')
-        .not('data_vencimento', 'is', null)
+        .not('arquivo_url', 'is', null)
+        .not('valor', 'is', null)
       rawBoletos = (d2 ?? []).map((b: any) => ({ ...b, posto_id: null }))
     }
   }
@@ -186,27 +188,40 @@ export async function GET(req: NextRequest) {
     empresasMap.get(empNum)!.push(linha)
   }
 
-  // Normaliza nome de fornecedor para comparar boleto x título
-  const normFor = (s: string | null) => (s ?? '').toUpperCase().replace(/[^\w\s]/g, '').trim()
+  // ── Casa os boletos fiscais aos títulos por FORNECEDOR + VALOR (global) ────
+  // Os boletos chegam SEM posto_id confiável e muitos sem vencimento; então não
+  // dá pra agrupar por posto. Casamos pelo conteúdo: mesmo valor (±0,01) e
+  // fornecedor parecido. O posto sai do título que casou.
+  const norm = (s: string | null) => (s ?? '').toUpperCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
+  const fornBate = (a: string | null, b: string | null) => {
+    const na = norm(a), nb = norm(b)
+    if (na.length < 4 || nb.length < 4) return false
+    return na === nb || na.includes(nb.slice(0, 15)) || nb.includes(na.slice(0, 15))
+  }
+  const boletosPool = (rawBoletos as any[]).filter(b => b.arquivo_url && b.valor != null)
+  const boletoUsado = new Set<string>()
+  const boletosMatchByPosto = new Map<string, BoletoFiscal[]>()
 
   const empresas: TituloASEmpresa[] = []
   for (const [empNum, posto] of postoByEmp.entries()) {
     const titulos = empresasMap.get(empNum) ?? []
     if (!titulos.length) continue
 
-    // Casa cada boleto fiscal (com arquivo) ao seu título: valor + (vencimento OU
-    // fornecedor). Assim o boleto aparece direto na linha da conta.
-    const boletosDoPosto = boletosByPosto.get(posto.id) ?? []
-    const boletoUsado = new Set<string>()
     for (const t of titulos) {
-      const b = boletosDoPosto.find(b =>
-        !boletoUsado.has(b.id) && b.arquivo_url && b.valor != null &&
-        Math.abs(b.valor - t.valor) < 0.01 &&
-        (String(b.data_vencimento ?? '').slice(0, 10) === String(t.vencto ?? '').slice(0, 10) ||
-         (normFor(b.fornecedor).length > 8 && normFor(b.fornecedor) === normFor(t.pessoa_nome)))
+      const b = boletosPool.find(b =>
+        !boletoUsado.has(b.id) &&
+        Math.abs(Number(b.valor) - t.valor) < 0.01 &&
+        fornBate(b.fornecedor, t.pessoa_nome),
       )
-      if (b) { t.boleto_url = b.arquivo_url; t.boleto_nome = b.arquivo_nome ?? b.titulo; boletoUsado.add(b.id) }
+      if (b) {
+        t.boleto_url = b.arquivo_url
+        t.boleto_nome = b.arquivo_nome ?? b.titulo
+        boletoUsado.add(b.id)
+        if (!boletosMatchByPosto.has(posto.id)) boletosMatchByPosto.set(posto.id, [])
+        boletosMatchByPosto.get(posto.id)!.push(b as BoletoFiscal)
+      }
     }
+
     const sum = (filt: (t: TituloASLinha) => boolean) =>
       parseFloat(titulos.filter(filt).reduce((s, t) => s + t.valor, 0).toFixed(2))
     const cnt = (filt: (t: TituloASLinha) => boolean) =>
@@ -224,7 +239,7 @@ export async function GET(req: NextRequest) {
       qt_em_atraso:    cnt(t => t.situacao === 'em_atraso'),
       qt_pago:         cnt(t => t.situacao === 'pago'),
       titulos,
-      boletos_fiscais: boletosByPosto.get(posto.id) ?? [],
+      boletos_fiscais: boletosMatchByPosto.get(posto.id) ?? [],
     })
   }
 
