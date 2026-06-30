@@ -167,6 +167,7 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       { href: '/relatorios', label: 'Relatórios', icon: FileText, permission: 'relatorios.view' as Permission },
       { href: '/monitoramento', label: 'Monitoramento', icon: Activity, permission: 'monitoramento.view' as Permission },
+      { href: '/monitoramento/saldos', label: 'Saldos Bancários', icon: Landmark, permission: 'monitoramento.view' as Permission },
     ],
   },
   {
