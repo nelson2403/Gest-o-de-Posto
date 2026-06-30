@@ -80,6 +80,7 @@ export const NAV_GROUPS: NavGroup[] = [
           { href: '/extrato-painel',                label: 'Extrato Bancário',     icon: ScanSearch,    permission: 'extrato_painel.view' as Permission },
           { href: '/tarefas/conciliacao',          label: 'Geração de Tarefas',   icon: ClipboardList, permission: 'contas_bancarias.view' as Permission },
           { href: '/conciliadores',                label: 'Conciliadores',        icon: Users,         permission: 'usuarios.edit' as Permission },
+          { href: '/monitoramento/saldos',          label: 'Saldos Bancários',     icon: Landmark,      permission: 'monitoramento.view' as Permission },
         ],
       },
       { href: '/controle-caixas',     label: 'Controle de Caixas',   icon: CheckSquare, permission: 'controle_caixas.view' as Permission },
@@ -167,7 +168,6 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       { href: '/relatorios', label: 'Relatórios', icon: FileText, permission: 'relatorios.view' as Permission },
       { href: '/monitoramento', label: 'Monitoramento', icon: Activity, permission: 'monitoramento.view' as Permission },
-      { href: '/monitoramento/saldos', label: 'Saldos Bancários', icon: Landmark, permission: 'monitoramento.view' as Permission },
     ],
   },
   {
