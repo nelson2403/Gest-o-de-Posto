@@ -236,12 +236,80 @@ export async function GET(req: NextRequest) {
     contexto: {
       cargo_no_ctx: cargoCtx,
     },
-    metas_no_periodo: metas.map(m => ({
-      id: m.id, nome: m.nome, campo: m.campo,
-      valor_meta: m.valor_meta,
-      atingimento_total:    atingimentoTotalPorMeta.get(m.id) ?? null,
-      atingimento_vendedor: atingimentoPorVendedorPorMeta.get(vendedorId)?.get(m.id) ?? null,
-    })),
+    metas_no_periodo: metas.map(m => {
+      const base = {
+        id: m.id, nome: m.nome, campo: m.campo,
+        valor_meta: m.valor_meta,
+        atingimento_total:    atingimentoTotalPorMeta.get(m.id) ?? null,
+        atingimento_vendedor: atingimentoPorVendedorPorMeta.get(vendedorId)?.get(m.id) ?? null,
+      }
+      if (m.campo !== 'mix') return base
+
+      // Diagnóstico de mix: mostra produtos cadastrados nas categorias e
+      // os produtos vendidos no período (top por quantidade), marcando
+      // quais casaram com numerador/denominador. Resolve o caso clássico
+      // "categoria tem 'Gasolina Comum' mas AUTOSYSTEM manda 'GASOLINA C COMUM'".
+      const num = (m.mix_numerador   ?? []).map(s => s.trim().toLowerCase())
+      const den = (m.mix_denominador ?? []).map(s => s.trim().toLowerCase())
+      const numSet = new Set(num)
+      const denSet = new Set(den)
+
+      // Vendas que passam no filtro da meta (período + filtros)
+      const vendasDaMeta = vendas.filter((v: Venda) => {
+        if (v.data < m.period_start || v.data > m.period_end) return false
+        // Filtros adicionais da meta (geralmente vazios pra mix)
+        for (const f of m.filtros ?? []) {
+          if (!f.valores || f.valores.length === 0) continue
+          const campo: string = (() => {
+            switch (f.tipo) {
+              case 'produto':          return v.produto_nome ?? ''
+              case 'grupo_produto':    return v.grupo_produto ?? ''
+              case 'subgrupo_produto': return v.subgrupo_produto ?? ''
+              case 'produto_tipo':     return v.produto_tipo ?? ''
+            }
+          })()
+          const valores = f.valores.map(x => x.trim().toLowerCase())
+          const match = valores.includes(String(campo).trim().toLowerCase())
+          const ok = f.modo === 'incluir' ? match : !match
+          if (!ok) return false
+        }
+        return true
+      })
+
+      // Agrega vendidos por produto_nome com qtd e flags de casamento
+      const agg = new Map<string, { qtd: number; bate_num: boolean; bate_den: boolean }>()
+      for (const v of vendasDaMeta) {
+        const nome = (v.produto_nome ?? '').trim()
+        const key = nome.toLowerCase()
+        const cur = agg.get(nome) ?? { qtd: 0, bate_num: numSet.has(key), bate_den: denSet.has(key) }
+        cur.qtd += v.quantidade
+        agg.set(nome, cur)
+      }
+      const vendidos = Array.from(agg.entries())
+        .map(([nome, info]) => ({ nome, qtd: info.qtd, bate_num: info.bate_num, bate_den: info.bate_den }))
+        .sort((a, b) => b.qtd - a.qtd)
+        .slice(0, 30)
+
+      let qNum = 0, qDen = 0
+      for (const v of vendasDaMeta) {
+        const nome = (v.produto_nome ?? '').trim().toLowerCase()
+        if (denSet.has(nome)) qDen += v.quantidade
+        if (numSet.has(nome)) qNum += v.quantidade
+      }
+      const realizado = qDen > 0 ? (qNum / qDen) * 100 : 0
+
+      return {
+        ...base,
+        mix_detalhe: {
+          numerador_cadastrado:   (m.mix_numerador   ?? []),
+          denominador_cadastrado: (m.mix_denominador ?? []),
+          qtd_numerador:          qNum,
+          qtd_denominador:        qDen,
+          realizado_pct:          realizado,
+          produtos_vendidos:      vendidos,
+        },
+      }
+    }),
     regras: traceRegras,
   })
 }
