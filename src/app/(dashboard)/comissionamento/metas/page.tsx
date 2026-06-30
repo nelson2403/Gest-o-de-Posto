@@ -17,7 +17,7 @@ import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils/cn'
 import {
   ArrowLeft, Plus, Loader2, FolderTree, ChevronDown, ChevronRight,
-  Target, Pencil, Trash2, Building2, Users as UsersIcon,
+  Target, Pencil, Trash2, Building2, Users as UsersIcon, Copy,
   DollarSign, Hash, Percent, Layers, AlertCircle, Save, Filter,
   CalendarRange, FolderPlus,
 } from 'lucide-react'
@@ -233,6 +233,30 @@ export default function ComissionamentoMetasPage() {
     setGruposAbertos(new Set(grupos.map(g => g.id)))
   }
 
+  // ── Duplicar grupo ───────────────────────────────────────────────────────
+  // Cria um novo grupo com as MESMAS metas do original (mesmos filtros/campo/
+  // período/mix), mas com valor_meta zerado e sem splits — o usuário define
+  // os novos targets e a distribuição.
+  async function duplicarGrupo(g: MetaGrupo) {
+    const r = await fetch(`/api/comissionamento/metas/grupos/${g.id}/duplicar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const json = await r.json().catch(() => ({}))
+    if (!r.ok || json.error) {
+      toast({ variant: 'destructive', title: 'Erro ao duplicar', description: json.error })
+      return
+    }
+    toast({
+      title: 'Grupo duplicado',
+      description: `${json.metas_criadas ?? 0} meta(s) copiada(s). Defina os valores e a distribuição.`,
+    })
+    await carregar()
+    // Seleciona o novo grupo para o usuário começar a editar
+    if (json.grupo?.id) setGrupoSelId(json.grupo.id)
+  }
+
   // ── Confirmações de exclusão ─────────────────────────────────────────────
   async function confirmarExcluirGrupo() {
     if (!excluindoGrupo) return
@@ -355,6 +379,7 @@ export default function ComissionamentoMetasPage() {
               selectedId={grupoSelId}
               onSelect={setGrupoSelId}
               onEdit={(g) => setGrupoDialog({ open: true, edit: g })}
+              onDuplicate={(g) => duplicarGrupo(g)}
               onDelete={(g) => setExcluindoGrupo(g)}
               metas={metas}
               onCreateChild={(parentId) => setGrupoDialog({ open: true, edit: { id:'', posto_id: postoId, parent_id: parentId, nome:'', period_start:null, period_end:null, sort_order:0, criado_em:'', atualizado_em:'' } as MetaGrupo })}
@@ -531,6 +556,7 @@ interface TreeRenderProps {
   onSelect:  (id: string | null) => void
   onEdit:    (g: MetaGrupo) => void
   onDelete:  (g: MetaGrupo) => void
+  onDuplicate: (g: MetaGrupo) => void
   onCreateChild: (parentId: string) => void
   metas:     Meta[]
 }
@@ -582,6 +608,13 @@ function TreeRender(props: TreeRenderProps) {
                   className="p-1 rounded text-gray-500 hover:text-blue-600 hover:bg-blue-50"
                 >
                   <Pencil className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); props.onDuplicate(n) }}
+                  title="Duplicar grupo (copia metas sem valor nem distribuição)"
+                  className="p-1 rounded text-gray-500 hover:text-emerald-600 hover:bg-emerald-50"
+                >
+                  <Copy className="w-3 h-3" />
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); props.onDelete(n) }}
