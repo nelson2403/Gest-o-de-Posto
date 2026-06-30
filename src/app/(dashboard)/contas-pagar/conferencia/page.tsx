@@ -529,6 +529,13 @@ export default function ConferenciaPage() {
                                             <td className="hidden md:table-cell px-2 py-1.5 font-mono text-[11.5px] text-gray-600 print:text-[7.5pt] print:px-1 print:py-0.5 print:break-all">{t.documento || '—'}</td>
                                             <td className="px-2 py-1.5 text-gray-700 max-w-[140px] print:max-w-none print:px-1 print:py-0.5">
                                               <span className="truncate block print:whitespace-normal print:truncate-none">{t.pessoa_nome || '—'}</span>
+                                              {t.boleto_url && (
+                                                <a href={t.boleto_url} target="_blank" rel="noopener noreferrer"
+                                                  title={t.boleto_nome ?? 'Abrir boleto'}
+                                                  className="inline-flex items-center gap-1 text-[10.5px] font-medium text-indigo-600 hover:text-indigo-800 mt-0.5 print:hidden">
+                                                  <Paperclip className="w-3 h-3 flex-shrink-0" /> Boleto
+                                                </a>
+                                              )}
                                             </td>
                                             <td className="hidden sm:table-cell px-2 py-1.5 text-gray-600 max-w-[180px] print:max-w-none print:px-1 print:py-0.5">
                                               <span className="truncate block print:whitespace-normal print:truncate-none">{t.motivo_nome || '—'}</span>

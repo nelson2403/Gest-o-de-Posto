@@ -14,6 +14,8 @@ export interface TituloASLinha {
   pessoa_nome: string | null
   motivo_nome: string | null
   situacao:    'a_vencer' | 'em_atraso' | 'pago'
+  boleto_url:  string | null   // boleto fiscal casado a este título (se houver)
+  boleto_nome: string | null
 }
 
 export interface BoletoFiscal {
@@ -177,15 +179,34 @@ export async function GET(req: NextRequest) {
       pessoa_nome: m.pessoa ? (pessoaLookup[m.pessoa] ?? null) : null,
       motivo_nome: m.motivo ? (motivoLookup[m.motivo] ?? null) : null,
       situacao:    sit,
+      boleto_url:  null,
+      boleto_nome: null,
     }
     if (!empresasMap.has(empNum)) empresasMap.set(empNum, [])
     empresasMap.get(empNum)!.push(linha)
   }
 
+  // Normaliza nome de fornecedor para comparar boleto x título
+  const normFor = (s: string | null) => (s ?? '').toUpperCase().replace(/[^\w\s]/g, '').trim()
+
   const empresas: TituloASEmpresa[] = []
   for (const [empNum, posto] of postoByEmp.entries()) {
     const titulos = empresasMap.get(empNum) ?? []
     if (!titulos.length) continue
+
+    // Casa cada boleto fiscal (com arquivo) ao seu título: valor + (vencimento OU
+    // fornecedor). Assim o boleto aparece direto na linha da conta.
+    const boletosDoPosto = boletosByPosto.get(posto.id) ?? []
+    const boletoUsado = new Set<string>()
+    for (const t of titulos) {
+      const b = boletosDoPosto.find(b =>
+        !boletoUsado.has(b.id) && b.arquivo_url && b.valor != null &&
+        Math.abs(b.valor - t.valor) < 0.01 &&
+        (String(b.data_vencimento ?? '').slice(0, 10) === String(t.vencto ?? '').slice(0, 10) ||
+         (normFor(b.fornecedor).length > 8 && normFor(b.fornecedor) === normFor(t.pessoa_nome)))
+      )
+      if (b) { t.boleto_url = b.arquivo_url; t.boleto_nome = b.arquivo_nome ?? b.titulo; boletoUsado.add(b.id) }
+    }
     const sum = (filt: (t: TituloASLinha) => boolean) =>
       parseFloat(titulos.filter(filt).reduce((s, t) => s + t.valor, 0).toFixed(2))
     const cnt = (filt: (t: TituloASLinha) => boolean) =>
