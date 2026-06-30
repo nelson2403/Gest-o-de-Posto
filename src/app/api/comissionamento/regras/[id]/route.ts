@@ -9,7 +9,7 @@ const STATUS_VALIDOS: readonly RegraStatus[]   = ['rascunho', 'ativo', 'inativo'
 const TIPOS_VALIDOS:  readonly ResultadoTipo[] = [
   'vendas_rs', 'lucro_bruto', 'quantidade', 'mix', 'produto', 'grupo_produto', 'subgrupo_produto',
 ]
-const MODOS_VALIDOS:  readonly ResultadoModo[] = ['sobre', 'por_unidade', 'a_cada']
+const MODOS_VALIDOS:  readonly ResultadoModo[] = ['sobre', 'por_unidade', 'a_cada', 'fixo']
 const ESCOPO_VALIDOS: readonly EscopoTipo[]    = ['produto', 'grupo_produto', 'subgrupo_produto']
 const CAMPOS_VALIDOS: readonly RegraCampo[]    = ['faturamento', 'quantidade', 'lucro', 'mix', 'atingimento_meta']
 const ESCOPOS_VALIDOS: readonly RegraEscopoApi[] = ['vendedor', 'todos']

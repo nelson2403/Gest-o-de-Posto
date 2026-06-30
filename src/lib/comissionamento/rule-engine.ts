@@ -604,6 +604,22 @@ function aplicarModoSobreAgregado(
   const taxa = Number(regra.resultado_valor)
   const modo = regra.resultado_modo
 
+  // Modo 'fixo' — paga taxa em R$ direto, ignorando base. Útil para bônus
+  // do tipo "se atingiu meta, ganha R$ 100".
+  if (modo === 'fixo') {
+    return {
+      valor: taxa,
+      breakdown: {
+        base_valor:     0,
+        base_descricao: `${fmtBRL(taxa)} fixo`,
+        modo,
+        tipo:           regra.resultado_tipo,
+        taxa,
+        comissao_final: taxa,
+      },
+    }
+  }
+
   // Texto humano da base — usado no breakdown.base_descricao
   const baseTxt = campo === 'faturamento' || campo === 'lucro'
     ? fmtBRL(base)
@@ -711,12 +727,18 @@ export function calcularComissaoPorVendedor(input: CalcularPorVendedorInput): Co
   // recebem comissão sobre o agregado (regras com escopo='todos').
   // Membros sem external_person_id (fora do AUTOSYSTEM) ficam de fora.
   const membroNomePorVendedorKey = new Map<string, string>()
+  const membroRolePorVendedorKey = new Map<string, string>()
   if (input.membros) {
     for (const m of input.membros) {
       if (!m.ativo || !m.external_person_id) continue
       const key = m.external_person_id
       if (!porVendedor.has(key)) porVendedor.set(key, [])
       membroNomePorVendedorKey.set(key, m.nome)
+      // ctx.cargo no engine usa role do membro (cadastrado no Supabase),
+      // não cargo do AUTOSYSTEM — permite que regras "cargo = manager"
+      // sigam o role cadastrado aqui mesmo que o AUTOSYSTEM tenha outro
+      // valor textual.
+      membroRolePorVendedorKey.set(key, m.role)
     }
   }
 
@@ -785,7 +807,9 @@ export function calcularComissaoPorVendedor(input: CalcularPorVendedorInput): Co
         grupo_produto:     '',
         subgrupo_produto:  '',
         vendedor:          primeira?.vendedor_nome ?? nomeFallback,
-        cargo:             primeira?.cargo ?? '',
+        // Cargo vem do role cadastrado em Membros (Supabase). Fallback para
+        // sale.cargo (AUTOSYSTEM) quando o vendedor não está cadastrado.
+        cargo:             membroRolePorVendedorKey.get(vKey) ?? primeira?.cargo ?? '',
         posto:             String(primeira?.empresa_id ?? ''),
         faturamento:       agregarCampo(vendasRealizado, 'faturamento'),
         quantidade:        agregarCampo(vendasRealizado, 'quantidade'),

@@ -14,7 +14,7 @@ import type {
 export type { FieldKey, OperatorKey, ConditionGroup }
 
 // ── Modo / base do "ENTÃO faça isso" ────────────────────────────────────────
-export type ResultadoModo = 'sobre' | 'por_unidade' | 'a_cada'
+export type ResultadoModo = 'sobre' | 'por_unidade' | 'a_cada' | 'fixo'
 export type ResultadoTipo =
   | 'vendas_rs'         // Faturamento
   | 'lucro_bruto'       // Lucro bruto (venda - custo)

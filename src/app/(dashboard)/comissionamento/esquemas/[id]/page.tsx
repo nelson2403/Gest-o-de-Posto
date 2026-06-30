@@ -228,6 +228,10 @@ function fmtResultado(r: {
     ? CAMPO_LABEL[r.base_campo].toLowerCase()
     : BASE_LABEL[r.resultado_tipo]
 
+  if (r.resultado_modo === 'fixo') {
+    // No modo fixo a base é ignorada — não anexamos filtrosTxt.
+    return `${fmtBRL(v)} fixo`
+  }
   if (r.resultado_modo === 'sobre') {
     return `${fmtNum(v)}% sobre ${baseNome}${filtrosTxt}`
   }
@@ -1327,11 +1331,12 @@ function RegraForm({ regraForm, setRegraForm, regraEditando, salvando, onCancel,
 
         <div className="p-3 space-y-3">
           {/* Seletor de modo */}
-          <div className="grid grid-cols-3 gap-1.5 p-1 bg-white border border-gray-200 rounded-lg">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 p-1 bg-white border border-gray-200 rounded-lg">
             {([
               { id: 'sobre',       label: 'Sobre',        sub: '% sobre uma base'             },
               { id: 'por_unidade', label: 'Por unidade',  sub: 'R$ por unidade vendida'       },
               { id: 'a_cada',      label: 'A cada',       sub: 'R$ a cada faixa de venda'     },
+              { id: 'fixo',        label: 'Valor fixo',   sub: 'R$ fixo (ignora a base)'      },
             ] as { id: ResultadoModo; label: string; sub: string }[]).map(m => (
               <button
                 key={m.id}
@@ -1429,22 +1434,40 @@ function RegraForm({ regraForm, setRegraForm, regraEditando, salvando, onCancel,
             </div>
           )}
 
+          {regraForm.resultado_modo === 'fixo' && (
+            <div className="flex flex-wrap items-end gap-2 bg-white border border-gray-200 rounded-lg p-3">
+              <span className="inline-flex items-center justify-center w-9 h-9 rounded-md bg-emerald-100 text-emerald-700 font-bold text-[12px]">R$</span>
+              <div className="w-40">
+                <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Valor (R$)</Label>
+                <Input
+                  type="number" step="0.01" min={0}
+                  value={regraForm.resultado_valor}
+                  onChange={e => setRegraForm(f => ({ ...f, resultado_valor: parseFloat(e.target.value) || 0 }))}
+                />
+              </div>
+              <span className="pb-2.5 text-[12.5px] text-gray-500">fixo (paga este valor quando o SE for atendido)</span>
+            </div>
+          )}
+
           {/* Filtros da BASE + Campo — define quais vendas entram na base
-              do cálculo da comissão. Substitui o card "Escopo" antigo. */}
-          <FiltrosERealizadoBox
-            filtros={regraForm.base_filtros}
-            setFiltros={(f) => setRegraForm(s => ({ ...s, base_filtros: f }))}
-            campo={regraForm.base_campo}
-            setCampo={(c) => setRegraForm(s => ({ ...s, base_campo: c }))}
-            escopo={regraForm.base_escopo}
-            setEscopo={(e) => setRegraForm(s => ({ ...s, base_escopo: e }))}
-            gruposAS={gruposAS}
-            subgruposAS={subgruposAS}
-            titulo="Filtros da base do cálculo"
-            descricao="Quais vendas entram na base. Vazio = todas. Combinação com o Campo decide o agregado sobre o qual a regra aplica."
-            borderColor="border-emerald-200"
-            campoLabel="Campo agregado na base"
-          />
+              do cálculo da comissão. No modo 'fixo' a base é ignorada
+              (a comissão é o valor direto), então omitimos esses controles. */}
+          {regraForm.resultado_modo !== 'fixo' && (
+            <FiltrosERealizadoBox
+              filtros={regraForm.base_filtros}
+              setFiltros={(f) => setRegraForm(s => ({ ...s, base_filtros: f }))}
+              campo={regraForm.base_campo}
+              setCampo={(c) => setRegraForm(s => ({ ...s, base_campo: c }))}
+              escopo={regraForm.base_escopo}
+              setEscopo={(e) => setRegraForm(s => ({ ...s, base_escopo: e }))}
+              gruposAS={gruposAS}
+              subgruposAS={subgruposAS}
+              titulo="Filtros da base do cálculo"
+              descricao="Quais vendas entram na base. Vazio = todas. Combinação com o Campo decide o agregado sobre o qual a regra aplica."
+              borderColor="border-emerald-200"
+              campoLabel="Campo agregado na base"
+            />
+          )}
         </div>
       </div>
 

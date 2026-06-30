@@ -22,6 +22,7 @@ import {
   CalendarRange, FolderPlus,
 } from 'lucide-react'
 import { ProdutoMultiSelect } from '../_components/ProdutoMultiSelect'
+import { PostoCombobox } from '../_components/PostoCombobox'
 import type { MetaGrupo } from '@/app/api/comissionamento/metas/grupos/route'
 import type { Meta, MetaCampo, MetaFiltro, MetaModo, MetaFiltroRegra } from '@/app/api/comissionamento/metas/route'
 import type { ComissioMembro } from '@/app/api/comissionamento/membros/route'
@@ -280,14 +281,13 @@ export default function ComissionamentoMetasPage() {
       <div className="flex flex-wrap items-center gap-3 px-4 md:px-6 py-2.5 min-h-[52px] bg-white/95 dark:bg-gray-900/95 border-b border-gray-200/80 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Building2 className="w-4 h-4 text-gray-400" />
-          <Select value={postoId} onValueChange={setPostoId}>
-            <SelectTrigger className="h-9 min-w-[200px]"><SelectValue placeholder="Selecione um posto" /></SelectTrigger>
-            <SelectContent>
-              {postos.map(p => (
-                <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <PostoCombobox
+            postos={postos}
+            value={postoId}
+            onChange={setPostoId}
+            placeholder="Selecione um posto"
+            className="min-w-[280px]"
+          />
         </div>
 
         <div className="ml-auto flex items-center gap-2">
