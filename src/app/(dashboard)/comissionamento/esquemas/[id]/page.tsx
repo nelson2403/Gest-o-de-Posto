@@ -19,7 +19,7 @@ import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils/cn'
 import {
   ArrowLeft, Save, Plus, Loader2, ClipboardList,
-  Trash2, Pencil, AlertCircle, CheckCircle2,
+  Trash2, Pencil, Copy, AlertCircle, CheckCircle2,
   DollarSign, Hash, Layers, Package, FolderTree, Boxes, GitBranch, TrendingUp,
   Building2, Filter, X, ChevronDown, ChevronUp, Target,
 } from 'lucide-react'
@@ -561,6 +561,17 @@ export default function EsquemaDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  async function duplicarRegra(r: Regra) {
+    const resp = await fetch(`/api/comissionamento/regras/${r.id}/duplicar`, { method: 'POST' })
+    const json = await resp.json().catch(() => ({}))
+    if (!resp.ok || json.error) {
+      toast({ variant: 'destructive', title: 'Erro ao duplicar', description: json.error })
+      return
+    }
+    toast({ title: 'Regra duplicada', description: 'A cópia entra como rascunho. Revise antes de ativar.' })
+    await carregar()
+  }
+
   async function confirmarExcluirRegra() {
     if (!excluindoRegra) return
     const r = await fetch(`/api/comissionamento/regras/${excluindoRegra.id}`, { method: 'DELETE' })
@@ -989,6 +1000,13 @@ export default function EsquemaDetailPage({ params }: { params: Promise<{ id: st
                               title="Editar"
                             >
                               <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => duplicarRegra(r)}
+                              className="p-1.5 rounded-md text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                              title="Duplicar (nova regra em rascunho, herda todos os campos)"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => setExcluindoRegra(r)}
