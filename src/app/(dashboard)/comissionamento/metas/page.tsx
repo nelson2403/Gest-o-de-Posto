@@ -61,18 +61,21 @@ const CAMPO_LABEL: Record<MetaCampo, string> = {
   quantidade:  'Quantidade',
   margem:      'Margem',
   mix:         'Mix',
+  markup:      'Markup',
 }
 const CAMPO_ICONE: Record<MetaCampo, React.ElementType> = {
   faturamento: DollarSign,
   quantidade:  Hash,
   margem:      Percent,
   mix:         Layers,
+  markup:      Percent,
 }
 const CAMPO_CORES: Record<MetaCampo, string> = {
   faturamento: 'bg-orange-100 text-orange-700 border-orange-200',
   quantidade:  'bg-blue-100 text-blue-700 border-blue-200',
   margem:      'bg-emerald-100 text-emerald-700 border-emerald-200',
   mix:         'bg-purple-100 text-purple-700 border-purple-200',
+  markup:      'bg-amber-100 text-amber-700 border-amber-200',
 }
 
 const FILTRO_LABEL: Record<MetaFiltro, string> = {
@@ -95,7 +98,7 @@ const fmtData = (s: string | null | undefined) => {
 
 function valorPorCampo(v: number, campo: MetaCampo): string {
   if (campo === 'faturamento') return fmtBRL(v)
-  if (campo === 'margem')      return `${fmtNum(v)}%`
+  if (campo === 'margem' || campo === 'markup') return `${fmtNum(v)}%`
   if (campo === 'quantidade')  return `${fmtNum(v)} un.`
   return fmtNum(v)
 }
@@ -1032,7 +1035,7 @@ function DialogMeta(props: DialogMetaProps) {
               <Select value={campo} onValueChange={(v) => setCampo(v as MetaCampo)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {(['faturamento','quantidade','margem','mix'] as MetaCampo[]).map(c => {
+                  {(['faturamento','quantidade','margem','mix','markup'] as MetaCampo[]).map(c => {
                     const Icone = CAMPO_ICONE[c]
                     return (
                       <SelectItem key={c} value={c}>
@@ -1045,7 +1048,7 @@ function DialogMeta(props: DialogMetaProps) {
             </div>
             <div className="md:col-span-4">
               <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">
-                Valor da meta {campo === 'faturamento' ? '(R$)' : campo === 'margem' || campo === 'mix' ? '(%)' : campo === 'quantidade' ? '(un.)' : ''}
+                Valor da meta {campo === 'faturamento' ? '(R$)' : campo === 'margem' || campo === 'mix' || campo === 'markup' ? '(%)' : campo === 'quantidade' ? '(un.)' : ''}
               </Label>
               <Input
                 type="number" step="0.01" min={0}
@@ -1357,7 +1360,7 @@ function DialogSplits({ aberto, meta, membros, splitsIniciais, onClose, onSalvo 
     }
   }
 
-  const unidade = meta.campo === 'faturamento' ? 'R$' : meta.campo === 'margem' ? '%' : meta.campo === 'quantidade' ? 'un.' : ''
+  const unidade = meta.campo === 'faturamento' ? 'R$' : meta.campo === 'margem' || meta.campo === 'markup' || meta.campo === 'mix' ? '%' : meta.campo === 'quantidade' ? 'un.' : ''
 
   return (
     <Dialog open={aberto} onOpenChange={(o) => !o && onClose()}>

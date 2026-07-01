@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export type MetaCampo  = 'faturamento' | 'quantidade' | 'margem' | 'mix'
+export type MetaCampo  = 'faturamento' | 'quantidade' | 'margem' | 'mix' | 'markup'
 export type MetaFiltro = 'produto' | 'grupo_produto' | 'subgrupo_produto' | 'produto_tipo'
 export type MetaModo   = 'incluir' | 'excluir'
 
@@ -33,7 +33,7 @@ export interface Meta {
   atualizado_em:   string
 }
 
-const CAMPOS_VALIDOS:  readonly MetaCampo[]  = ['faturamento','quantidade','margem','mix']
+const CAMPOS_VALIDOS:  readonly MetaCampo[]  = ['faturamento','quantidade','margem','mix','markup']
 const FILTROS_VALIDOS: readonly MetaFiltro[] = ['produto','grupo_produto','subgrupo_produto','produto_tipo']
 const MODOS_VALIDOS:   readonly MetaModo[]   = ['incluir','excluir']
 

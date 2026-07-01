@@ -84,10 +84,16 @@ function realizadoNoCampo(vendas: Venda[], meta: Meta): number {
     }
     return qDen > 0 ? (qNum / qDen) * 100 : 0
   }
-  // margem (%) — média ponderada por faturamento
-  const fat = vendas.reduce((s, v) => s + v.valor_total, 0)
-  if (fat === 0) return 0
+  const fat   = vendas.reduce((s, v) => s + v.valor_total, 0)
   const lucro = vendas.reduce((s, v) => s + (v.valor_total - v.custo_medio_unitario * v.quantidade), 0)
+  if (meta.campo === 'markup') {
+    // markup (%) = lucro / custo × 100. Diferente da margem, que divide
+    // pelo faturamento. Se a soma dos custos for 0, não é computável.
+    const custo = fat - lucro
+    return custo > 0 ? (lucro / custo) * 100 : 0
+  }
+  // margem (%) — lucro / faturamento × 100
+  if (fat === 0) return 0
   return (lucro / fat) * 100
 }
 

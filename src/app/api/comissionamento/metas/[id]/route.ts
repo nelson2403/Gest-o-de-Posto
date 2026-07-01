@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { MetaCampo, MetaFiltro, MetaModo, MetaFiltroRegra } from '../route'
 import { validarFiltros } from '../route'
 
-const CAMPOS_VALIDOS:  readonly MetaCampo[]  = ['faturamento','quantidade','margem','mix']
+const CAMPOS_VALIDOS:  readonly MetaCampo[]  = ['faturamento','quantidade','margem','mix','markup']
 const FILTROS_VALIDOS: readonly MetaFiltro[] = ['produto','grupo_produto','subgrupo_produto','produto_tipo']
 const MODOS_VALIDOS:   readonly MetaModo[]   = ['incluir','excluir']
 

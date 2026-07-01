@@ -117,7 +117,9 @@ export interface Membro {
 }
 
 // ── Meta + split (distribuição da meta entre membros) ───────────────────────
-export type MetaCampo  = 'faturamento' | 'quantidade' | 'margem' | 'mix'
+// markup = lucro / custo × 100 (marcação sobre o custo). Diferente de
+// margem, que é lucro / faturamento × 100.
+export type MetaCampo  = 'faturamento' | 'quantidade' | 'margem' | 'mix' | 'markup'
 export type MetaFiltro = 'produto' | 'grupo_produto' | 'subgrupo_produto' | 'produto_tipo'
 export type MetaModo   = 'incluir' | 'excluir'
 
