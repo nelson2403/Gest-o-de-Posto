@@ -276,11 +276,11 @@ interface PainelData {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function FiscalPainelPage() {
-  const { usuario } = useAuthContext()
+  const { usuario, posto_ativo_id } = useAuthContext()
   const router = useRouter()
   const role = usuario?.role
   const isGerente      = role === 'gerente'
-  const postoIdGerente = usuario?.posto_fechamento_id ?? null
+  const postoIdGerente = posto_ativo_id || (usuario?.posto_fechamento_id ?? null)
 
   const [data,        setData]        = useState<PainelData | null>(null)
   const [loading,     setLoading]     = useState(true)

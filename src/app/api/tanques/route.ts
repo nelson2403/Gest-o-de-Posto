@@ -23,22 +23,14 @@ export async function GET(req: NextRequest) {
   } else if (['master', 'adm_transpombal', 'adm_fiscal'].includes(userRole)) {
     // vê todos
   } else {
-    // Gerente: filtra pelos postos vinculados (1+). Combina posto_id e nome
-    // (tanques antigos podem não ter posto_id preenchido).
+    // Gerente: filtra pelos postos vinculados via posto_id. Todo tanque ativo
+    // tem posto_id (a criação exige; os órfãos antigos foram desativados), então
+    // o casamento frágil por nome foi removido.
     const postoIds = await getPostosGerente(admin, user.id, usuarioRow?.posto_fechamento_id)
     if (!postoIds.length) {
       return NextResponse.json({ tanques: [], porPosto: {}, data })
     }
-    const { data: postosInfo } = await admin.from('postos').select('nome').in('id', postoIds)
-    const orParts: string[] = [
-      ...postoIds.map(id => `posto_id.eq.${id}`),
-      ...(postosInfo ?? []).flatMap((p: any) => {
-        const nome = p.nome.trim()
-        const limpo = nome.replace(/^posto\s+/i, '').trim()
-        return [`posto_nome.ilike.${nome}`, `posto_nome.ilike.%${limpo}%`]
-      }),
-    ]
-    q = q.or(orParts.join(','))
+    q = q.in('posto_id', postoIds)
   }
 
   const { data: tanques, error } = await q

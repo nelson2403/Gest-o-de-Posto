@@ -10,18 +10,25 @@ export async function GET() {
 
   const admin = createAdminClient()
   const [
-    { data: postos },
+    postosRes,
     { data: precos },
     { data: portais },
     { data: status },
     { data: vinculacoes },
   ] = await Promise.all([
-    admin.from('postos').select('id, nome').eq('ativo', true).order('nome'),
+    admin.from('postos').select('id, nome, tem_cartao_desconto').eq('ativo', true).order('nome'),
     admin.from('precos_combustivel').select('*').order('produto'),
     admin.from('portais_frotas').select('*').eq('ativo', true).order('nome'),
     admin.from('portais_frotas_status').select('*'),
     admin.from('portais_frotas_postos').select('portal_id, posto_id'),
   ])
+
+  // Fallback caso a coluna tem_cartao_desconto ainda não exista (migration 135)
+  let postos: any[] | null = postosRes.data
+  if (postosRes.error) {
+    const { data } = await admin.from('postos').select('id, nome').eq('ativo', true).order('nome')
+    postos = data
+  }
 
   return NextResponse.json({ postos, precos, portais, status, vinculacoes })
 }

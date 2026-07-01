@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { createClient, createImplicitClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -43,8 +43,14 @@ export default function LoginPage() {
   async function handleResetPassword(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
-    const redirectTo = `${window.location.origin}/auth/callback?next=/reset-password`
-    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, { redirectTo })
+    // Usa a URL pública do sistema (não a origem do navegador) para o link do
+    // email funcionar mesmo se o reset for pedido pelo localhost da máquina.
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
+    const redirectTo = `${baseUrl}/auth/confirm?next=/reset-password`
+    // Fluxo IMPLICIT só aqui → o {{ .TokenHash }} do email vira hash comum
+    // (não pkce_), validável em qualquer aparelho via /auth/confirm.
+    const resetClient = createImplicitClient()
+    const { error } = await resetClient.auth.resetPasswordForEmail(resetEmail, { redirectTo })
     if (error) {
       toast({ variant: 'destructive', title: 'Erro ao enviar', description: error.message })
     } else {

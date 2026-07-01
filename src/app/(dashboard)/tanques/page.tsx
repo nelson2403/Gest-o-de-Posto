@@ -387,9 +387,10 @@ function HeatMapHistorico({
 // ── Página Principal ───────────────────────────────────────────────────────────
 
 export default function TanquesPage() {
-  const { usuario, canUser } = useAuthContext()
+  const { usuario, canUser, posto_ativo_id, postos_gerente_info } = useAuthContext()
   const role          = usuario?.role as Role | undefined
   const isGerente     = role === 'gerente'
+  const postoAtivoNome = postos_gerente_info.find(p => p.id === posto_ativo_id)?.nome ?? ''
   const isTranspombal = role === 'adm_transpombal'
   const isAdmin       = role === 'master' || isTranspombal
   const isFiscalViewer = role === 'adm_fiscal'   // vê tudo, mas só leitura (não edita medições)
@@ -511,7 +512,10 @@ export default function TanquesPage() {
         if (t.medida_litros !== null) med[t.id] = String(t.medida_litros)
       }
       setMedicoes(med)
-      if (isGerente && nomes[0]) { setPostoFiltro(nomes[0]) }
+      // Gerente: usa o posto ativo global (seletor da home); senão o 1º
+      if (isGerente && nomes.length) {
+        setPostoFiltro(postoAtivoNome && nomes.includes(postoAtivoNome) ? postoAtivoNome : nomes[0])
+      }
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro ao carregar', description: err.message })
     } finally {
@@ -534,6 +538,13 @@ export default function TanquesPage() {
   }, [])
 
   useEffect(() => { carregar(data) }, [data])
+
+  // Gerente: segue o posto ativo global quando ele muda (seletor da home)
+  useEffect(() => {
+    if (isGerente && postoAtivoNome && postoNomes.includes(postoAtivoNome)) {
+      setPostoFiltro(postoAtivoNome)
+    }
+  }, [isGerente, postoAtivoNome, postoNomes])
 
   // Carrega histórico automaticamente junto com os dados principais
   useEffect(() => { carregarHistorico() }, [carregarHistorico])

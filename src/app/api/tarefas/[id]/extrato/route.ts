@@ -45,6 +45,29 @@ function parseDataStone(raw: unknown): string | null {
   return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
 }
 
+// ─── Parser de OFX (SGML) — usado pela Stone (e bancos que exportam .ofx) ─────
+type OfxTxn = { tipo: string; data: string; valor: number; memo: string }
+function parseOFX(texto: string): { txns: OfxTxn[]; saldoFinal: number | null } {
+  // Valores OFX usam tags sem fechamento (SGML): pega o conteúdo até < ou quebra
+  const tag = (bloco: string, t: string): string => {
+    const m = bloco.match(new RegExp(`<${t}>\\s*([^<\\r\\n]+)`, 'i'))
+    return m ? m[1].trim() : ''
+  }
+  const txns: OfxTxn[] = []
+  const blocos = texto.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi) ?? []
+  for (const b of blocos) {
+    const dt = tag(b, 'DTPOSTED')               // YYYYMMDDHHMMSS
+    const data = dt.length >= 8 ? `${dt.slice(0, 4)}-${dt.slice(4, 6)}-${dt.slice(6, 8)}` : ''
+    const valor = parseFloat(tag(b, 'TRNAMT').replace(',', '.'))
+    if (!data || isNaN(valor)) continue
+    txns.push({ tipo: tag(b, 'TRNTYPE').toUpperCase(), data, valor, memo: tag(b, 'MEMO') })
+  }
+  // Saldo final do extrato (LEDGERBAL → BALAMT)
+  const bal = texto.match(/<LEDGERBAL>[\s\S]*?<BALAMT>\s*([^<\r\n]+)/i)
+  const saldoFinal = bal ? parseFloat(bal[1].replace(',', '.')) : null
+  return { txns, saldoFinal: saldoFinal != null && !isNaN(saldoFinal) ? saldoFinal : null }
+}
+
 // ─── POST /api/tarefas/[id]/extrato ──────────────────────────────────────────
 export async function POST(
   req: NextRequest,
@@ -94,18 +117,15 @@ export async function POST(
   // Data esperada da tarefa (YYYY-MM-DD)
   const dataEsperada: string | null = (tarefa.data_conclusao_prevista as string | null)?.slice(0, 10) ?? null
 
-  // ── Lê o arquivo (Excel ou CSV) ───────────────────────────────────────────
+  // ── Lê o arquivo (OFX, Excel ou CSV) ──────────────────────────────────────
   const formData = await req.formData()
   const file = formData.get('file') as File | null
   if (!file) return NextResponse.json({ error: 'Arquivo não enviado' }, { status: 400 })
 
   const buffer = await file.arrayBuffer()
-  const wb     = XLSX.read(buffer, { type: 'array', cellDates: false })
-  const ws     = wb.Sheets[wb.SheetNames[0]]
-  const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
-
-  // ── Detecta formato: Stone (CSV) ou Sicoob (Excel) ────────────────────────
-  const isStone = rows.some(row => /^(Débito|Crédito)$/i.test(String(row[0] ?? '').trim()))
+  const bytes  = new Uint8Array(buffer)
+  // OFX é texto SGML — detecta pelo cabeçalho ANTES de tentar abrir como Excel
+  const isOFX = /OFXHEADER|<OFX>/i.test(new TextDecoder('latin1').decode(bytes.slice(0, 512)))
 
   let extratoData = ''
   let saldoDia    = 0
@@ -113,6 +133,64 @@ export async function POST(
   let movimentoExtrato = 0
   let datasAS: string[] = []
   let extratoEhStone = false
+
+  if (isOFX) {
+    // ── Parser OFX (Stone) ─────────────────────────────────────────────────
+    const texto = new TextDecoder('latin1').decode(bytes)   // CHARSET:1252
+    const { txns, saldoFinal } = parseOFX(texto)
+    if (!txns.length) {
+      return NextResponse.json({ error: 'Arquivo OFX sem transações (STMTTRN). Verifique se é o extrato correto.' }, { status: 422 })
+    }
+    const datasNoArquivo = [...new Set(txns.map(t => t.data))]
+
+    let targetDate: string
+    if (dataEsperada) {
+      if (!datasNoArquivo.includes(dataEsperada)) {
+        const lista = datasNoArquivo.map(s => s.split('-').reverse().join('/')).join(', ')
+        return NextResponse.json({
+          error: `O extrato OFX não contém a data ${dataEsperada.split('-').reverse().join('/')} (data desta tarefa). Datas encontradas: ${lista || 'nenhuma'}.`,
+        }, { status: 422 })
+      }
+      targetDate = dataEsperada
+    } else {
+      const sorted = datasNoArquivo.slice().sort()
+      targetDate = sorted[sorted.length - 1] ?? ''
+      if (!targetDate) return NextResponse.json({ error: 'Extrato OFX vazio ou inválido.' }, { status: 422 })
+    }
+
+    // Feriado/fim de semana: agrega o dia-alvo + dias não-úteis anteriores que existam no arquivo
+    const datasAgregadas = datasConciliacao(targetDate).filter(d => d === targetDate || datasNoArquivo.includes(d))
+    const txnsForDate = txns.filter(t => datasAgregadas.includes(t.data))
+    const txnsTarget  = txns.filter(t => t.data === targetDate)
+
+    // O AUTOSYSTEM registra os recebíveis QUE FICARAM DISPONÍVEIS (entram de fato
+    // na conta), não a venda bruta. Na Stone:
+    //  - "Recebimento vendas" (CREDIT) + "Recebimento Guardado - Taxas Inteligentes"
+    //    (DEBIT) formam um par de MESMO valor que se anula: a venda é registrada e
+    //    reservada na mesma hora → NÃO é dinheiro real entrando.
+    //  - "Recebimento Disponível" (CREDIT) = recebível liberado, dinheiro entrando
+    //    (depois sai via "Transferência automática" para a conta principal).
+    // Então o movimento a comparar com as ENTRADAS do AUTOSYSTEM = soma dos
+    // "Recebimento Disponível". (Equivale à coluna "Recebível de Cartão" do CSV.)
+    const ehDisponivel = (t: OfxTxn) => t.tipo === 'CREDIT' && /dispon/i.test(t.memo)
+    const disponiveis  = txnsForDate.filter(ehDisponivel)
+    movimentoExtrato = parseFloat(disponiveis.reduce((s, t) => s + t.valor, 0).toFixed(2))
+    extratoEhStone = true
+
+    // Saldo: usa o LEDGERBAL do arquivo; saldo anterior = saldo − movimento líquido do dia
+    const movLiquidoDia = txnsTarget.reduce((s, t) => s + t.valor, 0)
+    saldoDia      = parseFloat((saldoFinal != null ? saldoFinal : movLiquidoDia).toFixed(2))
+    saldoAnterior = parseFloat((saldoDia - movLiquidoDia).toFixed(2))
+    extratoData   = targetDate
+    datasAS       = datasAgregadas
+
+  } else {
+  const wb     = XLSX.read(buffer, { type: 'array', cellDates: false })
+  const ws     = wb.Sheets[wb.SheetNames[0]]
+  const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+
+  // ── Detecta formato: Stone (CSV) ou Sicoob (Excel) ────────────────────────
+  const isStone = rows.some(row => /^(Débito|Crédito)$/i.test(String(row[0] ?? '').trim()))
 
   if (isStone) {
     // ── Parser Stone ──────────────────────────────────────────────────────
@@ -177,22 +255,54 @@ export async function POST(
     datasAS       = datasAgregadas
 
   } else {
-    // ── Parser Sicoob Excel ───────────────────────────────────────────────
+    // ── Parser Sicoob Excel (robusto a variações de coluna/layout) ────────
     const saldosDia: Array<{ data: string; valor: number }> = []
     let saldoAnteriorArquivo: number | null = null
 
+    // Procura o rótulo em QUALQUER coluna (há extratos com coluna inicial vazia,
+    // célula mesclada, etc.). A DATA é a primeira célula de data da linha — se não
+    // houver, usa a data da tarefa.
+    const dataDaLinha = (row: unknown[]): string | null => {
+      for (const c of row) { const d = parseDataExcel(c); if (d) return d }
+      return null
+    }
+    // O VALOR do saldo é a primeira célula em formato BRASILEIRO (vírgula decimal
+    // ou sufixo C/D) DEPOIS do rótulo. Isso ignora colunas auxiliares em formato
+    // US que algumas exportações trazem no fim da linha (ex.: "5878.6",
+    // "-14101.19"), que o parser BR leria errado (ponto = milhar).
+    const ehMonetarioBR = (s: string) => !!s && /\d/.test(s) && (/,/.test(s) || /[CDcd*]\s*$/.test(s))
+    const valorAposRotulo = (cels: string[], idxRotulo: number): number => {
+      for (let j = idxRotulo + 1; j < cels.length; j++) if (ehMonetarioBR(cels[j])) return parseValorBRSigned(cels[j])
+      for (const c of cels) if (ehMonetarioBR(c)) return parseValorBRSigned(c) // fallback
+      return 0
+    }
+
+    let dataMaxArquivo: string | null = null
     for (const row of rows) {
-      const colC = String(row[2] ?? '').trim().toUpperCase()
-      if (colC === 'SALDO DO DIA') {
-        const d = parseDataExcel(row[0])
-        if (d) saldosDia.push({ data: d, valor: parseValorBRSigned(row[3]) })
+      const d0 = dataDaLinha(row)
+      if (d0 && (!dataMaxArquivo || d0 > dataMaxArquivo)) dataMaxArquivo = d0
+    }
+
+    for (const row of rows) {
+      const cels = row.map(c => String(c ?? '').trim())
+      const up   = cels.map(c => c.toUpperCase())
+      const idxDia = up.findIndex(c => c.includes('SALDO DO DIA'))
+      const idxAnt = up.findIndex(c => c.includes('SALDO ANTERIOR') && !c.includes('BLOQUEAD'))
+      if (idxDia >= 0) {
+        const d = dataDaLinha(row) ?? dataEsperada ?? dataMaxArquivo
+        if (d) saldosDia.push({ data: d, valor: valorAposRotulo(cels, idxDia) })
       }
-      if (colC === 'SALDO ANTERIOR' && saldoAnteriorArquivo === null) {
-        saldoAnteriorArquivo = parseValorBRSigned(row[3])
+      if (idxAnt >= 0 && saldoAnteriorArquivo === null) {
+        saldoAnteriorArquivo = valorAposRotulo(cels, idxAnt)
       }
     }
 
     if (saldosDia.length === 0 || saldoAnteriorArquivo === null) {
+      // Loga a estrutura real do arquivo para diagnosticar layouts novos do Sicoob.
+      const amostra = rows.filter(r => r.some(c => String(c ?? '').trim() !== '')).slice(0, 40)
+      console.error('[extrato-sicoob] SALDO DO DIA/ANTERIOR nao encontrado. saldosDia=' +
+        saldosDia.length + ' saldoAnterior=' + saldoAnteriorArquivo +
+        ' | amostra de linhas: ' + JSON.stringify(amostra))
       return NextResponse.json({
         error: 'Não foram encontradas as linhas "SALDO DO DIA" e "SALDO ANTERIOR". Verifique se o arquivo é o extrato correto.',
       }, { status: 422 })
@@ -224,27 +334,48 @@ export async function POST(
 
     movimentoExtrato = parseFloat((saldoDia - saldoAnterior).toFixed(2))
   }
+  }
 
   // ── Busca código da conta no AUTOSYSTEM ───────────────────────────────────
   const admin = createAdminClient()
   let contaCodigo: string | null = null
+  let contaBanco:  string | null = null
   if (contaBancariaId) {
     // Conta bancária específica da tarefa (multi-banco)
     const { data: cb } = await admin
       .from('contas_bancarias')
-      .select('codigo_conta_externo')
+      .select('codigo_conta_externo, banco')
       .eq('id', contaBancariaId)
       .single()
     contaCodigo = (cb as any)?.codigo_conta_externo ?? null
+    contaBanco  = (cb as any)?.banco ?? null
   } else if (postoId) {
     // Legado: pega o primeiro banco do posto
     const { data: contas } = await admin
       .from('contas_bancarias')
-      .select('codigo_conta_externo')
+      .select('codigo_conta_externo, banco')
       .eq('posto_id', postoId)
       .not('codigo_conta_externo', 'is', null)
       .limit(1)
     contaCodigo = (contas?.[0] as any)?.codigo_conta_externo ?? null
+    contaBanco  = (contas?.[0] as any)?.banco ?? null
+  }
+
+  // ── Valida que o BANCO do extrato bate com o BANCO da tarefa ──────────────
+  // Impede, por exemplo, comparar um extrato Stone contra a conta Sicoob da
+  // tarefa (foi o que aconteceu: extrato Stone anexado numa tarefa do Sicoob).
+  if (contaBanco) {
+    const contaEhStone = /stone/i.test(contaBanco)
+    if (extratoEhStone && !contaEhStone) {
+      return NextResponse.json({
+        error: `Este arquivo é um extrato da STONE, mas esta tarefa é de conciliação do ${contaBanco} (conta ${contaCodigo ?? '—'}). Anexe o extrato do banco correto — ou use a tarefa Stone deste posto.`,
+      }, { status: 422 })
+    }
+    if (!extratoEhStone && contaEhStone) {
+      return NextResponse.json({
+        error: `Esta tarefa é de conciliação da STONE, mas o arquivo enviado não parece um extrato Stone (OFX). Anexe o extrato Stone deste posto.`,
+      }, { status: 422 })
+    }
   }
 
   const empresaId = postoResolvido?.codigo_empresa_externo
@@ -306,13 +437,16 @@ export async function POST(
     updates.data_conclusao_real = new Date().toISOString()
   }
 
-  await supabase.from('tarefas').update(updates).eq('id', id)
+  // Usa o admin (service role) para gravar — assim a conclusão "gruda" mesmo
+  // para operador_conciliador (a sessão do usuário esbarrava no RLS e o status
+  // não virava 'concluido' apesar do extrato ficar 'ok').
+  await admin.from('tarefas').update(updates).eq('id', id)
 
   // Guarda o intervalo de datas do AUTOSYSTEM usado (feriados/fins de semana),
   // para a re-sincronização comparar o mesmo período. Resiliente caso a
   // migration 117 ainda não tenha sido aplicada (erro é ignorado).
   if (datasAS.length > 1) {
-    await supabase.from('tarefas').update({ extrato_datas_as: datasAS }).eq('id', id)
+    await admin.from('tarefas').update({ extrato_datas_as: datasAS }).eq('id', id)
   }
 
   return NextResponse.json({
@@ -327,6 +461,7 @@ export async function POST(
     contaCodigo,
     asAcessivel,
     diferenca,
+    extratoEhStone,
     status:           statusExtrato,
     concluidoAuto:    statusExtrato === 'ok',
   })

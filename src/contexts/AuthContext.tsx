@@ -5,11 +5,16 @@ import { createClient } from '@/lib/supabase/client'
 import { can, setPermissoesEfetivasGlobal, type Permission } from '@/lib/utils/permissions'
 import type { Usuario, Role } from '@/types/database.types'
 
+interface PostoInfo { id: string; nome: string }
+
 interface AuthContextType {
   usuario: Usuario | null
   loading: boolean
   permissoes_efetivas: string[] | null
   postos_gerente: string[]   // postos vinculados ao gerente (vazio para outros papéis)
+  postos_gerente_info: PostoInfo[]  // mesmos postos, com nome
+  posto_ativo_id: string     // posto selecionado globalmente pelo gerente
+  setPostoAtivo: (id: string) => void
   canUser: (permission: Permission) => boolean
   /** Recarrega as permissões do usuário atual do banco (use após alterar overrides de cargo) */
   refreshPermissions: () => Promise<void>
@@ -21,6 +26,9 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   permissoes_efetivas: null,
   postos_gerente: [],
+  postos_gerente_info: [],
+  posto_ativo_id: '',
+  setPostoAtivo: () => {},
   canUser: () => false,
   refreshPermissions: async () => {},
   signOut: async () => {},
@@ -30,6 +38,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null)
   const [permissoes_efetivas, setPermissoesEfetivasState] = useState<string[] | null>(null)
   const [postosGerente, setPostosGerente] = useState<string[]>([])
+  const [postosGerenteInfo, setPostosGerenteInfo] = useState<PostoInfo[]>([])
+  const [postoAtivoId, setPostoAtivoIdState] = useState<string>('')
+
+  // Troca o posto ativo do gerente e persiste por usuário (sobrevive a navegação/reload)
+  const setPostoAtivo = useCallback((id: string) => {
+    setPostoAtivoIdState(id)
+    if (typeof window !== 'undefined' && usuarioRef.current) {
+      localStorage.setItem('posto_ativo_' + usuarioRef.current.id, id)
+    }
+  }, [])
 
   // Wrapper que atualiza o estado React E a variável global usada por can()
   const setPermissoesEfetivas = (p: string[] | null) => {
@@ -102,9 +120,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const { data: vg } = await supabase
               .from('usuario_postos_gerente').select('posto_id').eq('usuario_id', data.id)
             const ids = (vg ?? []).map((v: any) => v.posto_id) // eslint-disable-line @typescript-eslint/no-explicit-any
-            setPostosGerente(ids.length ? ids : (data.posto_fechamento_id ? [data.posto_fechamento_id] : []))
+            const finalIds = ids.length ? ids : (data.posto_fechamento_id ? [data.posto_fechamento_id] : [])
+            setPostosGerente(finalIds)
+            if (finalIds.length) {
+              const { data: pNomes } = await supabase
+                .from('postos').select('id, nome').in('id', finalIds)
+              const info = (pNomes ?? [])
+                .map((p: any) => ({ id: p.id as string, nome: p.nome as string })) // eslint-disable-line @typescript-eslint/no-explicit-any
+                .sort((a, b) => a.nome.localeCompare(b.nome))
+              setPostosGerenteInfo(info)
+              // Restaura o posto salvo (se ainda for válido); senão usa o primeiro
+              const saved = typeof window !== 'undefined' ? localStorage.getItem('posto_ativo_' + data.id) : null
+              setPostoAtivoIdState(saved && finalIds.includes(saved) ? saved : (info[0]?.id ?? finalIds[0]))
+            } else {
+              setPostosGerenteInfo([])
+              setPostoAtivoIdState('')
+            }
           } else {
             setPostosGerente([])
+            setPostosGerenteInfo([])
+            setPostoAtivoIdState('')
           }
           setLoading(false)
           return
@@ -207,7 +242,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ usuario, loading, permissoes_efetivas, postos_gerente: postosGerente, canUser, refreshPermissions, signOut }}>
+    <AuthContext.Provider value={{ usuario, loading, permissoes_efetivas, postos_gerente: postosGerente, postos_gerente_info: postosGerenteInfo, posto_ativo_id: postoAtivoId, setPostoAtivo, canUser, refreshPermissions, signOut }}>
       {children}
     </AuthContext.Provider>
   )

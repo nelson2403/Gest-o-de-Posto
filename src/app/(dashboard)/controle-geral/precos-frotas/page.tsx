@@ -1,13 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Check, CheckCheck, ChevronDown, ChevronUp, ExternalLink, Fuel, Loader2, Plus, RefreshCw, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Check, CheckCheck, ChevronDown, ChevronUp, CreditCard, ExternalLink, Fuel, Loader2, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type Posto      = { id: string; nome: string }
-type Preco      = { id: string; posto_id: string; produto: string; preco: number; atualizado_em: string }
+type Posto      = { id: string; nome: string; tem_cartao_desconto?: boolean | null }
+type Preco      = { id: string; posto_id: string; produto: string; preco: number; atualizado_em: string; cartao_desconto_aplicado?: boolean | null }
 type Portal     = { id: string; nome: string; url: string | null; ativo: boolean }
 type Status     = { portal_id: string; posto_id: string; produto: string; preco_no_portal: number | null; atualizado_em: string | null }
 type Vinculacao = { portal_id: string; posto_id: string }
@@ -46,7 +46,8 @@ export default function PrecosFrotasPage() {
   const [vinculacoes, setVinculacoes] = useState<Vinculacao[]>([])
   const [loading,     setLoading]     = useState(true)
   const [aba,         setAba]         = useState<'status' | 'precos' | 'portais'>('status')
-  const [filtroPosto, setFiltroPosto] = useState<string>('')   // '' = todos
+  const [filtroPosto,  setFiltroPosto]  = useState<string>('')   // '' = todos
+  const [filtroStatus, setFiltroStatus] = useState<'todos' | 'pendentes' | 'ok'>('todos')
 
   const [editando,  setEditando]  = useState<{ posto_id: string; produto: string } | null>(null)
   const [editValor, setEditValor] = useState('')
@@ -195,6 +196,32 @@ export default function PrecosFrotasPage() {
     return { total, pendente, postosVinculados: postosV.length }
   }
 
+  // Pendentes de um posto específico dentro de um portal
+  function postoStatusInfo(portal_id: string, posto_id: string) {
+    let total = 0, pend = 0
+    for (const produto of PRODUTOS) {
+      const pc = precos.find(p => p.posto_id === posto_id && p.produto === produto)
+      if (!pc) continue
+      total++
+      if (!isAtualizado(portal_id, posto_id, produto, pc.preco, status)) pend++
+    }
+    return { total, pend }
+  }
+
+  // Resumo global (para a notificação no topo)
+  const resumo = portais.reduce(
+    (acc, portal) => {
+      const { total, pendente, postosVinculados } = contarPendentes(portal.id)
+      if (postosVinculados > 0) {
+        acc.totalItens += total
+        acc.pendentes  += pendente
+        if (pendente > 0) acc.portaisPendentes++
+      }
+      return acc
+    },
+    { totalItens: 0, pendentes: 0, portaisPendentes: 0 },
+  )
+
   // ── Criar portal ────────────────────────────────────────────────────────────
   async function criarPortal() {
     if (!nomePortal.trim()) return
@@ -254,6 +281,40 @@ export default function PrecosFrotasPage() {
         </button>
       </div>
 
+      {/* Notificação de pendências */}
+      {portais.length > 0 && (
+        resumo.pendentes > 0 ? (
+          <div className="flex items-center gap-3 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+            <div className="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="w-[18px] h-[18px] text-orange-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold text-orange-800">
+                {resumo.pendentes} preço{resumo.pendentes !== 1 ? 's' : ''} pendente{resumo.pendentes !== 1 ? 's' : ''} para alterar nos portais
+              </p>
+              <p className="text-[11px] text-orange-600/80">
+                em {resumo.portaisPendentes} portal{resumo.portaisPendentes !== 1 ? 'is' : ''} · {resumo.totalItens - resumo.pendentes} de {resumo.totalItens} já atualizados
+              </p>
+            </div>
+            {(aba !== 'status' || filtroStatus !== 'pendentes') && (
+              <button onClick={() => { setAba('status'); setFiltroStatus('pendentes') }}
+                className="h-8 px-3 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-[12px] font-medium flex items-center gap-1.5 flex-shrink-0">
+                Ver pendentes
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+            <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+              <CheckCheck className="w-[18px] h-[18px] text-green-600" />
+            </div>
+            <p className="text-[13px] font-semibold text-green-800">
+              Tudo atualizado — nenhum preço pendente nos portais 🎉
+            </p>
+          </div>
+        )
+      )}
+
       {/* Abas */}
       <div className="flex gap-1 border-b border-gray-200">
         {([
@@ -288,6 +349,23 @@ export default function PrecosFrotasPage() {
               <X className="w-3.5 h-3.5" /> Limpar
             </button>
           )}
+
+          {aba === 'status' && (
+            <div className="flex items-center gap-1 sm:ml-auto bg-gray-100 rounded-lg p-0.5">
+              {([
+                { key: 'todos',     label: 'Todos' },
+                { key: 'pendentes', label: 'Só pendentes' },
+                { key: 'ok',        label: 'Atualizados' },
+              ] as const).map(o => (
+                <button key={o.key} onClick={() => setFiltroStatus(o.key)}
+                  className={`px-3 h-8 rounded-md text-[12px] font-medium transition-colors ${
+                    filtroStatus === o.key ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}>
+                  {o.label}{o.key === 'pendentes' && resumo.pendentes > 0 ? ` (${resumo.pendentes})` : ''}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -302,9 +380,15 @@ export default function PrecosFrotasPage() {
           {portais.map(portal => {
             const { total, pendente, postosVinculados } = contarPendentes(portal.id)
             const tudo_ok = total > 0 && pendente === 0
-            const postosV = postosDoPortal(portal.id).filter(p => !filtroPosto || p.id === filtroPosto)
-            // Com filtro ativo, esconde portais que não têm o posto selecionado
-            if (filtroPosto && postosV.length === 0) return null
+            const postosV = postosDoPortal(portal.id)
+              .filter(p => !filtroPosto || p.id === filtroPosto)
+              .filter(p => {
+                if (filtroStatus === 'todos') return true
+                const { pend } = postoStatusInfo(portal.id, p.id)
+                return filtroStatus === 'pendentes' ? pend > 0 : pend === 0
+              })
+            // Com filtro ativo, esconde portais sem postos correspondentes
+            if ((filtroPosto || filtroStatus !== 'todos') && postosV.length === 0) return null
 
             return (
               <div key={portal.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
@@ -422,7 +506,17 @@ export default function PrecosFrotasPage() {
               <tbody>
                 {postos.filter(p => !filtroPosto || p.id === filtroPosto).map((posto, pi) => (
                   <tr key={posto.id} className={pi % 2 === 0 ? '' : 'bg-gray-50/50'}>
-                    <td className="px-4 py-2.5 font-medium text-gray-800 text-[12px] whitespace-nowrap">{posto.nome}</td>
+                    <td className="px-4 py-2.5 font-medium text-gray-800 text-[12px] whitespace-nowrap">
+                      {posto.nome}
+                      {posto.tem_cartao_desconto === true && (
+                        <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full align-middle" title="Este posto tem cartão de desconto">
+                          <CreditCard className="w-3 h-3" /> Cartão
+                        </span>
+                      )}
+                      {posto.tem_cartao_desconto === false && (
+                        <span className="ml-2 text-[10px] text-gray-400 align-middle" title="Posto sem cartão de desconto">sem cartão</span>
+                      )}
+                    </td>
                     {PRODUTOS.map(produto => {
                       const pc = precos.find(p => p.posto_id === posto.id && p.produto === produto)
                       const isEdit = editando?.posto_id === posto.id && editando?.produto === produto
@@ -447,7 +541,14 @@ export default function PrecosFrotasPage() {
                             <button
                               onClick={() => { setEditando({ posto_id: posto.id, produto }); setEditValor(pc ? String(pc.preco) : '') }}
                               className="w-full font-mono text-[12px] px-2 py-1.5 rounded hover:bg-orange-50 hover:text-orange-700 transition-colors text-gray-700">
-                              {pc ? fmtPreco(pc.preco) : <span className="text-gray-300 text-[11px]">+ Adicionar</span>}
+                              {pc ? (
+                                <span className="flex items-center justify-center gap-1">
+                                  {fmtPreco(pc.preco)}
+                                  {pc.cartao_desconto_aplicado === true && (
+                                    <CreditCard className="w-3 h-3 text-emerald-500" aria-label="Cartão de desconto aplicado neste combustível" />
+                                  )}
+                                </span>
+                              ) : <span className="text-gray-300 text-[11px]">+ Adicionar</span>}
                             </button>
                           )}
                         </td>

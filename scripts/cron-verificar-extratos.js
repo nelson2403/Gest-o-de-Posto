@@ -4,8 +4,24 @@
  */
 
 const http = require('http')
+const fs   = require('fs')
+const path = require('path')
 
-const CRON_SECRET = process.env.CRON_SECRET ?? 'cron-interno-gestao'
+// Lê o CRON_SECRET do ambiente ou do .env.local (mesma lógica do sync-fiscal),
+// para não depender de o secret ser passado na linha de comando do PM2.
+function lerSecret() {
+  if (process.env.CRON_SECRET) return process.env.CRON_SECRET
+  try {
+    const envPath = path.join(__dirname, '..', '.env.local')
+    for (const linha of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+      const m = linha.match(/^\s*CRON_SECRET\s*=\s*(.*)\s*$/)
+      if (m) return m[1].replace(/^["']|["']$/g, '').trim()
+    }
+  } catch { /* .env.local ausente */ }
+  return 'cron-interno-gestao'
+}
+
+const CRON_SECRET = lerSecret()
 const HOST        = process.env.APP_HOST ?? 'localhost'
 const PORT        = parseInt(process.env.PORT ?? '3000')
 const INTERVALO_MS = 30 * 60 * 1000 // 30 minutos

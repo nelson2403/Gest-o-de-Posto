@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { registrarHeartbeat } from '@/lib/heartbeat'
+import { fetchAll } from '@/lib/supabase/fetch-all'
 import { buscarMovtosAutosystem, calcularMovimento } from '@/lib/autosystem'
 
 const CRON_SECRET = process.env.CRON_SECRET
@@ -11,10 +13,11 @@ export async function POST(req: NextRequest) {
   if (secret !== CRON_SECRET)
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
+  const t0 = Date.now()
   const admin = createAdminClient()
 
-  // ── 1. Todos os extratos validados ────────────────────────────────────────
-  const { data: tarefas } = await admin
+  // ── 1. Todos os extratos validados (paginado — sem o limite de 1000) ──────
+  const tarefas = await fetchAll<any>((from, to) => admin
     .from('tarefas')
     .select(`
       id, titulo, banco, conta_bancaria_id,
@@ -31,8 +34,12 @@ export async function POST(req: NextRequest) {
     .in('extrato_status', ['ok', 'divergente'])
     .not('extrato_arquivo_path', 'is', null)
     .not('extrato_data', 'is', null)
+    .range(from, to))
 
-  if (!tarefas?.length) return NextResponse.json({ verificadas: 0, divergentes: 0 })
+  if (!tarefas.length) {
+    await registrarHeartbeat('verificar-extratos', 'ok', { verificadas: 0, divergentes: 0 }, Date.now() - t0)
+    return NextResponse.json({ verificadas: 0, divergentes: 0 })
+  }
 
   // ── 2. Contas bancárias (fallback para postos com banco único) ─────────────
   const { data: contasBancarias } = await admin
@@ -192,6 +199,7 @@ export async function POST(req: NextRequest) {
   }
 
   console.log(`[cron-extratos] ${new Date().toISOString()} — verificadas=${verificadas} divergentes=${divergentes}`)
+  await registrarHeartbeat('verificar-extratos', 'ok', { verificadas, divergentes }, Date.now() - t0)
   return NextResponse.json({ verificadas, divergentes })
 }
 

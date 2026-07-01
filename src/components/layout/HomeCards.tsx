@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { useAuthContext } from '@/contexts/AuthContext'
+import { SeletorPostoAtivo } from '@/components/shared/SeletorPostoAtivo'
 import { NAV_GROUPS, ROLES_BAIXO_ACESSO } from '@/lib/nav'
 import type { Role } from '@/types/database.types'
 import type { Permission } from '@/lib/utils/permissions'
@@ -95,9 +96,10 @@ function CardLink({ card, cor, compact }: { card: Card; cor: string; compact?: b
 }
 
 export function HomeCards({ titulo }: { titulo?: string }) {
-  const { usuario, canUser } = useAuthContext()
+  const { usuario, canUser, postos_gerente_info, posto_ativo_id, setPostoAtivo } = useAuthContext()
   const role = usuario?.role as Role | undefined
   const secoes = secoesVisiveis(canUser, role)
+  const mostrarSeletorPosto = role === 'gerente' && postos_gerente_info.length > 0
   // Perfis de baixo acesso (poucas páginas) veem lista única e limpa;
   // ADMs veem agrupado por seção (menos poluição com muitas páginas).
   const agrupar = !(role && ROLES_BAIXO_ACESSO.includes(role))
@@ -115,6 +117,23 @@ export function HomeCards({ titulo }: { titulo?: string }) {
           Escolha abaixo o que você quer fazer.
         </p>
       </div>
+
+      {/* Seletor de posto do gerente — fonte única para todas as telas */}
+      {mostrarSeletorPosto && (
+        <div className="mb-6">
+          <SeletorPostoAtivo
+            postos={postos_gerente_info}
+            value={posto_ativo_id}
+            onChange={setPostoAtivo}
+            label={postos_gerente_info.length > 1 ? 'Você está trabalhando no posto' : 'Seu posto'}
+          />
+          {postos_gerente_info.length > 1 && (
+            <p className="text-[12px] text-gray-400 mt-1.5 px-1">
+              Tudo que você lançar (tanques, fiscal, preços, patrocínios) vai para o posto selecionado acima.
+            </p>
+          )}
+        </div>
+      )}
 
       {totalCards === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 rounded-2xl p-12 text-center text-gray-400 text-sm">

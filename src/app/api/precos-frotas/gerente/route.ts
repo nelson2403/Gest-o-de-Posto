@@ -34,17 +34,34 @@ async function postosPermitidos() {
   return { user, admin, postos, role: u.role as string }
 }
 
-// GET — postos do gerente + preços atuais de combustível
+// GET — postos do gerente + preços atuais + info do cartão de desconto
 export async function GET() {
   const ctx = await postosPermitidos()
   if ('erro' in ctx) return NextResponse.json({ error: ctx.erro }, { status: ctx.status })
 
   const postoIds = ctx.postos.map(p => p.id)
-  const { data: precos } = postoIds.length
-    ? await ctx.admin.from('precos_combustivel').select('posto_id, produto, preco, atualizado_em').in('posto_id', postoIds)
-    : { data: [] }
+  // Tolera a coluna cartao_desconto_aplicado ainda não existir (migration 135)
+  let precos: any[] = []
+  if (postoIds.length) {
+    const comCol = await ctx.admin.from('precos_combustivel')
+      .select('posto_id, produto, preco, atualizado_em, cartao_desconto_aplicado').in('posto_id', postoIds)
+    if (comCol.error) {
+      const semCol = await ctx.admin.from('precos_combustivel')
+        .select('posto_id, produto, preco, atualizado_em').in('posto_id', postoIds)
+      precos = semCol.data ?? []
+    } else {
+      precos = comCol.data ?? []
+    }
+  }
 
-  return NextResponse.json({ postos: ctx.postos, precos: precos ?? [], produtos: PRODUTOS_COMBUSTIVEL })
+  // Cartão de desconto por posto (lembrado) — tolera coluna ainda não existir
+  const cartaoPorPosto: Record<string, boolean | null> = {}
+  if (postoIds.length) {
+    const { data: pts } = await ctx.admin.from('postos').select('id, tem_cartao_desconto').in('id', postoIds)
+    for (const p of pts ?? []) cartaoPorPosto[p.id] = (p as any).tem_cartao_desconto ?? null
+  }
+
+  return NextResponse.json({ postos: ctx.postos, precos: precos ?? [], produtos: PRODUTOS_COMBUSTIVEL, cartao_por_posto: cartaoPorPosto })
 }
 
 // POST — lança/atualiza o preço de um combustível do posto (vira pendência nos portais)
@@ -52,7 +69,10 @@ export async function POST(req: NextRequest) {
   const ctx = await postosPermitidos()
   if ('erro' in ctx) return NextResponse.json({ error: ctx.erro }, { status: ctx.status })
 
-  const { posto_id, produto, preco } = await req.json() as { posto_id?: string; produto?: string; preco?: number }
+  const { posto_id, produto, preco, tem_cartao_desconto, cartao_desconto_aplicado } = await req.json() as {
+    posto_id?: string; produto?: string; preco?: number
+    tem_cartao_desconto?: boolean | null; cartao_desconto_aplicado?: boolean | null
+  }
   if (!posto_id || !produto || preco == null) {
     return NextResponse.json({ error: 'Informe posto, combustível e preço' }, { status: 400 })
   }
@@ -67,15 +87,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Preço inválido' }, { status: 400 })
   }
 
-  const { data, error } = await ctx.admin
-    .from('precos_combustivel')
-    .upsert(
-      { posto_id, produto, preco: valor, atualizado_em: new Date().toISOString(), atualizado_por: ctx.user.id },
-      { onConflict: 'posto_id,produto' },
-    )
-    .select()
-    .single()
+  // Cartão de desconto: lembra a resposta "tem cartão?" no posto; guarda "aplica
+  // neste combustível?" no preço. Se o posto não tem cartão, o produto fica null.
+  // Tudo tolerante à migration 135 ainda não ter rodado (erro é ignorado).
+  if (typeof tem_cartao_desconto === 'boolean') {
+    await ctx.admin.from('postos').update({ tem_cartao_desconto }).eq('id', posto_id)
+  }
+  const aplicado = tem_cartao_desconto === false ? null : (cartao_desconto_aplicado ?? null)
+  const baseRow = { posto_id, produto, preco: valor, atualizado_em: new Date().toISOString(), atualizado_por: ctx.user.id }
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ preco: data })
+  let res = await ctx.admin
+    .from('precos_combustivel')
+    .upsert({ ...baseRow, cartao_desconto_aplicado: aplicado }, { onConflict: 'posto_id,produto' })
+    .select().single()
+
+  // Coluna ainda não existe → grava o preço sem ela (não perde o lançamento)
+  if (res.error && /cartao_desconto_aplicado|column|schema cache/i.test(res.error.message)) {
+    res = await ctx.admin
+      .from('precos_combustivel')
+      .upsert(baseRow, { onConflict: 'posto_id,produto' })
+      .select().single()
+  }
+
+  if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 })
+  return NextResponse.json({ preco: res.data })
 }

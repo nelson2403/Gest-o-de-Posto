@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getPostosGerente } from '@/lib/postos-gerente'
 
 // GET /api/marketing/patrocinios?status=pendente&posto_id=...&mes=2026-04
 export async function GET(req: NextRequest) {
@@ -57,15 +58,18 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient()
 
-  // Gerente só pode criar para o próprio posto
+  // Gerente só pode criar para um dos postos vinculados a ele (multi-posto)
   const { data: usr } = await admin
     .from('usuarios')
     .select('role, posto_fechamento_id')
     .eq('id', user.id)
     .single()
 
-  if (usr?.role === 'gerente' && usr.posto_fechamento_id !== posto_id) {
-    return NextResponse.json({ error: 'Gerente só pode criar solicitações para o próprio posto' }, { status: 403 })
+  if (usr?.role === 'gerente') {
+    const ids = await getPostosGerente(admin, user.id, usr.posto_fechamento_id)
+    if (!ids.includes(posto_id)) {
+      return NextResponse.json({ error: 'Gerente só pode criar solicitações para os postos vinculados a ele' }, { status: 403 })
+    }
   }
 
   // Valida limite mensal e anual

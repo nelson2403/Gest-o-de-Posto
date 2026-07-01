@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { registrarHeartbeat } from '@/lib/heartbeat'
 import {
   verificarLancamentoNfe,
   verificarManifestacaoExterna,
@@ -17,6 +18,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
+  const t0 = Date.now()
   try {
     const admin = createAdminClient()
     const agora = new Date().toISOString()
@@ -234,6 +236,14 @@ export async function POST(req: NextRequest) {
 
     console.log(`[cron-fiscal-sync] ${agora} — importadas=${importadas} reabertas=${reabertas} concluidas=${concluidasStep1 + concluidasStep2} desconhecidas=${desconhecidasAuto} avancadas_fiscal=${avancadasFiscal}`)
 
+    await registrarHeartbeat('fiscal-sync', 'ok', {
+      importadas,
+      reabertas,
+      concluidas:         concluidasStep1 + concluidasStep2,
+      desconhecidas_auto: desconhecidasAuto,
+      pendentes:          totalAguardando,
+    }, Date.now() - t0)
+
     return NextResponse.json({
       importadas,
       concluidas:           concluidasStep1 + concluidasStep2,
@@ -251,6 +261,7 @@ export async function POST(req: NextRequest) {
     })
   } catch (e: any) {
     console.error('[cron-fiscal-sync] erro:', e.message)
+    await registrarHeartbeat('fiscal-sync', 'erro', { erro: e.message }, Date.now() - t0)
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }

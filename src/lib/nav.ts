@@ -9,7 +9,7 @@ import {
   PackageSearch, Truck, CalendarDays, ShoppingCart,
   Banknote, Hash, AlertTriangle, Croissant, Wheat, Factory,
   Scale, GraduationCap, DollarSign,
-  BookOpen, FileBarChart, Download,
+  BookOpen, FileBarChart, Download, Activity,
 } from 'lucide-react'
 import type { Role } from '@/types/database.types'
 import type { Permission } from '@/lib/utils/permissions'
@@ -80,6 +80,7 @@ export const NAV_GROUPS: NavGroup[] = [
           { href: '/extrato-painel',                label: 'Extrato Bancário',     icon: ScanSearch,    permission: 'extrato_painel.view' as Permission },
           { href: '/tarefas/conciliacao',          label: 'Geração de Tarefas',   icon: ClipboardList, permission: 'contas_bancarias.view' as Permission },
           { href: '/conciliadores',                label: 'Conciliadores',        icon: Users,         permission: 'usuarios.edit' as Permission },
+          { href: '/monitoramento/saldos',          label: 'Saldos Bancários',     icon: Landmark,      permission: 'monitoramento.view' as Permission },
         ],
       },
       { href: '/controle-caixas',     label: 'Controle de Caixas',   icon: CheckSquare, permission: 'controle_caixas.view' as Permission },
@@ -98,9 +99,9 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Contábil',
     items: [
-      { href: '/contabil/visao-geral',      label: 'Visão Geral',          icon: BookOpen,     permission: null },
-      { href: '/contabil/relatorios',       label: 'Relatórios',           icon: FileBarChart, permission: null },
-      { href: '/contabil/exportacao-dados', label: 'Exportação de Dados', icon: Download,     permission: null },
+      { href: '/contabil/visao-geral',      label: 'Visão Geral',          icon: BookOpen,     permission: 'contabil.view' as Permission },
+      { href: '/contabil/relatorios',       label: 'Relatórios',           icon: FileBarChart, permission: 'contabil.view' as Permission },
+      { href: '/contabil/exportacao-dados', label: 'Exportação de Dados', icon: Download,     permission: 'contabil.view' as Permission },
       {
         label: 'Máscaras', icon: Layers, permission: 'mascaras.view' as Permission,
         children: [
@@ -166,6 +167,7 @@ export const NAV_GROUPS: NavGroup[] = [
         ],
       },
       { href: '/relatorios', label: 'Relatórios', icon: FileText, permission: 'relatorios.view' as Permission },
+      { href: '/monitoramento', label: 'Monitoramento', icon: Activity, permission: 'monitoramento.view' as Permission },
     ],
   },
   {
@@ -178,7 +180,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Outros',
     items: [
-      { href: '/comissionamento', label: 'Comissionamento', icon: DollarSign, permission: null },
+      { href: '/comissionamento', label: 'Comissionamento', icon: DollarSign, permission: 'comissionamento.view' as Permission },
       { href: '/transpombal', label: 'Transpombal — Frota', icon: Truck, permission: 'transpombal.view' as Permission },
       { href: '/tanques',     label: 'Medição de Tanques',  icon: Fuel,  permission: 'tanques.view' as Permission },
       { href: '/precos-combustivel', label: 'Preços de Combustível', icon: Fuel, permission: 'precos_combustivel.lancar' as Permission, hideForRoles: ['master'] },

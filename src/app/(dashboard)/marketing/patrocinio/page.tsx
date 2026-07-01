@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from '@/hooks/use-toast'
 import { useAuthContext } from '@/contexts/AuthContext'
+import { SeletorPostoAtivo } from '@/components/shared/SeletorPostoAtivo'
 import { can } from '@/lib/utils/permissions'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils/cn'
@@ -64,7 +65,7 @@ const STATUS_CFG = {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function PatrocinioPage() {
-  const { usuario } = useAuthContext()
+  const { usuario, posto_ativo_id, setPostoAtivo } = useAuthContext()
   const podeAprovar  = can(usuario?.role, 'marketing.aprovar')
   const podeCriar    = can(usuario?.role, 'marketing.create_patrocinio')
   // gerente tem o posto fixo no campo posto_fechamento_id
@@ -134,6 +135,13 @@ export default function PatrocinioPage() {
       setForm(f => ({ ...f, posto_id: postoFixoId }))
     }
   }, [load, isGerente, postoFixoId])
+
+  // Gerente: o posto do formulário segue o posto ativo global (seletor da home)
+  useEffect(() => {
+    if (isGerente && posto_ativo_id) {
+      setForm(f => (f.posto_id === posto_ativo_id ? f : { ...f, posto_id: posto_ativo_id }))
+    }
+  }, [isGerente, posto_ativo_id])
 
   async function salvar() {
     if (!form.posto_id || !form.valor || !form.data_evento || !form.patrocinado) {
@@ -261,10 +269,10 @@ export default function PatrocinioPage() {
           )}
         </div>
 
-        {/* Saldos resumidos — gerente vê só o próprio posto */}
+        {/* Saldos resumidos — gerente vê os postos vinculados a ele */}
         {saldos.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {saldos.filter(s => !isGerente || s.posto_id === postoFixoId).map(s => {
+            {saldos.map(s => {
               const pctM = Number(s.limite_mensal) > 0 ? (Number(s.gasto_mensal_patrocinio) / Number(s.limite_mensal)) * 100 : 0
               return (
                 <div key={s.posto_id} className="bg-white rounded-lg border border-gray-100 p-3 shadow-sm">
@@ -433,13 +441,15 @@ export default function PatrocinioPage() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-3">
-              {/* Gerente: posto fixo (exibe nome); outros: select */}
+              {/* Gerente: seletor de posto ativo (multi-posto); outros: select */}
               {isGerente ? (
                 <div className="col-span-2">
-                  <Label className="text-[12px]">Posto</Label>
-                  <div className="mt-1 h-9 px-3 flex items-center rounded-md border border-gray-200 bg-gray-50 text-[13px] text-gray-700">
-                    {saldos.find(s => s.posto_id === postoFixoId)?.posto_nome ?? 'Seu posto'}
-                  </div>
+                  <SeletorPostoAtivo
+                    postos={saldos.map(s => ({ id: s.posto_id, nome: s.posto_nome }))}
+                    value={posto_ativo_id || form.posto_id}
+                    onChange={setPostoAtivo}
+                    label="Criando patrocínio para"
+                  />
                 </div>
               ) : (
                 <div className="col-span-2">

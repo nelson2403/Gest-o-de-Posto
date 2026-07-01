@@ -196,7 +196,8 @@ export default function PainelMaquininhasASPage() {
               </div>
 
               {/* Tabela */}
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto -mx-px">
+              <table className="w-full text-sm min-w-[640px]">
                 <thead>
                   <tr className="border-b border-gray-100 text-[11px] text-gray-400 uppercase tracking-wide">
                     <th className="text-left px-4 py-2 font-medium">Nº Série</th>
@@ -232,6 +233,7 @@ export default function PainelMaquininhasASPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           ))}
         </div>

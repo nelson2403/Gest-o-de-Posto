@@ -20,7 +20,10 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     let postoIds: string[] | null = null
     if (usuario?.role === 'gerente') {
-      postoIds = await getPostosGerente(supabase, user.id, usuario.posto_fechamento_id)
+      const ids = await getPostosGerente(supabase, user.id, usuario.posto_fechamento_id)
+      // Se a tela enviar o posto ativo (e for um dos dele), escopa só nele
+      const sel = searchParams.get('posto_id')
+      postoIds = sel && ids.includes(sel) ? [sel] : ids
       if (!postoIds.length) postoIds = ['__none__'] // gerente sem posto não vê nada
     } else {
       const p = searchParams.get('posto_id')
