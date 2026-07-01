@@ -15,6 +15,7 @@ import { formatCurrency } from '@/lib/utils/formatters'
 import {
   CheckCircle2, AlertTriangle, Clock, RefreshCw, ScanSearch,
   FileSpreadsheet, TrendingUp, TrendingDown, Minus, Search, Download,
+  ChevronDown, ChevronUp, Archive,
 } from 'lucide-react'
 import type { Role } from '@/types/database.types'
 
@@ -110,6 +111,42 @@ export default function ExtratoPainelPage() {
   const [search, setSearch] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'ok' | 'divergente' | 'pendente'>('todos')
   const [filtroPosto, setFiltroPosto] = useState('todos')
+
+  // ── Consulta de extratos (só master): alcança QUALQUER extrato, inclusive o
+  //    primeiro anexado (busca server-side por posto/data, sem o limite de 1000).
+  const isMaster = role === 'master'
+  const [consultaAberta, setConsultaAberta] = useState(false)
+  const [postosLista, setPostosLista] = useState<{ id: string; nome: string }[]>([])
+  const [cPosto, setCPosto]   = useState('todos')
+  const [cDe, setCDe]         = useState('')
+  const [cAte, setCAte]       = useState('')
+  const [cOrdem, setCOrdem]   = useState<'asc' | 'desc'>('asc')
+  const [cRows, setCRows]     = useState<ExtratoRow[]>([])
+  const [cLoading, setCLoading] = useState(false)
+  const [cBuscou, setCBuscou] = useState(false)
+
+  useEffect(() => {
+    if (!isMaster || postosLista.length) return
+    supabase.from('postos').select('id, nome').eq('ativo', true).order('nome')
+      .then(({ data }) => setPostosLista(data ?? []))
+  }, [isMaster, postosLista.length, supabase])
+
+  async function buscarConsulta() {
+    setCLoading(true); setCBuscou(true)
+    let q = supabase.from('tarefas')
+      .select('id, titulo, status, data_inicio, extrato_arquivo_path, extrato_arquivo_nome, extrato_data, extrato_periodo_ini, extrato_saldo_dia, extrato_saldo_anterior, extrato_movimento, extrato_saldo_externo, extrato_diferenca, extrato_status, extrato_validado_em, posto:postos(nome), usuario:usuarios(nome)')
+      .eq('categoria', 'conciliacao_bancaria')
+      .not('extrato_arquivo_path', 'is', null)
+    if (cPosto !== 'todos') q = q.eq('posto_id', cPosto)
+    if (cDe)  q = q.gte('extrato_data', cDe)
+    if (cAte) q = q.lte('extrato_data', cAte)
+    const { data, error } = await q
+      .order('extrato_data', { ascending: cOrdem === 'asc', nullsFirst: false })
+      .limit(500)
+    if (error) toast({ variant: 'destructive', title: 'Erro na busca', description: error.message })
+    else setCRows((data ?? []) as unknown as ExtratoRow[])
+    setCLoading(false)
+  }
 
 
   async function load() {
@@ -225,6 +262,103 @@ export default function ExtratoPainelPage() {
       />
 
       <div className="p-3 md:p-6 space-y-5">
+
+        {/* ── Consultar extratos (só master) ───────────────────────────── */}
+        {isMaster && (
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 overflow-hidden">
+            <button
+              onClick={() => setConsultaAberta(o => !o)}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-indigo-50 transition-colors"
+            >
+              <span className="flex items-center gap-2 text-[13px] font-bold text-indigo-800">
+                <Archive className="w-4 h-4" /> Consultar extratos anexados
+                <span className="text-[11px] font-normal text-indigo-500">— busca qualquer extrato, inclusive o primeiro</span>
+              </span>
+              {consultaAberta ? <ChevronUp className="w-4 h-4 text-indigo-500" /> : <ChevronDown className="w-4 h-4 text-indigo-500" />}
+            </button>
+
+            {consultaAberta && (
+              <div className="border-t border-indigo-100 p-4 space-y-3 bg-white">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+                  <div className="lg:col-span-2">
+                    <label className="text-[11px] text-gray-500">Posto</label>
+                    <Select value={cPosto} onValueChange={setCPosto}>
+                      <SelectTrigger className="h-9 text-[13px]"><SelectValue placeholder="Todos" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todos os postos</SelectItem>
+                        {postosLista.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-gray-500">De</label>
+                    <Input type="date" value={cDe} onChange={e => setCDe(e.target.value)} className="h-9 text-[13px]" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-gray-500">Até</label>
+                    <Input type="date" value={cAte} onChange={e => setCAte(e.target.value)} className="h-9 text-[13px]" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-gray-500">Ordem</label>
+                    <Select value={cOrdem} onValueChange={v => setCOrdem(v as 'asc' | 'desc')}>
+                      <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="asc">Mais antigos primeiro</SelectItem>
+                        <SelectItem value="desc">Mais recentes primeiro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <Button onClick={buscarConsulta} disabled={cLoading} size="sm" className="gap-1.5 text-[13px] bg-indigo-600 hover:bg-indigo-700">
+                  {cLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Buscar
+                </Button>
+
+                {cBuscou && (
+                  <div className="rounded-lg border border-gray-200 overflow-hidden">
+                    {cLoading ? (
+                      <div className="flex items-center justify-center h-24 text-gray-400 text-[13px]"><RefreshCw className="w-4 h-4 animate-spin mr-2" /> Buscando...</div>
+                    ) : cRows.length === 0 ? (
+                      <div className="flex items-center justify-center h-24 text-gray-400 text-[13px]">Nenhum extrato encontrado.</div>
+                    ) : (
+                      <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+                        <table className="w-full text-[12px]">
+                          <thead className="sticky top-0 bg-gray-50">
+                            <tr className="text-[11px] text-gray-400 uppercase">
+                              <th className="text-left px-3 py-2 font-medium">Posto</th>
+                              <th className="text-left px-3 py-2 font-medium">Data extrato</th>
+                              <th className="text-right px-3 py-2 font-medium">Saldo do dia</th>
+                              <th className="text-left px-3 py-2 font-medium">Arquivo</th>
+                              <th className="px-3 py-2" />
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50">
+                            {cRows.map(r => (
+                              <tr key={r.id} className="hover:bg-gray-50/60">
+                                <td className="px-3 py-2 font-medium text-gray-700 whitespace-nowrap">{r.posto?.nome ?? '—'}</td>
+                                <td className="px-3 py-2 font-mono text-gray-600 whitespace-nowrap">{fmtData(r.extrato_data)}</td>
+                                <td className="px-3 py-2 text-right font-mono text-gray-600">{r.extrato_saldo_dia !== null ? formatCurrency(r.extrato_saldo_dia) : '—'}</td>
+                                <td className="px-3 py-2 text-gray-500 max-w-[220px] truncate" title={r.extrato_arquivo_nome ?? ''}>{r.extrato_arquivo_nome ?? '—'}</td>
+                                <td className="px-3 py-2 text-right">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50"
+                                    onClick={() => handleDownload(r)} disabled={downloading === r.id} title="Baixar extrato">
+                                    {downloading === r.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {!cLoading && cRows.length > 0 && (
+                      <p className="text-[11px] text-gray-400 px-3 py-1.5 border-t border-gray-100">{cRows.length} extrato(s){cRows.length === 500 ? ' (máx. exibido — refine a busca)' : ''}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Cards de resumo ─────────────────────────────────────────── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

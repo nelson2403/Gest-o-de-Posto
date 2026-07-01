@@ -1,13 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, Check, CheckCheck, ChevronDown, ChevronUp, ExternalLink, Fuel, Loader2, Plus, RefreshCw, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Check, CheckCheck, ChevronDown, ChevronUp, CreditCard, ExternalLink, Fuel, Loader2, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type Posto      = { id: string; nome: string }
-type Preco      = { id: string; posto_id: string; produto: string; preco: number; atualizado_em: string }
+type Posto      = { id: string; nome: string; tem_cartao_desconto?: boolean | null }
+type Preco      = { id: string; posto_id: string; produto: string; preco: number; atualizado_em: string; cartao_desconto_aplicado?: boolean | null }
 type Portal     = { id: string; nome: string; url: string | null; ativo: boolean }
 type Status     = { portal_id: string; posto_id: string; produto: string; preco_no_portal: number | null; atualizado_em: string | null }
 type Vinculacao = { portal_id: string; posto_id: string }
@@ -506,7 +506,17 @@ export default function PrecosFrotasPage() {
               <tbody>
                 {postos.filter(p => !filtroPosto || p.id === filtroPosto).map((posto, pi) => (
                   <tr key={posto.id} className={pi % 2 === 0 ? '' : 'bg-gray-50/50'}>
-                    <td className="px-4 py-2.5 font-medium text-gray-800 text-[12px] whitespace-nowrap">{posto.nome}</td>
+                    <td className="px-4 py-2.5 font-medium text-gray-800 text-[12px] whitespace-nowrap">
+                      {posto.nome}
+                      {posto.tem_cartao_desconto === true && (
+                        <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full align-middle" title="Este posto tem cartão de desconto">
+                          <CreditCard className="w-3 h-3" /> Cartão
+                        </span>
+                      )}
+                      {posto.tem_cartao_desconto === false && (
+                        <span className="ml-2 text-[10px] text-gray-400 align-middle" title="Posto sem cartão de desconto">sem cartão</span>
+                      )}
+                    </td>
                     {PRODUTOS.map(produto => {
                       const pc = precos.find(p => p.posto_id === posto.id && p.produto === produto)
                       const isEdit = editando?.posto_id === posto.id && editando?.produto === produto
@@ -531,7 +541,14 @@ export default function PrecosFrotasPage() {
                             <button
                               onClick={() => { setEditando({ posto_id: posto.id, produto }); setEditValor(pc ? String(pc.preco) : '') }}
                               className="w-full font-mono text-[12px] px-2 py-1.5 rounded hover:bg-orange-50 hover:text-orange-700 transition-colors text-gray-700">
-                              {pc ? fmtPreco(pc.preco) : <span className="text-gray-300 text-[11px]">+ Adicionar</span>}
+                              {pc ? (
+                                <span className="flex items-center justify-center gap-1">
+                                  {fmtPreco(pc.preco)}
+                                  {pc.cartao_desconto_aplicado === true && (
+                                    <CreditCard className="w-3 h-3 text-emerald-500" aria-label="Cartão de desconto aplicado neste combustível" />
+                                  )}
+                                </span>
+                              ) : <span className="text-gray-300 text-[11px]">+ Adicionar</span>}
                             </button>
                           )}
                         </td>
