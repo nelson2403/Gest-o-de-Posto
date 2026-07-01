@@ -6,6 +6,7 @@ import { queryAS } from '@/lib/autosystem'
 export const dynamic = 'force-dynamic'
 
 export interface SaldoConta {
+  conta_id:               string
   posto_id:               string | null
   posto_nome:             string
   conta_codigo:           string
@@ -16,6 +17,9 @@ export interface SaldoConta {
   saldo_autosystem:       number | null
   divergencia:            number | null
   status:                 'ok' | 'diverge' | 'sem_inicial' | 'sem_extrato'
+  observacao:             string
+  obs_atualizado_em:      string | null
+  obs_atualizado_por:     string | null
 }
 
 // Tolerância de divergência (R$) — diferenças pequenas (centavos / lançamentos
@@ -118,17 +122,36 @@ export async function GET(req: Request) {
     }
   }
 
-  // 5) Monta resposta
+  // 5) Observações (motivo das divergências) — tolera a tabela ainda não existir
+  const obsByConta = new Map<string, { observacao: string; atualizado_em: string | null; atualizado_por: string | null }>()
+  {
+    const { data: obsRows } = await admin
+      .from('saldo_bancario_observacoes')
+      .select('conta_bancaria_id, observacao, atualizado_em, atualizado_por')
+      .in('conta_bancaria_id', contaIds)
+    for (const o of obsRows ?? []) {
+      obsByConta.set(o.conta_bancaria_id, {
+        observacao: o.observacao ?? '', atualizado_em: o.atualizado_em ?? null, atualizado_por: o.atualizado_por ?? null,
+      })
+    }
+  }
+
+  // 6) Monta resposta
   const contas: SaldoConta[] = (ctas as any[]).map((c) => {
     const ext  = ultimoPorConta.get(c.id)
     const code = c.codigo_conta_externo as string
     const si   = iniByCode.get(code) ?? 0
+    const obs  = obsByConta.get(c.id)
     const base = {
+      conta_id:              c.id as string,
       posto_id:              c.posto?.id ?? null,
       posto_nome:            c.posto?.nome ?? '—',
       conta_codigo:          code,
       conta_numero:          c.conta ?? null,
       saldo_inicial_lancado: si,
+      observacao:            obs?.observacao ?? '',
+      obs_atualizado_em:     obs?.atualizado_em ?? null,
+      obs_atualizado_por:    obs?.atualizado_por ?? null,
     }
     if (!ext) {
       return { ...base, data_extrato: null, saldo_banco: null, saldo_autosystem: null, divergencia: null, status: 'sem_extrato' as const }
@@ -145,4 +168,38 @@ export async function GET(req: Request) {
   }).sort((a, b) => a.posto_nome.localeCompare(b.posto_nome))
 
   return NextResponse.json({ banco, contas, gerado_em: new Date().toISOString() })
+}
+
+// POST /api/monitoramento/saldos — salva a observação de uma conta (somente master)
+export async function POST(req: Request) {
+  const auth = await exigirRole(['master'])
+  if (!auth.ok) return auth.resp
+
+  const { conta_id, observacao } = await req.json().catch(() => ({})) as {
+    conta_id?: string; observacao?: string
+  }
+  if (!conta_id) return NextResponse.json({ error: 'conta_id obrigatório' }, { status: 400 })
+
+  const admin = createAdminClient()
+
+  // Nome de quem editou (para exibir "atualizado por")
+  const { data: u } = await admin.from('usuarios').select('nome').eq('id', auth.user.id).maybeSingle()
+
+  const { error } = await admin
+    .from('saldo_bancario_observacoes')
+    .upsert({
+      conta_bancaria_id: conta_id,
+      observacao:        (observacao ?? '').slice(0, 2000),
+      atualizado_em:     new Date().toISOString(),
+      atualizado_por:    u?.nome ?? null,
+    }, { onConflict: 'conta_bancaria_id' })
+
+  if (error) {
+    const msg = /relation .* does not exist|schema cache/i.test(error.message)
+      ? 'Tabela de observações ainda não criada — rode a migration 134 no Supabase.'
+      : error.message
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true, atualizado_por: u?.nome ?? null, atualizado_em: new Date().toISOString() })
 }

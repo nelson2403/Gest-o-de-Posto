@@ -1,10 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Landmark, Loader2, RefreshCw, CheckCircle2, AlertTriangle, CircleDashed, FileQuestion } from 'lucide-react'
+import { Landmark, Loader2, RefreshCw, CheckCircle2, AlertTriangle, CircleDashed, FileQuestion, MessageSquarePlus, MessageSquareText, X } from 'lucide-react'
 
 type Status = 'ok' | 'diverge' | 'sem_inicial' | 'sem_extrato'
 type SaldoConta = {
+  conta_id: string
   posto_id: string | null
   posto_nome: string
   conta_codigo: string
@@ -15,6 +16,9 @@ type SaldoConta = {
   saldo_autosystem: number | null
   divergencia: number | null
   status: Status
+  observacao: string
+  obs_atualizado_em: string | null
+  obs_atualizado_por: string | null
 }
 type Dados = { contas: SaldoConta[]; gerado_em: string }
 
@@ -58,6 +62,12 @@ export default function MonitoramentoSaldosPage() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro]       = useState<string | null>(null)
 
+  // Edição de observação
+  const [editando, setEditando] = useState<SaldoConta | null>(null)
+  const [obsTexto, setObsTexto] = useState('')
+  const [salvando, setSalvando] = useState(false)
+  const [erroObs, setErroObs]   = useState<string | null>(null)
+
   const carregar = useCallback(async () => {
     try {
       const r = await fetch(`/api/monitoramento/saldos?banco=${banco}`, { cache: 'no-store' })
@@ -70,6 +80,34 @@ export default function MonitoramentoSaldosPage() {
       setLoading(false)
     }
   }, [banco])
+
+  const abrirEdicao = (c: SaldoConta) => { setEditando(c); setObsTexto(c.observacao ?? ''); setErroObs(null) }
+
+  const salvarObs = async () => {
+    if (!editando) return
+    setSalvando(true); setErroObs(null)
+    try {
+      const r = await fetch('/api/monitoramento/saldos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conta_id: editando.conta_id, observacao: obsTexto }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'Falha ao salvar')
+      // Atualiza localmente sem recarregar tudo
+      setDados(prev => prev && ({
+        ...prev,
+        contas: prev.contas.map(x => x.conta_id === editando.conta_id
+          ? { ...x, observacao: obsTexto, obs_atualizado_em: d.atualizado_em, obs_atualizado_por: d.atualizado_por }
+          : x),
+      }))
+      setEditando(null)
+    } catch (e: any) {
+      setErroObs(e.message)
+    } finally {
+      setSalvando(false)
+    }
+  }
 
   useEffect(() => {
     setLoading(true)
@@ -158,11 +196,12 @@ export default function MonitoramentoSaldosPage() {
                 <th className="text-right font-semibold px-3 py-2.5">Saldo AUTOSYSTEM</th>
                 <th className="text-right font-semibold px-3 py-2.5">Divergência</th>
                 <th className="text-center font-semibold px-4 py-2.5">Status</th>
+                <th className="text-left font-semibold px-4 py-2.5">Motivo / Obs.</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {(dados?.contas ?? []).map((c) => (
-                <tr key={c.conta_codigo} className="hover:bg-gray-50/60">
+                <tr key={c.conta_id} className="hover:bg-gray-50/60">
                   <td className="px-4 py-2.5 font-medium text-gray-800">{c.posto_nome}</td>
                   <td className="px-3 py-2.5 text-gray-500 font-mono text-[12px]">
                     {c.conta_numero ?? c.conta_codigo}
@@ -178,10 +217,22 @@ export default function MonitoramentoSaldosPage() {
                     {fmt(c.divergencia)}
                   </td>
                   <td className="px-4 py-2.5 text-center"><StatusPill s={c.status} /></td>
+                  <td className="px-4 py-2.5 max-w-[240px]">
+                    {c.observacao ? (
+                      <button onClick={() => abrirEdicao(c)} className="group flex items-start gap-1.5 text-left w-full" title="Editar observação">
+                        <MessageSquareText className="w-3.5 h-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+                        <span className="text-[12px] text-gray-600 line-clamp-2 group-hover:text-gray-900">{c.observacao}</span>
+                      </button>
+                    ) : (
+                      <button onClick={() => abrirEdicao(c)} className="flex items-center gap-1 text-[12px] text-gray-400 hover:text-emerald-600">
+                        <MessageSquarePlus className="w-3.5 h-3.5" /> adicionar
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
               {!dados?.contas?.length && (
-                <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">Nenhuma conta Sicoob encontrada.</td></tr>
+                <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">Nenhuma conta {banco} encontrada.</td></tr>
               )}
             </tbody>
           </table>
@@ -193,6 +244,51 @@ export default function MonitoramentoSaldosPage() {
         extrato anexado. Enquanto o saldo inicial não for lançado, a conta aparece como <b>“Sem inicial”</b> e a
         divergência reflete o acumulado a corrigir.
       </p>
+
+      {/* Modal de observação */}
+      {editando && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !salvando && setEditando(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+              <div>
+                <h3 className="text-[14px] font-bold text-gray-900">Motivo da divergência</h3>
+                <p className="text-[11px] text-gray-400">{editando.posto_nome} · conta {editando.conta_numero ?? editando.conta_codigo}</p>
+              </div>
+              <button onClick={() => !salvando && setEditando(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-gray-400">Divergência atual</span>
+                <span className={`font-mono font-semibold ${editando.status === 'diverge' ? 'text-red-600' : editando.status === 'ok' ? 'text-green-600' : 'text-gray-500'}`}>
+                  R$ {fmt(editando.divergencia)}
+                </span>
+              </div>
+              <textarea
+                value={obsTexto}
+                onChange={e => setObsTexto(e.target.value)}
+                rows={5}
+                maxLength={2000}
+                autoFocus
+                placeholder="Ex.: diferença de recebíveis de cartão ainda não liquidados; lançamento pendente no AUTOSYSTEM; taxa não conciliada…"
+                className="w-full border border-gray-200 rounded-lg p-3 text-[13px] resize-none focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              />
+              {editando.obs_atualizado_em && (
+                <p className="text-[11px] text-gray-400">
+                  Última atualização: {new Date(editando.obs_atualizado_em).toLocaleString('pt-BR')}
+                  {editando.obs_atualizado_por ? ` · por ${editando.obs_atualizado_por}` : ''}
+                </p>
+              )}
+              {erroObs && <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 text-[12px] text-red-700">{erroObs}</div>}
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-gray-100">
+              <button onClick={() => setEditando(null)} disabled={salvando} className="h-9 px-3 text-[13px] text-gray-600 hover:bg-gray-50 rounded-lg disabled:opacity-50">Cancelar</button>
+              <button onClick={salvarObs} disabled={salvando} className="h-9 px-4 text-[13px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+                {salvando && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
