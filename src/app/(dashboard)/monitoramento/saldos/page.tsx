@@ -16,6 +16,7 @@ type SaldoConta = {
   saldo_autosystem: number | null
   divergencia: number | null
   status: Status
+  extratos_abertos: number
   observacao: string
   obs_atualizado_em: string | null
   obs_atualizado_por: string | null
@@ -122,7 +123,7 @@ export default function MonitoramentoSaldosPage() {
       ok:          c.filter(x => x.status === 'ok').length,
       diverge:     c.filter(x => x.status === 'diverge').length,
       sem_inicial: c.filter(x => x.status === 'sem_inicial').length,
-      sem_extrato: c.filter(x => x.status === 'sem_extrato').length,
+      em_aberto:   c.filter(x => (x.extratos_abertos ?? 0) > 0).length,
       saldoBanco:  c.reduce((s, x) => s + (x.saldo_banco ?? 0), 0),
     }
   }, [dados])
@@ -179,7 +180,7 @@ export default function MonitoramentoSaldosPage() {
         <ResumoCard titulo="Conciliadas"   valor={resumo.ok}          cls="text-green-600" />
         <ResumoCard titulo="Divergentes"   valor={resumo.diverge}     cls="text-red-600" />
         <ResumoCard titulo="Sem inicial"   valor={resumo.sem_inicial} cls="text-amber-600" />
-        <ResumoCard titulo="Sem extrato"   valor={resumo.sem_extrato} cls="text-gray-400" />
+        <ResumoCard titulo="C/ extrato em aberto" valor={resumo.em_aberto} cls="text-amber-500" />
         <ResumoCard titulo="Saldo total (banco)" valor={`R$ ${fmt(resumo.saldoBanco)}`} cls="text-gray-900 text-[15px]" />
       </div>
 
@@ -216,7 +217,14 @@ export default function MonitoramentoSaldosPage() {
                   }`}>
                     {fmt(c.divergencia)}
                   </td>
-                  <td className="px-4 py-2.5 text-center"><StatusPill s={c.status} /></td>
+                  <td className="px-4 py-2.5 text-center">
+                    <StatusPill s={c.status} />
+                    {c.extratos_abertos > 0 && (
+                      <span className="mt-1 block text-[10px] font-semibold text-amber-600" title="Extratos de conciliação ainda não concluídos — a divergência pode ser por isso">
+                        {c.extratos_abertos} extrato{c.extratos_abertos > 1 ? 's' : ''} em aberto
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 max-w-[240px]">
                     {c.observacao ? (
                       <button onClick={() => abrirEdicao(c)} className="group flex items-start gap-1.5 text-left w-full" title="Editar observação">

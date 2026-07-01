@@ -17,6 +17,7 @@ export interface SaldoConta {
   saldo_autosystem:       number | null
   divergencia:            number | null
   status:                 'ok' | 'diverge' | 'sem_inicial' | 'sem_extrato'
+  extratos_abertos:       number
   observacao:             string
   obs_atualizado_em:      string | null
   obs_atualizado_por:     string | null
@@ -54,7 +55,9 @@ export async function GET(req: Request) {
   const recToConta = new Map<string, string>((recs ?? []).map((r: any) => [r.id, r.conta_bancaria_id]))
   const recIds = (recs ?? []).map((r: any) => r.id)
 
-  // 3) Último extrato anexado por conta (1 por recorrente, em paralelo)
+  // 3) Último extrato CONCLUÍDO por conta (ignora em_andamento e extratos sem saldo).
+  //    Extratos em aberto não podem ancorar a comparação — a conciliação daquele
+  //    dia ainda não fechou, então a divergência seria falsa.
   const ultimoPorConta = new Map<string, { data: string; saldo_dia: number }>()
   await Promise.all(recIds.map(async (rid: string) => {
     const { data } = await admin
@@ -62,7 +65,9 @@ export async function GET(req: Request) {
       .select('extrato_data, extrato_saldo_dia')
       .eq('tarefa_recorrente_id', rid)
       .eq('categoria', 'conciliacao_bancaria')
+      .eq('status', 'concluido')
       .not('extrato_saldo_dia', 'is', null)
+      .neq('extrato_saldo_dia', 0)
       .order('extrato_data', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -73,6 +78,23 @@ export async function GET(req: Request) {
       ultimoPorConta.set(cid, { data: data.extrato_data, saldo_dia: Number(data.extrato_saldo_dia) })
     }
   }))
+
+  // 3b) Extratos de conciliação EM ABERTO (não concluídos) por conta — contextualiza
+  //     divergências que são, na verdade, dias ainda pendentes de conciliação.
+  const abertosPorConta = new Map<string, number>()
+  {
+    const { data: abertos } = await admin
+      .from('tarefas')
+      .select('tarefa_recorrente_id')
+      .in('tarefa_recorrente_id', recIds)
+      .eq('categoria', 'conciliacao_bancaria')
+      .neq('status', 'concluido')
+      .gte('extrato_data', '2026-01-01')
+    for (const a of abertos ?? []) {
+      const cid = recToConta.get((a as any).tarefa_recorrente_id)
+      if (cid) abertosPorConta.set(cid, (abertosPorConta.get(cid) ?? 0) + 1)
+    }
+  }
 
   // 4) AUTOSYSTEM: movimentos acumulados até a data do extrato + saldo inicial lançado
   const alvos = ctas
@@ -149,6 +171,7 @@ export async function GET(req: Request) {
       conta_codigo:          code,
       conta_numero:          c.conta ?? null,
       saldo_inicial_lancado: si,
+      extratos_abertos:      abertosPorConta.get(c.id) ?? 0,
       observacao:            obs?.observacao ?? '',
       obs_atualizado_em:     obs?.atualizado_em ?? null,
       obs_atualizado_por:    obs?.atualizado_por ?? null,
