@@ -14,7 +14,7 @@ import type {
 export type { FieldKey, OperatorKey, ConditionGroup }
 
 // ── Modo / base do "ENTÃO faça isso" ────────────────────────────────────────
-export type ResultadoModo = 'sobre' | 'por_unidade' | 'a_cada'
+export type ResultadoModo = 'sobre' | 'por_unidade' | 'a_cada' | 'fixo'
 export type ResultadoTipo =
   | 'vendas_rs'         // Faturamento
   | 'lucro_bruto'       // Lucro bruto (venda - custo)
@@ -89,6 +89,12 @@ export interface Regra {
   // (com filtros) NÃO cobre as vendas que devem ser comissionadas.
   meta_referencia_id:   string | null
 
+  // Template do checklist para a condição `pontuacao_checklist`. Quando
+  // preenchido, o engine soma total_pontos das aplicações desse template
+  // que cruzam o período do cálculo (no posto atual) e coloca no ctx
+  // como pontuacao_checklist. Sem esse campo a condição sempre bate zero.
+  checklist_template_referencia_id: string | null
+
   // ── Novo modelo "por vendedor agregado" (migration 093) ─────────────────
   // SE — filtros e dimensão que definem o realizado da meta de referência.
   // Múltiplos filtros combinam por AND. Vazio = todas as vendas do vendedor.
@@ -117,7 +123,12 @@ export interface Membro {
 }
 
 // ── Meta + split (distribuição da meta entre membros) ───────────────────────
-export type MetaCampo  = 'faturamento' | 'quantidade' | 'margem' | 'mix'
+// markup = lucro / custo × 100 (marcação sobre o custo). Diferente de
+// margem, que é lucro / faturamento × 100.
+// checklist = pontuação obtida numa aplicação mensal do supervisor
+// sobre um template de checklist (limpeza, uniforme, etc.). Não vem
+// das vendas — é entrada manual. Ver comissio_checklists_*.
+export type MetaCampo  = 'faturamento' | 'quantidade' | 'margem' | 'mix' | 'markup' | 'checklist'
 export type MetaFiltro = 'produto' | 'grupo_produto' | 'subgrupo_produto' | 'produto_tipo'
 export type MetaModo   = 'incluir' | 'excluir'
 
@@ -153,11 +164,57 @@ export interface Meta {
   // não há categoria vinculada, cai em `mix_*` (legado: nomes literais).
   mix_numerador_categoria_id:   string | null
   mix_denominador_categoria_id: string | null
+  // Grids dos produtos (vindos de comissio_categoria_produtos.produto_grid).
+  // Preferidos pelo engine: comparam Venda.produto (grid) direto, sem casar
+  // por string — robusto contra variação de nome ("GASOLINA C COMUM" vs
+  // "Gasolina Comum"). Populados quando há categoria_id; null no legado.
+  mix_numerador_grids:   number[] | null
+  mix_denominador_grids: number[] | null
+  // Nomes (legado pré-categoria). Usados como fallback quando os grids são
+  // null. Preservados também para exibição no diagnóstico.
   mix_numerador:   string[] | null
   mix_denominador: string[] | null
-  valor_meta:      number   // total da empresa/posto
+  // Meta de campo='checklist' aponta para o template. O realizado é
+  // resolvido no data-loader: pega a aplicação (posto × template) que
+  // cruza o período da meta e usa o total_pontos como realizado.
+  checklist_template_id: string | null
+  valor_meta:      number   // total da empresa/posto (ou pontos-alvo p/ checklist)
   period_start:    string   // YYYY-MM-DD
   period_end:      string   // YYYY-MM-DD
+}
+
+// ── Checklist mensal aplicado pelo supervisor ─────────────────────────────
+export interface ChecklistTemplate {
+  id:         string
+  nome:       string
+  descricao:  string
+  ativo:      boolean
+  itens:      ChecklistItem[]
+}
+
+export interface ChecklistItem {
+  id:         string
+  ordem:      number
+  descricao:  string
+  pontos:     number
+}
+
+export interface ChecklistAplicacao {
+  id:           string
+  template_id:  string
+  posto_id:     string
+  period_start: string
+  period_end:   string
+  total_pontos: number
+  observacoes:  string
+  respostas:    ChecklistResposta[]
+}
+
+export interface ChecklistResposta {
+  aplicacao_id: string
+  item_id:      string
+  ok:           boolean
+  motivo:       string
 }
 
 export interface MetaSplit {

@@ -16,6 +16,7 @@
 import {
   carregarRegrasDoEsquema, carregarMetasDoPosto, carregarMembrosDoPosto,
   carregarVendas, resolverEmpresaExterna, carregarEsquema,
+  carregarChecklistsDoPosto,
 } from './data-loader'
 import { calcularComissaoPorVendedor, vendaPassaProductFilters } from './rule-engine'
 import { calcularAtingimento } from './goals-aggregation'
@@ -83,12 +84,13 @@ export async function calcularComissoes(input: CalcularComissoesInput): Promise<
   }
 
   // 2. Carrega todos os dados em paralelo
-  const [esquema, regras, metasESplits, membros, vendas] = await Promise.all([
+  const [esquema, regras, metasESplits, membros, vendas, checklists] = await Promise.all([
     carregarEsquema(esquemaId),
     carregarRegrasDoEsquema(esquemaId),
     carregarMetasDoPosto(postoId, dataIni, dataFim),
     carregarMembrosDoPosto(postoId),
     carregarVendas([empresaExterna], dataIni, dataFim),
+    carregarChecklistsDoPosto(postoId, dataIni, dataFim),
   ])
   const { metas, splits } = metasESplits
 
@@ -110,16 +112,26 @@ export async function calcularComissoes(input: CalcularComissoesInput): Promise<
     atingimentoPorVendedorPorMeta,
     atingimentoTotalPorMeta,
     detalhes: atingimentos,
-  } = calcularAtingimento({ vendas, metas, splits, membros })
+  } = calcularAtingimento({ vendas, metas, splits, membros, checklists })
 
   // 5. Aplica engine NOVO: 1 ComissaoPorVendedor por vendedor com a lista
   // de regras que casaram. Sem first-match-wins; várias regras podem
   // contribuir para o mesmo vendedor. `membros` permite que gerentes sem
   // vendas próprias entrem no loop (recebem comissão sobre agregado).
+  // Agrega pontuação de checklist por template (soma total_pontos das
+  // aplicações do posto no período). Alimenta ctx.pontuacao_checklist
+  // nas regras que apontam checklist_template_referencia_id.
+  const pontuacaoChecklistPorTemplate = new Map<string, number>()
+  for (const a of checklists) {
+    const cur = pontuacaoChecklistPorTemplate.get(a.template_id) ?? 0
+    pontuacaoChecklistPorTemplate.set(a.template_id, cur + a.total_pontos)
+  }
+
   const comissaoPorVendedor = calcularComissaoPorVendedor({
     vendas: vendasNoEscopo, regras, metas,
     atingimentoPorVendedorPorMeta,
     atingimentoTotalPorMeta,
+    pontuacaoChecklistPorTemplate,
     membros,
   })
 

@@ -19,7 +19,7 @@ import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils/cn'
 import {
   ArrowLeft, Save, Plus, Loader2, ClipboardList,
-  Trash2, Pencil, AlertCircle, CheckCircle2,
+  Trash2, Pencil, Copy, AlertCircle, CheckCircle2, ListChecks,
   DollarSign, Hash, Layers, Package, FolderTree, Boxes, GitBranch, TrendingUp,
   Building2, Filter, X, ChevronDown, ChevronUp, Target,
 } from 'lucide-react'
@@ -96,6 +96,7 @@ interface Regra {
   escopo_tipo:           EscopoTipoUI | null
   escopo_valor:          string
   meta_referencia_id:    string | null
+  checklist_template_referencia_id: string | null
   realizado_filtros:     ProductFilter[]
   realizado_campo:       RegraCampo
   base_filtros:          ProductFilter[]
@@ -228,6 +229,10 @@ function fmtResultado(r: {
     ? CAMPO_LABEL[r.base_campo].toLowerCase()
     : BASE_LABEL[r.resultado_tipo]
 
+  if (r.resultado_modo === 'fixo') {
+    // No modo fixo a base é ignorada — não anexamos filtrosTxt.
+    return `${fmtBRL(v)} fixo`
+  }
   if (r.resultado_modo === 'sobre') {
     return `${fmtNum(v)}% sobre ${baseNome}${filtrosTxt}`
   }
@@ -272,6 +277,14 @@ export default function EsquemaDetailPage({ params }: { params: Promise<{ id: st
   // Metas disponíveis para referenciar em condições de atingimento.
   // Carregadas dos postos vinculados ao esquema (filtra por posto_id).
   const [metasDisponiveis, setMetasDisponiveis] = useState<MetaResumo[]>([])
+  // Templates de checklist disponíveis para condições de pontuacao_checklist.
+  const [checklistTemplates, setChecklistTemplates] = useState<Array<{ id: string; nome: string }>>([])
+  useEffect(() => {
+    fetch('/api/comissionamento/checklists/templates')
+      .then(r => r.json())
+      .then(d => setChecklistTemplates((d.templates ?? []).filter((t: { ativo: boolean }) => t.ativo).map((t: { id: string; nome: string }) => ({ id: t.id, nome: t.nome }))))
+      .catch(() => {})
+  }, [])
 
   // Formulário inline de regra (substituiu o antigo Dialog)
   const [regraFormOpen, setRegraFormOpen] = useState(false)
@@ -289,6 +302,7 @@ export default function EsquemaDetailPage({ params }: { params: Promise<{ id: st
     escopo_tipo:           null as EscopoTipoUI | null,    // LEGADO
     escopo_valor:          '',                             // LEGADO
     meta_referencia_id:    null as string | null,          // fornece valor_meta para atingimento
+    checklist_template_referencia_id: null as string | null,  // fornece pontuacao_checklist no ctx
     realizado_filtros:     [] as ProductFilter[],          // SE — filtros do realizado
     realizado_campo:       'faturamento' as RegraCampo,    // SE — dimensão do realizado
     base_filtros:          [] as ProductFilter[],          // ENTÃO — filtros da base
@@ -468,6 +482,7 @@ export default function EsquemaDetailPage({ params }: { params: Promise<{ id: st
       escopo_tipo:           null,
       escopo_valor:          '',
       meta_referencia_id:    null,
+      checklist_template_referencia_id: null,
       realizado_filtros:     [],
       realizado_campo:       'faturamento',
       base_filtros:          [],
@@ -500,6 +515,7 @@ export default function EsquemaDetailPage({ params }: { params: Promise<{ id: st
       escopo_tipo:           (r.escopo_tipo ?? null) as EscopoTipoUI | null,
       escopo_valor:          r.escopo_valor ?? '',
       meta_referencia_id:    r.meta_referencia_id ?? null,
+      checklist_template_referencia_id: (r as unknown as { checklist_template_referencia_id?: string | null }).checklist_template_referencia_id ?? null,
       realizado_filtros:     Array.isArray(r.realizado_filtros) ? r.realizado_filtros : [],
       realizado_campo:       (r.realizado_campo ?? 'faturamento') as RegraCampo,
       base_filtros:          Array.isArray(r.base_filtros) ? r.base_filtros : [],
@@ -555,6 +571,17 @@ export default function EsquemaDetailPage({ params }: { params: Promise<{ id: st
     } finally {
       setSalvandoRegra(false)
     }
+  }
+
+  async function duplicarRegra(r: Regra) {
+    const resp = await fetch(`/api/comissionamento/regras/${r.id}/duplicar`, { method: 'POST' })
+    const json = await resp.json().catch(() => ({}))
+    if (!resp.ok || json.error) {
+      toast({ variant: 'destructive', title: 'Erro ao duplicar', description: json.error })
+      return
+    }
+    toast({ title: 'Regra duplicada', description: 'A cópia entra como rascunho. Revise antes de ativar.' })
+    await carregar()
   }
 
   async function confirmarExcluirRegra() {
@@ -895,6 +922,7 @@ export default function EsquemaDetailPage({ params }: { params: Promise<{ id: st
                 gruposAS={gruposAS}
                 subgruposAS={subgruposAS}
                 metas={metasDisponiveis}
+                checklistTemplates={checklistTemplates}
               />
             )}
           </div>
@@ -985,6 +1013,13 @@ export default function EsquemaDetailPage({ params }: { params: Promise<{ id: st
                               title="Editar"
                             >
                               <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => duplicarRegra(r)}
+                              className="p-1.5 rounded-md text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                              title="Duplicar (nova regra em rascunho, herda todos os campos)"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => setExcluindoRegra(r)}
@@ -1176,6 +1211,7 @@ interface RegraFormState {
   escopo_tipo:           EscopoTipoUI | null
   escopo_valor:          string
   meta_referencia_id:    string | null
+  checklist_template_referencia_id: string | null
   realizado_filtros:     ProductFilter[]
   realizado_campo:       RegraCampo
   base_filtros:          ProductFilter[]
@@ -1195,9 +1231,10 @@ interface RegraFormProps {
   gruposAS:      AsItem[]
   subgruposAS:   AsItem[]
   metas:         MetaResumo[]
+  checklistTemplates: Array<{ id: string; nome: string }>
 }
 
-function RegraForm({ regraForm, setRegraForm, regraEditando, salvando, onCancel, onSave, gruposAS, subgruposAS, metas }: RegraFormProps) {
+function RegraForm({ regraForm, setRegraForm, regraEditando, salvando, onCancel, onSave, gruposAS, subgruposAS, metas, checklistTemplates }: RegraFormProps) {
   return (
     <div className="px-4 py-4 border-t border-gray-200 space-y-4 bg-white">
 
@@ -1312,6 +1349,47 @@ function RegraForm({ regraForm, setRegraForm, regraEditando, salvando, onCancel,
               </div>
             </div>
           </div>
+
+          {/* Template de referência do checklist — fornece pontuacao_checklist */}
+          <div className={cn(
+            'rounded-lg border bg-white p-3',
+            regraForm.checklist_template_referencia_id ? 'border-orange-300' : 'border-dashed border-gray-200',
+          )}>
+            <div className="flex items-start gap-2">
+              <ListChecks className={cn('w-3.5 h-3.5 mt-0.5', regraForm.checklist_template_referencia_id ? 'text-orange-600' : 'text-gray-400')} />
+              <div className="flex-1 min-w-0">
+                <Label className="text-[11px] font-semibold text-gray-700 block mb-1">
+                  Template de referência para <code className="font-mono text-[10.5px] bg-gray-100 px-1 rounded">pontuacao_checklist</code>
+                </Label>
+                <p className="text-[10.5px] text-gray-500 mb-2">
+                  Quando preenchido, condições de <b>pontuação do checklist</b> usam a soma dos pontos das aplicações deste template no período (posto atual). Sem template a condição sempre resulta falsa.
+                </p>
+                <Select
+                  value={regraForm.checklist_template_referencia_id ?? '__none'}
+                  onValueChange={(v) => setRegraForm(f => ({ ...f, checklist_template_referencia_id: v === '__none' ? null : v }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Sem template (não usa pontuacao_checklist)" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">
+                      <span className="text-gray-500">Sem template</span>
+                    </SelectItem>
+                    {checklistTemplates.length === 0 ? (
+                      <div className="px-3 py-2 text-[11.5px] text-gray-400 italic">
+                        Nenhum template ativo — <Link href="/comissionamento/checklists" className="underline">cadastre um</Link>
+                      </div>
+                    ) : checklistTemplates.map(t => (
+                      <SelectItem key={t.id} value={t.id}>
+                        <span className="flex items-center gap-2">
+                          <ListChecks className="w-3 h-3 text-orange-500" />
+                          {t.nome}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1327,11 +1405,12 @@ function RegraForm({ regraForm, setRegraForm, regraEditando, salvando, onCancel,
 
         <div className="p-3 space-y-3">
           {/* Seletor de modo */}
-          <div className="grid grid-cols-3 gap-1.5 p-1 bg-white border border-gray-200 rounded-lg">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 p-1 bg-white border border-gray-200 rounded-lg">
             {([
               { id: 'sobre',       label: 'Sobre',        sub: '% sobre uma base'             },
               { id: 'por_unidade', label: 'Por unidade',  sub: 'R$ por unidade vendida'       },
               { id: 'a_cada',      label: 'A cada',       sub: 'R$ a cada faixa de venda'     },
+              { id: 'fixo',        label: 'Valor fixo',   sub: 'R$ fixo (ignora a base)'      },
             ] as { id: ResultadoModo; label: string; sub: string }[]).map(m => (
               <button
                 key={m.id}
@@ -1429,22 +1508,40 @@ function RegraForm({ regraForm, setRegraForm, regraEditando, salvando, onCancel,
             </div>
           )}
 
+          {regraForm.resultado_modo === 'fixo' && (
+            <div className="flex flex-wrap items-end gap-2 bg-white border border-gray-200 rounded-lg p-3">
+              <span className="inline-flex items-center justify-center w-9 h-9 rounded-md bg-emerald-100 text-emerald-700 font-bold text-[12px]">R$</span>
+              <div className="w-40">
+                <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Valor (R$)</Label>
+                <Input
+                  type="number" step="0.01" min={0}
+                  value={regraForm.resultado_valor}
+                  onChange={e => setRegraForm(f => ({ ...f, resultado_valor: parseFloat(e.target.value) || 0 }))}
+                />
+              </div>
+              <span className="pb-2.5 text-[12.5px] text-gray-500">fixo (paga este valor quando o SE for atendido)</span>
+            </div>
+          )}
+
           {/* Filtros da BASE + Campo — define quais vendas entram na base
-              do cálculo da comissão. Substitui o card "Escopo" antigo. */}
-          <FiltrosERealizadoBox
-            filtros={regraForm.base_filtros}
-            setFiltros={(f) => setRegraForm(s => ({ ...s, base_filtros: f }))}
-            campo={regraForm.base_campo}
-            setCampo={(c) => setRegraForm(s => ({ ...s, base_campo: c }))}
-            escopo={regraForm.base_escopo}
-            setEscopo={(e) => setRegraForm(s => ({ ...s, base_escopo: e }))}
-            gruposAS={gruposAS}
-            subgruposAS={subgruposAS}
-            titulo="Filtros da base do cálculo"
-            descricao="Quais vendas entram na base. Vazio = todas. Combinação com o Campo decide o agregado sobre o qual a regra aplica."
-            borderColor="border-emerald-200"
-            campoLabel="Campo agregado na base"
-          />
+              do cálculo da comissão. No modo 'fixo' a base é ignorada
+              (a comissão é o valor direto), então omitimos esses controles. */}
+          {regraForm.resultado_modo !== 'fixo' && (
+            <FiltrosERealizadoBox
+              filtros={regraForm.base_filtros}
+              setFiltros={(f) => setRegraForm(s => ({ ...s, base_filtros: f }))}
+              campo={regraForm.base_campo}
+              setCampo={(c) => setRegraForm(s => ({ ...s, base_campo: c }))}
+              escopo={regraForm.base_escopo}
+              setEscopo={(e) => setRegraForm(s => ({ ...s, base_escopo: e }))}
+              gruposAS={gruposAS}
+              subgruposAS={subgruposAS}
+              titulo="Filtros da base do cálculo"
+              descricao="Quais vendas entram na base. Vazio = todas. Combinação com o Campo decide o agregado sobre o qual a regra aplica."
+              borderColor="border-emerald-200"
+              campoLabel="Campo agregado na base"
+            />
+          )}
         </div>
       </div>
 

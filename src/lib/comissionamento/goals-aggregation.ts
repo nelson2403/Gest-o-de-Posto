@@ -53,8 +53,24 @@ function realizadoNoCampo(vendas: Venda[], meta: Meta): number {
   if (meta.campo === 'mix') {
     // Mix = participação relativa do numerador no denominador, em %.
     //   realizado = (Σ qtd das vendas do numerador) / (Σ qtd das vendas do denominador) × 100
-    // Se algum dos conjuntos não estiver configurado, devolve 0 (meta não
-    // computável).
+    // Preferimos comparar GRIDS (identificador único do AUTOSYSTEM) quando
+    // disponíveis — robusto contra divergência de string entre o nome
+    // cadastrado na categoria e o nome que vem da venda. Cai para nomes
+    // (lowercase + trim) só quando os grids são null (meta legada).
+    const numGrids = meta.mix_numerador_grids   ?? null
+    const denGrids = meta.mix_denominador_grids ?? null
+    if (numGrids && denGrids) {
+      if (numGrids.length === 0 || denGrids.length === 0) return 0
+      const numSet = new Set(numGrids)
+      const denSet = new Set(denGrids)
+      let qNum = 0, qDen = 0
+      for (const v of vendas) {
+        if (denSet.has(v.produto)) qDen += v.quantidade
+        if (numSet.has(v.produto)) qNum += v.quantidade
+      }
+      return qDen > 0 ? (qNum / qDen) * 100 : 0
+    }
+    // Fallback legado por nome
     const num = (meta.mix_numerador   ?? []).map(s => s.trim().toLowerCase())
     const den = (meta.mix_denominador ?? []).map(s => s.trim().toLowerCase())
     if (num.length === 0 || den.length === 0) return 0
@@ -68,10 +84,16 @@ function realizadoNoCampo(vendas: Venda[], meta: Meta): number {
     }
     return qDen > 0 ? (qNum / qDen) * 100 : 0
   }
-  // margem (%) — média ponderada por faturamento
-  const fat = vendas.reduce((s, v) => s + v.valor_total, 0)
-  if (fat === 0) return 0
+  const fat   = vendas.reduce((s, v) => s + v.valor_total, 0)
   const lucro = vendas.reduce((s, v) => s + (v.valor_total - v.custo_medio_unitario * v.quantidade), 0)
+  if (meta.campo === 'markup') {
+    // markup (%) = lucro / custo × 100. Diferente da margem, que divide
+    // pelo faturamento. Se a soma dos custos for 0, não é computável.
+    const custo = fat - lucro
+    return custo > 0 ? (lucro / custo) * 100 : 0
+  }
+  // margem (%) — lucro / faturamento × 100
+  if (fat === 0) return 0
   return (lucro / fat) * 100
 }
 
@@ -80,6 +102,17 @@ export interface CalcularAtingimentoInput {
   metas:   Meta[]
   splits:  MetaSplit[]
   membros: Membro[]
+  // Aplicações do checklist do posto no período. Usadas apenas por metas
+  // de campo='checklist' — o realizado é o total_pontos da aplicação cujo
+  // template_id casa com a meta e período cruza. Opcional para não quebrar
+  // callers antigos.
+  checklists?: Array<{
+    id:            string
+    template_id:   string
+    period_start:  string
+    period_end:    string
+    total_pontos:  number
+  }>
 }
 
 export interface CalcularAtingimentoOutput {
@@ -109,6 +142,33 @@ export function calcularAtingimento(input: CalcularAtingimentoInput): CalcularAt
   const detalhes: AtingimentoMeta[] = []
 
   for (const meta of input.metas) {
+    // Meta de checklist tem cálculo especial — não vem das vendas, vem da
+    // aplicação mensal do supervisor. Casa por template_id + intersecção
+    // de período. Se houver múltiplas aplicações compatíveis, usa a média
+    // ponderada não; usa a soma total_pontos / valor_meta × 100 da que
+    // cruza mais dias (mantém previsível). Sem aplicação → atingimento 0.
+    if (meta.campo === 'checklist') {
+      const valorMetaTotal = Number(meta.valor_meta) || 0
+      const templateId = meta.checklist_template_id
+      let realizadoTotal = 0
+      if (templateId && input.checklists) {
+        const compat = input.checklists.filter(a =>
+          a.template_id === templateId &&
+          a.period_end   >= meta.period_start &&
+          a.period_start <= meta.period_end,
+        )
+        // Se houver mais de uma aplicação no período (raro), usa a média
+        // simples — o caso comum é 1 aplicação por mês.
+        if (compat.length > 0) {
+          realizadoTotal = compat.reduce((s, a) => s + a.total_pontos, 0) / compat.length
+        }
+      }
+      const atingimentoTotal = valorMetaTotal > 0 ? (realizadoTotal / valorMetaTotal) * 100 : 0
+      atingTotal.set(meta.id, atingimentoTotal)
+      // Sem splits/detalhes por vendedor — checklist é do posto.
+      continue
+    }
+
     const vendasDaMeta = input.vendas.filter(v => vendaCasaFiltroMeta(v, meta))
     const splitsDaMeta = input.splits.filter(s => s.meta_id === meta.id)
 

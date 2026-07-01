@@ -21,6 +21,7 @@ export type ResultadoModo =
   | 'sobre'         // % sobre uma base categórica
   | 'por_unidade'   // R$ por unidade vendida
   | 'a_cada'        // R$ a cada N R$ de base (faixa)
+  | 'fixo'          // R$ valor fixo (ignora base, paga taxa direto)
 
 // Escopo opcional na ação — restringe quais vendas a regra alcança (legado).
 export type EscopoTipo = 'produto' | 'grupo_produto' | 'subgrupo_produto'
@@ -37,7 +38,7 @@ const STATUS_VALIDOS: readonly RegraStatus[]   = ['rascunho', 'ativo', 'inativo'
 const TIPOS_VALIDOS:  readonly ResultadoTipo[] = [
   'vendas_rs', 'lucro_bruto', 'quantidade', 'mix', 'produto', 'grupo_produto', 'subgrupo_produto',
 ]
-const MODOS_VALIDOS:  readonly ResultadoModo[] = ['sobre', 'por_unidade', 'a_cada']
+const MODOS_VALIDOS:  readonly ResultadoModo[] = ['sobre', 'por_unidade', 'a_cada', 'fixo']
 const ESCOPO_VALIDOS: readonly EscopoTipo[]    = ['produto', 'grupo_produto', 'subgrupo_produto']
 const CAMPOS_VALIDOS: readonly RegraCampo[]    = ['faturamento', 'quantidade', 'lucro', 'mix', 'atingimento_meta']
 const ESCOPOS_VALIDOS: readonly RegraEscopoApi[] = ['vendedor', 'todos']
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     escopo_tipo:           EscopoTipo | null
     escopo_valor:          string
     meta_referencia_id:    string | null
+    checklist_template_referencia_id: string | null
     realizado_filtros:     unknown[]
     realizado_campo:       RegraCampo
     base_filtros:          unknown[]
@@ -132,6 +134,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       escopo_tipo:           body.escopo_tipo ?? null,
       escopo_valor:          String(body.escopo_valor ?? '').trim(),
       meta_referencia_id:    body.meta_referencia_id ?? null,
+      checklist_template_referencia_id: body.checklist_template_referencia_id ?? null,
       realizado_filtros:     Array.isArray(body.realizado_filtros) ? body.realizado_filtros : [],
       realizado_campo:       body.realizado_campo ?? 'faturamento',
       base_filtros:          Array.isArray(body.base_filtros) ? body.base_filtros : [],

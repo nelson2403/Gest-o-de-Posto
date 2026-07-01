@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils/cn'
 import { toast } from '@/hooks/use-toast'
 import {
   ArrowLeft, Building2, ClipboardList, Loader2, AlertCircle, RefreshCw,
-  Printer, FileText, ChevronDown, ChevronRight, X, BarChart3, Wand2,
+  Printer, FileText, ChevronDown, ChevronRight, X, BarChart3, Wand2, Bug,
 } from 'lucide-react'
 import type { Esquema } from '@/app/api/comissionamento/esquemas/route'
 import { PostoCombobox } from '../_components/PostoCombobox'
@@ -361,6 +361,7 @@ export default function ComissionamentoRelatoriosPage() {
                             v={v} comissao={comissao} aberto={aberto}
                             onToggle={() => toggleVendedor(v.vendedor_id)}
                             postoId={postoId}
+                            esquemaId={esquemaId}
                             dataIni={dataIni}
                             dataFim={dataFim}
                           />
@@ -404,10 +405,11 @@ interface RelatorioLinhaVendedorProps {
   aberto: boolean
   onToggle: () => void
   postoId: string
+  esquemaId: string
   dataIni: string
   dataFim: string
 }
-function RelatorioLinhaVendedor({ v, comissao, aberto, onToggle, postoId, dataIni, dataFim }: RelatorioLinhaVendedorProps) {
+function RelatorioLinhaVendedor({ v, comissao, aberto, onToggle, postoId, esquemaId, dataIni, dataFim }: RelatorioLinhaVendedorProps) {
   const regras = comissao?.comissoes ?? []
   // Ordena por comissão desc (maior contribuição primeiro)
   const regrasOrdenadas = useMemo(
@@ -417,6 +419,30 @@ function RelatorioLinhaVendedor({ v, comissao, aberto, onToggle, postoId, dataIn
 
   // Modal "Vendas por grupo / subgrupo / produto" — abertura sob demanda
   const [modalAberto, setModalAberto] = useState(false)
+
+  // Diagnóstico do engine — mostra o que o motor vê para esse vendedor.
+  const [diagAberto, setDiagAberto] = useState(false)
+  const [diagData, setDiagData] = useState<unknown | null>(null)
+  const [diagLoad, setDiagLoad] = useState(false)
+  const [diagErr, setDiagErr] = useState<string | null>(null)
+  async function diagnosticar() {
+    setDiagAberto(true); setDiagLoad(true); setDiagErr(null); setDiagData(null)
+    try {
+      const q = new URLSearchParams({
+        posto_id: postoId, esquema_id: esquemaId,
+        data_ini: dataIni, data_fim: dataFim,
+        vendedor_id: v.vendedor_id,
+      })
+      const r = await fetch(`/api/comissionamento/diagnostico-vendedor?${q}`)
+      const json = await r.json()
+      if (!r.ok || json.error) throw new Error(json.error ?? 'erro')
+      setDiagData(json)
+    } catch (e) {
+      setDiagErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setDiagLoad(false)
+    }
+  }
 
   return (
     <>
@@ -469,13 +495,23 @@ function RelatorioLinhaVendedor({ v, comissao, aberto, onToggle, postoId, dataIn
                 <Wand2 className="w-3 h-3 text-gray-400" />
                 Regras aplicadas ({regrasOrdenadas.length})
               </p>
-              <button
-                onClick={() => setModalAberto(true)}
-                className="h-7 px-2.5 rounded-md border border-orange-200 text-orange-700 hover:bg-orange-50 text-[11.5px] font-semibold flex items-center gap-1.5"
-              >
-                <BarChart3 className="w-3 h-3" />
-                Ver vendas por grupo
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={diagnosticar}
+                  className="h-7 px-2.5 rounded-md border border-blue-200 text-blue-700 hover:bg-blue-50 text-[11.5px] font-semibold flex items-center gap-1.5"
+                  title="Mostra cargo no ctx, atingimentos e por que cada regra casou ou não"
+                >
+                  <Bug className="w-3 h-3" />
+                  Diagnosticar
+                </button>
+                <button
+                  onClick={() => setModalAberto(true)}
+                  className="h-7 px-2.5 rounded-md border border-orange-200 text-orange-700 hover:bg-orange-50 text-[11.5px] font-semibold flex items-center gap-1.5"
+                >
+                  <BarChart3 className="w-3 h-3" />
+                  Ver vendas por grupo
+                </button>
+              </div>
             </div>
 
             {regrasOrdenadas.length === 0 ? (
@@ -553,7 +589,208 @@ function RelatorioLinhaVendedor({ v, comissao, aberto, onToggle, postoId, dataIn
           onClose={() => setModalAberto(false)}
         />
       )}
+
+      {diagAberto && (
+        <DiagnosticoModal
+          vendedorNome={v.vendedor_nome}
+          loading={diagLoad}
+          erro={diagErr}
+          data={diagData}
+          onClose={() => setDiagAberto(false)}
+        />
+      )}
     </>
+  )
+}
+
+// ── Modal: diagnóstico do engine para um vendedor ──────────────────────────
+interface DiagnosticoModalProps {
+  vendedorNome: string
+  loading:  boolean
+  erro:     string | null
+  data:     unknown | null
+  onClose:  () => void
+}
+function DiagnosticoModal({ vendedorNome, loading, erro, data, onClose }: DiagnosticoModalProps) {
+  if (typeof document === 'undefined') return null
+  type DiagData = {
+    vendedor: {
+      external_id: string; nome_membro: string | null; role_membro: string | null;
+      tem_membro: boolean; qtd_vendas: number
+    }
+    contexto: { cargo_no_ctx: string }
+    metas_no_periodo: Array<{
+      id: string; nome: string; campo: string; valor_meta: number;
+      atingimento_total: number | null; atingimento_vendedor: number | null;
+      mix_detalhe?: {
+        usa_grids:              boolean
+        numerador_cadastrado:   string[]
+        denominador_cadastrado: string[]
+        numerador_grids:        number[]
+        denominador_grids:      number[]
+        qtd_numerador:          number
+        qtd_denominador:        number
+        realizado_pct:          number
+        produtos_vendidos: Array<{ nome: string; grid: number; qtd: number; bate_num: boolean; bate_den: boolean }>
+      }
+    }>
+    regras: Array<{
+      regra_id: string; nome: string; ativa: boolean;
+      meta_referencia_id: string | null; meta_referencia_nome: string | null;
+      realizado_escopo: string; base_escopo: string;
+      atingimento_resolvido: number | null;
+      condicoes_avaliadas: Array<{ field: string; operator: string; value: unknown; resultado: boolean; valor_ctx: unknown; motivo?: string }>;
+      casaria: boolean; motivo_geral: string
+    }>
+  }
+  const d = data as DiagData | null
+  return createPortal(
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <p className="text-[13px] font-semibold text-gray-900 flex items-center gap-1.5">
+              <Bug className="w-3.5 h-3.5 text-blue-600" />
+              Diagnóstico do engine
+            </p>
+            <p className="text-[11px] text-gray-500">{vendedorNome}</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 text-gray-500"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {loading && <p className="text-[12px] text-gray-500 flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Calculando…</p>}
+          {erro && <p className="text-[12px] text-rose-700 bg-rose-50 px-3 py-2 rounded">{erro}</p>}
+          {d && (
+            <>
+              {/* Cadastro */}
+              <div className="space-y-1.5">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Cadastro</p>
+                <div className="bg-gray-50 border border-gray-200 rounded px-3 py-2 text-[12px] space-y-0.5">
+                  <p><span className="text-gray-500">external_person_id:</span> <span className="font-mono">{d.vendedor.external_id}</span></p>
+                  <p><span className="text-gray-500">Cadastrado em Membros:</span> {d.vendedor.tem_membro ? (
+                    <span className="text-emerald-700 font-semibold">Sim — role = "{d.vendedor.role_membro}"</span>
+                  ) : (
+                    <span className="text-rose-700 font-semibold">NÃO (regras de cargo nunca casarão)</span>
+                  )}</p>
+                  <p><span className="text-gray-500">cargo no ctx:</span> <span className="font-mono font-bold">"{d.contexto.cargo_no_ctx}"</span></p>
+                  <p><span className="text-gray-500">Vendas próprias no escopo:</span> {d.vendedor.qtd_vendas}</p>
+                </div>
+              </div>
+              {/* Metas */}
+              <div className="space-y-1.5">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Metas no período</p>
+                {d.metas_no_periodo.length === 0
+                  ? <p className="text-[11.5px] text-rose-700 italic bg-rose-50 px-3 py-2 rounded">Nenhuma meta carregada — verifique período e posto.</p>
+                  : (
+                    <div className="border border-gray-200 rounded overflow-hidden">
+                      <table className="w-full text-[11.5px]">
+                        <thead className="bg-gray-50 text-[10.5px] uppercase tracking-wide text-gray-500">
+                          <tr><th className="text-left px-3 py-1.5">Meta</th><th className="px-3 py-1.5 w-16">Campo</th><th className="text-right px-3 py-1.5 w-20">Meta</th><th className="text-right px-3 py-1.5 w-24">Ating. total</th><th className="text-right px-3 py-1.5 w-24">Ating. vendedor</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {d.metas_no_periodo.map(m => (
+                            <FragmentRow key={m.id}>
+                              <tr>
+                                <td className="px-3 py-1.5 text-gray-800">{m.nome}</td>
+                                <td className="px-3 py-1.5 text-gray-500 font-mono text-[10.5px]">{m.campo}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums">{m.valor_meta}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums">{m.atingimento_total != null ? `${m.atingimento_total.toFixed(1)}%` : '—'}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums">{m.atingimento_vendedor != null ? `${m.atingimento_vendedor.toFixed(1)}%` : '—'}</td>
+                              </tr>
+                              {m.mix_detalhe && (
+                                <tr>
+                                  <td colSpan={5} className="bg-purple-50/30 px-3 py-2 border-t border-purple-100">
+                                    <p className="text-[10.5px] uppercase tracking-wide text-purple-700 font-semibold mb-1">
+                                      Detalhe mix · realizado = {m.mix_detalhe.qtd_numerador.toFixed(2)} / {m.mix_detalhe.qtd_denominador.toFixed(2)} × 100 = {m.mix_detalhe.realizado_pct.toFixed(2)}%
+                                      <span className="ml-2 text-[10px] font-normal text-gray-600 normal-case">
+                                        ({m.mix_detalhe.usa_grids ? 'comparando por grid' : 'comparando por nome (legado)'})
+                                      </span>
+                                    </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+                                      <div>
+                                        <p className="text-[10px] uppercase text-gray-500 mb-0.5">Numerador cadastrado</p>
+                                        <p className="font-mono text-[10.5px] text-gray-700 break-words">{m.mix_detalhe.numerador_cadastrado.length === 0 ? '— vazio —' : m.mix_detalhe.numerador_cadastrado.join(' · ')}</p>
+                                        {m.mix_detalhe.usa_grids && <p className="text-[9.5px] text-gray-400 mt-0.5">grids: {m.mix_detalhe.numerador_grids.join(', ')}</p>}
+                                      </div>
+                                      <div>
+                                        <p className="text-[10px] uppercase text-gray-500 mb-0.5">Denominador cadastrado</p>
+                                        <p className="font-mono text-[10.5px] text-gray-700 break-words">{m.mix_detalhe.denominador_cadastrado.length === 0 ? '— vazio —' : m.mix_detalhe.denominador_cadastrado.join(' · ')}</p>
+                                        {m.mix_detalhe.usa_grids && <p className="text-[9.5px] text-gray-400 mt-0.5">grids: {m.mix_detalhe.denominador_grids.join(', ')}</p>}
+                                      </div>
+                                    </div>
+                                    <p className="text-[10px] uppercase text-gray-500 mb-0.5">Produtos vendidos no período (top {m.mix_detalhe.produtos_vendidos.length})</p>
+                                    <div className="max-h-40 overflow-y-auto rounded border border-purple-100 bg-white">
+                                      <table className="w-full text-[10.5px]">
+                                        <tbody>
+                                          {m.mix_detalhe.produtos_vendidos.length === 0 && (
+                                            <tr><td className="px-2 py-2 text-rose-700 italic">Nenhuma venda no período/filtro da meta</td></tr>
+                                          )}
+                                          {m.mix_detalhe.produtos_vendidos.map(p => (
+                                            <tr key={p.grid} className={cn('border-b border-gray-50', (p.bate_num || p.bate_den) ? 'bg-emerald-50/40' : 'bg-white')}>
+                                              <td className="px-2 py-0.5">
+                                                <span className="font-mono">{p.nome}</span>
+                                                <span className="text-gray-400 ml-1.5">#{p.grid}</span>
+                                              </td>
+                                              <td className="px-2 py-0.5 text-right tabular-nums w-20">{p.qtd.toFixed(2)}</td>
+                                              <td className="px-2 py-0.5 w-16 text-center">
+                                                {p.bate_num && <span className="text-emerald-700 font-bold" title="Casou com numerador">N</span>}
+                                                {p.bate_den && <span className="text-blue-700 font-bold ml-1" title="Casou com denominador">D</span>}
+                                                {!p.bate_num && !p.bate_den && <span className="text-gray-300">—</span>}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </FragmentRow>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+              </div>
+              {/* Regras */}
+              <div className="space-y-1.5">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Regras do esquema ({d.regras.length})</p>
+                {d.regras.map(r => (
+                  <div key={r.regra_id} className={cn('border rounded px-3 py-2 text-[11.5px] space-y-1', r.casaria ? 'border-emerald-300 bg-emerald-50/40' : 'border-gray-200 bg-white')}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold text-gray-900">{r.nome}</p>
+                      <span className={cn('px-2 py-0.5 rounded text-[10.5px] font-bold', r.casaria ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-700')}>
+                        {r.casaria ? 'CASARIA' : 'NÃO CASA'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-600">{r.motivo_geral}</p>
+                    <div className="text-[10.5px] text-gray-500 font-mono">
+                      <span>meta_ref: {r.meta_referencia_nome ?? '—'}</span>
+                      {' · '}
+                      <span>realizado_escopo: {r.realizado_escopo}</span>
+                      {' · '}
+                      <span>atingimento resolvido: {r.atingimento_resolvido != null ? `${r.atingimento_resolvido.toFixed(1)}%` : 'null'}</span>
+                    </div>
+                    {r.condicoes_avaliadas.length > 0 && (
+                      <ul className="space-y-0.5 mt-1">
+                        {r.condicoes_avaliadas.map((c, i) => (
+                          <li key={i} className={cn('px-2 py-1 rounded text-[10.5px] font-mono', c.resultado ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800')}>
+                            {c.resultado ? '✓ ' : '✗ '}
+                            {c.field} {c.operator} {String(c.value)} {' — ctx='}<b>{String(c.valor_ctx)}</b>
+                            {c.motivo && <span className="block text-[10px] mt-0.5 opacity-80">{c.motivo}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
 

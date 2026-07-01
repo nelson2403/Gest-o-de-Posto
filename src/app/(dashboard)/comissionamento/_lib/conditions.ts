@@ -30,6 +30,7 @@ export type FieldKey =
   | 'cargo'
   | 'posto'
   | 'margem'
+  | 'pontuacao_checklist'
   | 'atingimento_meta'
 
 export interface FieldDef {
@@ -48,8 +49,9 @@ export const FIELD_DEFS: Record<FieldKey, FieldDef> = {
   vendedor:          { label: 'Vendedor',            type: 'text'                },
   cargo:             { label: 'Cargo',               type: 'text'                },
   posto:             { label: 'Posto',               type: 'text'                },
-  margem:            { label: 'Margem',              type: 'number', unit: '%'   },
-  atingimento_meta:  { label: 'Atingimento de meta', type: 'number', unit: '%'   },
+  margem:              { label: 'Margem',                type: 'number', unit: '%'   },
+  pontuacao_checklist: { label: 'Pontuação do checklist', type: 'number', unit: 'pts' },
+  atingimento_meta:    { label: 'Atingimento de meta',   type: 'number', unit: '%'   },
 }
 
 export const FIELD_KEYS = Object.keys(FIELD_DEFS) as FieldKey[]

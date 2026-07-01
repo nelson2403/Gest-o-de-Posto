@@ -17,11 +17,12 @@ import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils/cn'
 import {
   ArrowLeft, Plus, Loader2, FolderTree, ChevronDown, ChevronRight,
-  Target, Pencil, Trash2, Building2, Users as UsersIcon,
+  Target, Pencil, Trash2, Building2, Users as UsersIcon, Copy,
   DollarSign, Hash, Percent, Layers, AlertCircle, Save, Filter,
-  CalendarRange, FolderPlus,
+  CalendarRange, FolderPlus, ClipboardList,
 } from 'lucide-react'
 import { ProdutoMultiSelect } from '../_components/ProdutoMultiSelect'
+import { PostoCombobox } from '../_components/PostoCombobox'
 import type { MetaGrupo } from '@/app/api/comissionamento/metas/grupos/route'
 import type { Meta, MetaCampo, MetaFiltro, MetaModo, MetaFiltroRegra } from '@/app/api/comissionamento/metas/route'
 import type { ComissioMembro } from '@/app/api/comissionamento/membros/route'
@@ -60,18 +61,24 @@ const CAMPO_LABEL: Record<MetaCampo, string> = {
   quantidade:  'Quantidade',
   margem:      'Margem',
   mix:         'Mix',
+  markup:      'Markup',
+  checklist:   'Checklist',
 }
 const CAMPO_ICONE: Record<MetaCampo, React.ElementType> = {
   faturamento: DollarSign,
   quantidade:  Hash,
   margem:      Percent,
   mix:         Layers,
+  markup:      Percent,
+  checklist:   ClipboardList,
 }
 const CAMPO_CORES: Record<MetaCampo, string> = {
   faturamento: 'bg-orange-100 text-orange-700 border-orange-200',
   quantidade:  'bg-blue-100 text-blue-700 border-blue-200',
   margem:      'bg-emerald-100 text-emerald-700 border-emerald-200',
   mix:         'bg-purple-100 text-purple-700 border-purple-200',
+  markup:      'bg-amber-100 text-amber-700 border-amber-200',
+  checklist:   'bg-slate-100 text-slate-700 border-slate-200',
 }
 
 const FILTRO_LABEL: Record<MetaFiltro, string> = {
@@ -94,7 +101,7 @@ const fmtData = (s: string | null | undefined) => {
 
 function valorPorCampo(v: number, campo: MetaCampo): string {
   if (campo === 'faturamento') return fmtBRL(v)
-  if (campo === 'margem')      return `${fmtNum(v)}%`
+  if (campo === 'margem' || campo === 'markup') return `${fmtNum(v)}%`
   if (campo === 'quantidade')  return `${fmtNum(v)} un.`
   return fmtNum(v)
 }
@@ -232,6 +239,30 @@ export default function ComissionamentoMetasPage() {
     setGruposAbertos(new Set(grupos.map(g => g.id)))
   }
 
+  // ── Duplicar grupo ───────────────────────────────────────────────────────
+  // Cria um novo grupo com as MESMAS metas do original (mesmos filtros/campo/
+  // período/mix), mas com valor_meta zerado e sem splits — o usuário define
+  // os novos targets e a distribuição.
+  async function duplicarGrupo(g: MetaGrupo) {
+    const r = await fetch(`/api/comissionamento/metas/grupos/${g.id}/duplicar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const json = await r.json().catch(() => ({}))
+    if (!r.ok || json.error) {
+      toast({ variant: 'destructive', title: 'Erro ao duplicar', description: json.error })
+      return
+    }
+    toast({
+      title: 'Grupo duplicado',
+      description: `${json.metas_criadas ?? 0} meta(s) copiada(s). Defina os valores e a distribuição.`,
+    })
+    await carregar()
+    // Seleciona o novo grupo para o usuário começar a editar
+    if (json.grupo?.id) setGrupoSelId(json.grupo.id)
+  }
+
   // ── Confirmações de exclusão ─────────────────────────────────────────────
   async function confirmarExcluirGrupo() {
     if (!excluindoGrupo) return
@@ -280,14 +311,13 @@ export default function ComissionamentoMetasPage() {
       <div className="flex flex-wrap items-center gap-3 px-4 md:px-6 py-2.5 min-h-[52px] bg-white/95 dark:bg-gray-900/95 border-b border-gray-200/80 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Building2 className="w-4 h-4 text-gray-400" />
-          <Select value={postoId} onValueChange={setPostoId}>
-            <SelectTrigger className="h-9 min-w-[200px]"><SelectValue placeholder="Selecione um posto" /></SelectTrigger>
-            <SelectContent>
-              {postos.map(p => (
-                <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <PostoCombobox
+            postos={postos}
+            value={postoId}
+            onChange={setPostoId}
+            placeholder="Selecione um posto"
+            className="min-w-[280px]"
+          />
         </div>
 
         <div className="ml-auto flex items-center gap-2">
@@ -355,6 +385,7 @@ export default function ComissionamentoMetasPage() {
               selectedId={grupoSelId}
               onSelect={setGrupoSelId}
               onEdit={(g) => setGrupoDialog({ open: true, edit: g })}
+              onDuplicate={(g) => duplicarGrupo(g)}
               onDelete={(g) => setExcluindoGrupo(g)}
               metas={metas}
               onCreateChild={(parentId) => setGrupoDialog({ open: true, edit: { id:'', posto_id: postoId, parent_id: parentId, nome:'', period_start:null, period_end:null, sort_order:0, criado_em:'', atualizado_em:'' } as MetaGrupo })}
@@ -531,6 +562,7 @@ interface TreeRenderProps {
   onSelect:  (id: string | null) => void
   onEdit:    (g: MetaGrupo) => void
   onDelete:  (g: MetaGrupo) => void
+  onDuplicate: (g: MetaGrupo) => void
   onCreateChild: (parentId: string) => void
   metas:     Meta[]
 }
@@ -582,6 +614,13 @@ function TreeRender(props: TreeRenderProps) {
                   className="p-1 rounded text-gray-500 hover:text-blue-600 hover:bg-blue-50"
                 >
                   <Pencil className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); props.onDuplicate(n) }}
+                  title="Duplicar grupo (copia metas sem valor nem distribuição)"
+                  className="p-1 rounded text-gray-500 hover:text-emerald-600 hover:bg-emerald-50"
+                >
+                  <Copy className="w-3 h-3" />
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); props.onDelete(n) }}
@@ -882,6 +921,18 @@ function DialogMeta(props: DialogMetaProps) {
       .catch(() => {})
       .finally(() => setLoadingCategorias(false))
   }, [campo])
+  // Checklist template (só usado quando campo === 'checklist')
+  const [checklistTemplateId, setChecklistTemplateId] = useState<string>(
+    (editar as unknown as { checklist_template_id?: string })?.checklist_template_id ?? '',
+  )
+  const [templates, setTemplates] = useState<Array<{ id: string; nome: string }>>([])
+  useEffect(() => {
+    if (campo !== 'checklist') return
+    fetch('/api/comissionamento/checklists/templates')
+      .then(r => r.json())
+      .then(d => setTemplates((d.templates ?? []).map((t: { id: string; nome: string }) => ({ id: t.id, nome: t.nome }))))
+      .catch(() => {})
+  }, [campo])
   const [valorMeta, setValorMeta] = useState<number>(editar?.valor_meta ?? 0)
   const [periodIni, setPeriodIni] = useState(editar?.period_start ?? '')
   const [periodFim, setPeriodFim] = useState(editar?.period_end ?? '')
@@ -943,6 +994,12 @@ function DialogMeta(props: DialogMetaProps) {
         payload.mix_numerador   = null
         payload.mix_denominador = null
       }
+      payload.checklist_template_id = campo === 'checklist' ? (checklistTemplateId || null) : null
+      if (campo === 'checklist' && !checklistTemplateId) {
+        toast({ variant: 'destructive', title: 'Selecione um template de checklist' })
+        setSalvando(false)
+        return
+      }
       const r = editar
         ? await fetch(`/api/comissionamento/metas/${editar.id}`, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
@@ -999,7 +1056,7 @@ function DialogMeta(props: DialogMetaProps) {
               <Select value={campo} onValueChange={(v) => setCampo(v as MetaCampo)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {(['faturamento','quantidade','margem','mix'] as MetaCampo[]).map(c => {
+                  {(['faturamento','quantidade','margem','mix','markup','checklist'] as MetaCampo[]).map(c => {
                     const Icone = CAMPO_ICONE[c]
                     return (
                       <SelectItem key={c} value={c}>
@@ -1012,7 +1069,7 @@ function DialogMeta(props: DialogMetaProps) {
             </div>
             <div className="md:col-span-4">
               <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">
-                Valor da meta {campo === 'faturamento' ? '(R$)' : campo === 'margem' || campo === 'mix' ? '(%)' : campo === 'quantidade' ? '(un.)' : ''}
+                Valor da meta {campo === 'faturamento' ? '(R$)' : campo === 'margem' || campo === 'mix' || campo === 'markup' ? '(%)' : campo === 'quantidade' ? '(un.)' : campo === 'checklist' ? '(pontos)' : ''}
               </Label>
               <Input
                 type="number" step="0.01" min={0}
@@ -1030,6 +1087,45 @@ function DialogMeta(props: DialogMetaProps) {
               <Input type="date" value={periodFim} onChange={e => setPeriodFim(e.target.value)} />
             </div>
           </div>
+
+          {/* Configuração do checklist — só quando campo='checklist' */}
+          {campo === 'checklist' && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/40 overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-100/60 border-b border-slate-200">
+                <ClipboardList className="w-3.5 h-3.5 text-slate-600" />
+                <p className="text-[12.5px] font-semibold text-slate-900">Configuração do Checklist</p>
+                <p className="text-[10.5px] text-slate-700 italic ml-1">
+                  · realizado = total de pontos da aplicação mensal
+                </p>
+              </div>
+              <div className="p-3">
+                {templates.length === 0 ? (
+                  <div className="text-[12px] text-slate-800 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2.5">
+                    Nenhum template cadastrado.{' '}
+                    <Link href="/comissionamento/checklists" className="underline font-semibold">
+                      Cadastre um template
+                    </Link>{' '}
+                    para depois criar metas de checklist.
+                  </div>
+                ) : (
+                  <>
+                    <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Template</Label>
+                    <Select value={checklistTemplateId} onValueChange={setChecklistTemplateId}>
+                      <SelectTrigger><SelectValue placeholder="Selecione o template..." /></SelectTrigger>
+                      <SelectContent>
+                        {templates.map(t => (
+                          <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10.5px] text-slate-500 mt-1.5">
+                      Alvo = <b>{valorMeta || 0}</b> pontos. Atingimento = pontos obtidos ÷ alvo × 100.
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Configuração do mix — só quando campo='mix' */}
           {campo === 'mix' && (
@@ -1112,7 +1208,8 @@ function DialogMeta(props: DialogMetaProps) {
             </div>
           )}
 
-          {/* Filtros (lista — múltiplas regras AND) */}
+          {/* Filtros de venda não fazem sentido para checklist (não vem de venda) */}
+          {campo !== 'checklist' && (
           <div className="rounded-xl border border-gray-200 bg-gray-50/40 overflow-hidden">
             <div className="flex items-center gap-2 px-3 py-2 bg-gray-100/60 border-b border-gray-200">
               <Filter className="w-3.5 h-3.5 text-gray-500" />
@@ -1149,6 +1246,7 @@ function DialogMeta(props: DialogMetaProps) {
               )}
             </div>
           </div>
+          )}
 
         </div>
 
@@ -1324,7 +1422,7 @@ function DialogSplits({ aberto, meta, membros, splitsIniciais, onClose, onSalvo 
     }
   }
 
-  const unidade = meta.campo === 'faturamento' ? 'R$' : meta.campo === 'margem' ? '%' : meta.campo === 'quantidade' ? 'un.' : ''
+  const unidade = meta.campo === 'faturamento' ? 'R$' : meta.campo === 'margem' || meta.campo === 'markup' || meta.campo === 'mix' ? '%' : meta.campo === 'quantidade' ? 'un.' : ''
 
   return (
     <Dialog open={aberto} onOpenChange={(o) => !o && onClose()}>

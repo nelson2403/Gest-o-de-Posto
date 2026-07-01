@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export type MetaCampo  = 'faturamento' | 'quantidade' | 'margem' | 'mix'
+export type MetaCampo  = 'faturamento' | 'quantidade' | 'margem' | 'mix' | 'markup' | 'checklist'
 export type MetaFiltro = 'produto' | 'grupo_produto' | 'subgrupo_produto' | 'produto_tipo'
 export type MetaModo   = 'incluir' | 'excluir'
 
@@ -26,6 +26,7 @@ export interface Meta {
   mix_denominador_categoria_id: string | null
   mix_numerador:   string[] | null     // fallback quando não há categoria
   mix_denominador: string[] | null     // fallback quando não há categoria
+  checklist_template_id: string | null // usado quando campo='checklist'
   valor_meta:      number
   period_start:    string
   period_end:      string
@@ -33,7 +34,7 @@ export interface Meta {
   atualizado_em:   string
 }
 
-const CAMPOS_VALIDOS:  readonly MetaCampo[]  = ['faturamento','quantidade','margem','mix']
+const CAMPOS_VALIDOS:  readonly MetaCampo[]  = ['faturamento','quantidade','margem','mix','markup','checklist']
 const FILTROS_VALIDOS: readonly MetaFiltro[] = ['produto','grupo_produto','subgrupo_produto','produto_tipo']
 const MODOS_VALIDOS:   readonly MetaModo[]   = ['incluir','excluir']
 
@@ -108,6 +109,7 @@ export async function POST(req: NextRequest) {
     mix_denominador_categoria_id: string | null
     mix_numerador:   string[] | null
     mix_denominador: string[] | null
+    checklist_template_id: string | null
     valor_meta:      number
     period_start:    string
     period_end:      string
@@ -160,6 +162,8 @@ export async function POST(req: NextRequest) {
       mix_denominador_categoria_id: body.campo === 'mix' ? (body.mix_denominador_categoria_id ?? null) : null,
       mix_numerador:                body.campo === 'mix' ? (body.mix_numerador   ?? null) : null,
       mix_denominador:              body.campo === 'mix' ? (body.mix_denominador ?? null) : null,
+      // Checklist — só populado quando campo='checklist'.
+      checklist_template_id:        body.campo === 'checklist' ? (body.checklist_template_id ?? null) : null,
       valor_meta:      Number(body.valor_meta ?? 0),
       period_start:    body.period_start,
       period_end:      body.period_end,

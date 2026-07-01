@@ -14,6 +14,16 @@ import {
   FIELD_DEFS, FIELD_KEYS, OPERATOR_DEFS, operatorsFor, newCondition, newGroup,
 } from '../_lib/conditions'
 
+// Roles cadastradas em Membros (Supabase). O engine usa o `role` do membro
+// como ctx.cargo — então as opções aqui batem com o que cabe nas regras.
+const CARGO_ROLES: readonly { value: string; label: string }[] = [
+  { value: 'seller',      label: 'Vendedor'         },
+  { value: 'manager',     label: 'Gerente'          },
+  { value: 'supervisor',  label: 'Supervisor'       },
+  { value: 'pit_boss',    label: 'Chefe de Pista'   },
+  { value: 'oil_changer', label: 'Trocador de Óleo' },
+]
+
 interface Props {
   value:    ConditionGroup
   onChange: (g: ConditionGroup) => void
@@ -277,6 +287,21 @@ function ConditionRow({ condition, onChange, onRemove }: ConditionRowProps) {
           disabled={!condition.operator}
           localFilter
         />
+      ) : condition.field === 'cargo' ? (
+        <Select
+          value={typeof condition.value === 'string' ? condition.value : ''}
+          onValueChange={(v) => onChange({ ...condition, value: v })}
+          disabled={!condition.operator}
+        >
+          <SelectTrigger className="h-7 text-[12px] w-40">
+            <SelectValue placeholder="Selecione cargo..." />
+          </SelectTrigger>
+          <SelectContent>
+            {CARGO_ROLES.map(r => (
+              <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       ) : (
         <Input
           type={valor1Tipo}
