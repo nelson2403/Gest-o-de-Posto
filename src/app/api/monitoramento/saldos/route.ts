@@ -22,20 +22,24 @@ export interface SaldoConta {
 // pendentes) não contam como divergência real; acima disso é item de conciliação.
 const TOLERANCIA = 50.0
 
-// GET /api/monitoramento/saldos — somente master
-export async function GET() {
+// GET /api/monitoramento/saldos?banco=sicoob|stone — somente master
+export async function GET(req: Request) {
   const auth = await exigirRole(['master'])
   if (!auth.ok) return auth.resp
 
+  const { searchParams } = new URL(req.url)
+  const banco  = (searchParams.get('banco') || 'sicoob').toLowerCase()
+  const filtro = banco === 'stone' ? '%stone%' : '%sicoob%'
+
   const admin = createAdminClient()
 
-  // 1) Contas Sicoob + posto (empresa externa para o AUTOSYSTEM)
+  // 1) Contas do banco escolhido + posto (empresa externa para o AUTOSYSTEM)
   const { data: ctas } = await admin
     .from('contas_bancarias')
     .select('id, codigo_conta_externo, conta, posto:postos(id, nome, codigo_empresa_externo)')
-    .ilike('banco', '%sicoob%')
+    .ilike('banco', filtro)
 
-  if (!ctas?.length) return NextResponse.json({ contas: [], gerado_em: new Date().toISOString() })
+  if (!ctas?.length) return NextResponse.json({ banco, contas: [], gerado_em: new Date().toISOString() })
 
   // 2) Recorrentes de conciliação → conta bancária
   const contaIds = ctas.map((c: any) => c.id)
@@ -140,5 +144,5 @@ export async function GET() {
     return { ...base, data_extrato: ext.data, saldo_banco: ext.saldo_dia, saldo_autosystem: saldoAuto, divergencia: div, status }
   }).sort((a, b) => a.posto_nome.localeCompare(b.posto_nome))
 
-  return NextResponse.json({ contas, gerado_em: new Date().toISOString() })
+  return NextResponse.json({ banco, contas, gerado_em: new Date().toISOString() })
 }

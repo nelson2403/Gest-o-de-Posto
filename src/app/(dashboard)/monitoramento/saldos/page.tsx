@@ -50,14 +50,17 @@ function ResumoCard({ titulo, valor, cls }: { titulo: string; valor: React.React
   )
 }
 
+type Banco = 'sicoob' | 'stone'
+
 export default function MonitoramentoSaldosPage() {
+  const [banco, setBanco]     = useState<Banco>('sicoob')
   const [dados, setDados]     = useState<Dados | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro]       = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     try {
-      const r = await fetch('/api/monitoramento/saldos', { cache: 'no-store' })
+      const r = await fetch(`/api/monitoramento/saldos?banco=${banco}`, { cache: 'no-store' })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Falha ao carregar')
       setDados(d); setErro(null)
@@ -66,9 +69,10 @@ export default function MonitoramentoSaldosPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [banco])
 
   useEffect(() => {
+    setLoading(true)
     carregar()
     const t = setInterval(carregar, 60000)
     return () => clearInterval(t)
@@ -102,14 +106,30 @@ export default function MonitoramentoSaldosPage() {
           <div>
             <h1 className="text-[15px] md:text-[17px] font-bold text-gray-900">Monitoramento de Saldos Bancários</h1>
             <p className="text-[11px] text-gray-400 mt-0.5">
-              Banco (extrato) × AUTOSYSTEM, por conta Sicoob
+              Banco (extrato) × AUTOSYSTEM, por conta <span className="capitalize">{banco}</span>
               {dados ? ` · atualizado ${new Date(dados.gerado_em).toLocaleTimeString('pt-BR')}` : ''} · auto a cada 60s
             </p>
           </div>
         </div>
-        <button onClick={carregar} className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 rounded-lg text-[13px] text-gray-600 hover:bg-gray-50">
-          <RefreshCw className="w-3.5 h-3.5" /> Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Seletor de banco */}
+          <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+            {(['sicoob', 'stone'] as Banco[]).map((b) => (
+              <button
+                key={b}
+                onClick={() => setBanco(b)}
+                className={`h-8 px-3 rounded-md text-[12px] font-semibold capitalize transition ${
+                  banco === b ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {b}
+              </button>
+            ))}
+          </div>
+          <button onClick={carregar} className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 rounded-lg text-[13px] text-gray-600 hover:bg-gray-50">
+            <RefreshCw className="w-3.5 h-3.5" /> Atualizar
+          </button>
+        </div>
       </div>
 
       {erro && (
