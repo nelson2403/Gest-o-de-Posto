@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils/cn'
 import {
-  LayoutDashboard, Users, Tag, Target, ClipboardList, Calculator, FileText,
+  LayoutDashboard, Users, Tag, Target, ClipboardList, Calculator, FileText, ListChecks,
 } from 'lucide-react'
 
 interface AbaDef {
@@ -25,6 +25,7 @@ const ABAS: AbaDef[] = [
   { href: '/comissionamento/membros',    label: 'Membros',    icon: Users,         match: p => p.startsWith('/comissionamento/membros') },
   { href: '/comissionamento/categorias', label: 'Categorias', icon: Tag,           match: p => p.startsWith('/comissionamento/categorias') },
   { href: '/comissionamento/metas',      label: 'Metas',      icon: Target,        match: p => p.startsWith('/comissionamento/metas') },
+  { href: '/comissionamento/checklists', label: 'Checklists', icon: ListChecks,    match: p => p.startsWith('/comissionamento/checklists') },
   { href: '/comissionamento/esquemas',   label: 'Esquemas',   icon: ClipboardList, match: p => p.startsWith('/comissionamento/esquemas') },
   { href: '/comissionamento/simulacao',  label: 'Simulação',  icon: Calculator,    match: p => p.startsWith('/comissionamento/simulacao') },
   { href: '/comissionamento/relatorios', label: 'Relatórios', icon: FileText,      match: p => p.startsWith('/comissionamento/relatorios') },

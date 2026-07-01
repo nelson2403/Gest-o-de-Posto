@@ -102,6 +102,17 @@ export interface CalcularAtingimentoInput {
   metas:   Meta[]
   splits:  MetaSplit[]
   membros: Membro[]
+  // Aplicações do checklist do posto no período. Usadas apenas por metas
+  // de campo='checklist' — o realizado é o total_pontos da aplicação cujo
+  // template_id casa com a meta e período cruza. Opcional para não quebrar
+  // callers antigos.
+  checklists?: Array<{
+    id:            string
+    template_id:   string
+    period_start:  string
+    period_end:    string
+    total_pontos:  number
+  }>
 }
 
 export interface CalcularAtingimentoOutput {
@@ -131,6 +142,33 @@ export function calcularAtingimento(input: CalcularAtingimentoInput): CalcularAt
   const detalhes: AtingimentoMeta[] = []
 
   for (const meta of input.metas) {
+    // Meta de checklist tem cálculo especial — não vem das vendas, vem da
+    // aplicação mensal do supervisor. Casa por template_id + intersecção
+    // de período. Se houver múltiplas aplicações compatíveis, usa a média
+    // ponderada não; usa a soma total_pontos / valor_meta × 100 da que
+    // cruza mais dias (mantém previsível). Sem aplicação → atingimento 0.
+    if (meta.campo === 'checklist') {
+      const valorMetaTotal = Number(meta.valor_meta) || 0
+      const templateId = meta.checklist_template_id
+      let realizadoTotal = 0
+      if (templateId && input.checklists) {
+        const compat = input.checklists.filter(a =>
+          a.template_id === templateId &&
+          a.period_end   >= meta.period_start &&
+          a.period_start <= meta.period_end,
+        )
+        // Se houver mais de uma aplicação no período (raro), usa a média
+        // simples — o caso comum é 1 aplicação por mês.
+        if (compat.length > 0) {
+          realizadoTotal = compat.reduce((s, a) => s + a.total_pontos, 0) / compat.length
+        }
+      }
+      const atingimentoTotal = valorMetaTotal > 0 ? (realizadoTotal / valorMetaTotal) * 100 : 0
+      atingTotal.set(meta.id, atingimentoTotal)
+      // Sem splits/detalhes por vendedor — checklist é do posto.
+      continue
+    }
+
     const vendasDaMeta = input.vendas.filter(v => vendaCasaFiltroMeta(v, meta))
     const splitsDaMeta = input.splits.filter(s => s.meta_id === meta.id)
 

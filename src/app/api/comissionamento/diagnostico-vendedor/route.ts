@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import {
   carregarRegrasDoEsquema, carregarMetasDoPosto, carregarMembrosDoPosto,
   carregarVendas, resolverEmpresaExterna, carregarEsquema,
+  carregarChecklistsDoPosto,
 } from '@/lib/comissionamento/data-loader'
 import { calcularAtingimento } from '@/lib/comissionamento/goals-aggregation'
 import { vendaPassaProductFilters } from '@/lib/comissionamento/rule-engine'
@@ -146,12 +147,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Posto sem codigo_empresa_externo' }, { status: 400 })
   }
 
-  const [esquema, regras, metasESplits, membros, vendas] = await Promise.all([
+  const [esquema, regras, metasESplits, membros, vendas, checklists] = await Promise.all([
     carregarEsquema(esquemaId),
     carregarRegrasDoEsquema(esquemaId),
     carregarMetasDoPosto(postoId, dataIni, dataFim),
     carregarMembrosDoPosto(postoId),
     carregarVendas([empresaExterna], dataIni, dataFim),
+    carregarChecklistsDoPosto(postoId, dataIni, dataFim),
   ])
   const { metas, splits } = metasESplits
 
@@ -159,7 +161,7 @@ export async function GET(req: NextRequest) {
   const vendasNoEscopo = vendas.filter((v: Venda) => vendaPassaProductFilters(v, productFilters))
 
   const { atingimentoPorVendedorPorMeta, atingimentoTotalPorMeta } =
-    calcularAtingimento({ vendas, metas, splits, membros })
+    calcularAtingimento({ vendas, metas, splits, membros, checklists })
 
   // ── Resolve o membro do vendedor pelo external_person_id ────────────────
   const membro = membros.find(m => m.external_person_id === vendedorId)

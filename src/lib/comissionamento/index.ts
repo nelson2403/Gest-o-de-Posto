@@ -16,6 +16,7 @@
 import {
   carregarRegrasDoEsquema, carregarMetasDoPosto, carregarMembrosDoPosto,
   carregarVendas, resolverEmpresaExterna, carregarEsquema,
+  carregarChecklistsDoPosto,
 } from './data-loader'
 import { calcularComissaoPorVendedor, vendaPassaProductFilters } from './rule-engine'
 import { calcularAtingimento } from './goals-aggregation'
@@ -83,12 +84,13 @@ export async function calcularComissoes(input: CalcularComissoesInput): Promise<
   }
 
   // 2. Carrega todos os dados em paralelo
-  const [esquema, regras, metasESplits, membros, vendas] = await Promise.all([
+  const [esquema, regras, metasESplits, membros, vendas, checklists] = await Promise.all([
     carregarEsquema(esquemaId),
     carregarRegrasDoEsquema(esquemaId),
     carregarMetasDoPosto(postoId, dataIni, dataFim),
     carregarMembrosDoPosto(postoId),
     carregarVendas([empresaExterna], dataIni, dataFim),
+    carregarChecklistsDoPosto(postoId, dataIni, dataFim),
   ])
   const { metas, splits } = metasESplits
 
@@ -110,7 +112,7 @@ export async function calcularComissoes(input: CalcularComissoesInput): Promise<
     atingimentoPorVendedorPorMeta,
     atingimentoTotalPorMeta,
     detalhes: atingimentos,
-  } = calcularAtingimento({ vendas, metas, splits, membros })
+  } = calcularAtingimento({ vendas, metas, splits, membros, checklists })
 
   // 5. Aplica engine NOVO: 1 ComissaoPorVendedor por vendedor com a lista
   // de regras que casaram. Sem first-match-wins; várias regras podem

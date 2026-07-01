@@ -19,7 +19,7 @@ import {
   ArrowLeft, Plus, Loader2, FolderTree, ChevronDown, ChevronRight,
   Target, Pencil, Trash2, Building2, Users as UsersIcon, Copy,
   DollarSign, Hash, Percent, Layers, AlertCircle, Save, Filter,
-  CalendarRange, FolderPlus,
+  CalendarRange, FolderPlus, ClipboardList,
 } from 'lucide-react'
 import { ProdutoMultiSelect } from '../_components/ProdutoMultiSelect'
 import { PostoCombobox } from '../_components/PostoCombobox'
@@ -62,6 +62,7 @@ const CAMPO_LABEL: Record<MetaCampo, string> = {
   margem:      'Margem',
   mix:         'Mix',
   markup:      'Markup',
+  checklist:   'Checklist',
 }
 const CAMPO_ICONE: Record<MetaCampo, React.ElementType> = {
   faturamento: DollarSign,
@@ -69,6 +70,7 @@ const CAMPO_ICONE: Record<MetaCampo, React.ElementType> = {
   margem:      Percent,
   mix:         Layers,
   markup:      Percent,
+  checklist:   ClipboardList,
 }
 const CAMPO_CORES: Record<MetaCampo, string> = {
   faturamento: 'bg-orange-100 text-orange-700 border-orange-200',
@@ -76,6 +78,7 @@ const CAMPO_CORES: Record<MetaCampo, string> = {
   margem:      'bg-emerald-100 text-emerald-700 border-emerald-200',
   mix:         'bg-purple-100 text-purple-700 border-purple-200',
   markup:      'bg-amber-100 text-amber-700 border-amber-200',
+  checklist:   'bg-slate-100 text-slate-700 border-slate-200',
 }
 
 const FILTRO_LABEL: Record<MetaFiltro, string> = {
@@ -918,6 +921,18 @@ function DialogMeta(props: DialogMetaProps) {
       .catch(() => {})
       .finally(() => setLoadingCategorias(false))
   }, [campo])
+  // Checklist template (só usado quando campo === 'checklist')
+  const [checklistTemplateId, setChecklistTemplateId] = useState<string>(
+    (editar as unknown as { checklist_template_id?: string })?.checklist_template_id ?? '',
+  )
+  const [templates, setTemplates] = useState<Array<{ id: string; nome: string }>>([])
+  useEffect(() => {
+    if (campo !== 'checklist') return
+    fetch('/api/comissionamento/checklists/templates')
+      .then(r => r.json())
+      .then(d => setTemplates((d.templates ?? []).map((t: { id: string; nome: string }) => ({ id: t.id, nome: t.nome }))))
+      .catch(() => {})
+  }, [campo])
   const [valorMeta, setValorMeta] = useState<number>(editar?.valor_meta ?? 0)
   const [periodIni, setPeriodIni] = useState(editar?.period_start ?? '')
   const [periodFim, setPeriodFim] = useState(editar?.period_end ?? '')
@@ -979,6 +994,12 @@ function DialogMeta(props: DialogMetaProps) {
         payload.mix_numerador   = null
         payload.mix_denominador = null
       }
+      payload.checklist_template_id = campo === 'checklist' ? (checklistTemplateId || null) : null
+      if (campo === 'checklist' && !checklistTemplateId) {
+        toast({ variant: 'destructive', title: 'Selecione um template de checklist' })
+        setSalvando(false)
+        return
+      }
       const r = editar
         ? await fetch(`/api/comissionamento/metas/${editar.id}`, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
@@ -1035,7 +1056,7 @@ function DialogMeta(props: DialogMetaProps) {
               <Select value={campo} onValueChange={(v) => setCampo(v as MetaCampo)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {(['faturamento','quantidade','margem','mix','markup'] as MetaCampo[]).map(c => {
+                  {(['faturamento','quantidade','margem','mix','markup','checklist'] as MetaCampo[]).map(c => {
                     const Icone = CAMPO_ICONE[c]
                     return (
                       <SelectItem key={c} value={c}>
@@ -1048,7 +1069,7 @@ function DialogMeta(props: DialogMetaProps) {
             </div>
             <div className="md:col-span-4">
               <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">
-                Valor da meta {campo === 'faturamento' ? '(R$)' : campo === 'margem' || campo === 'mix' || campo === 'markup' ? '(%)' : campo === 'quantidade' ? '(un.)' : ''}
+                Valor da meta {campo === 'faturamento' ? '(R$)' : campo === 'margem' || campo === 'mix' || campo === 'markup' ? '(%)' : campo === 'quantidade' ? '(un.)' : campo === 'checklist' ? '(pontos)' : ''}
               </Label>
               <Input
                 type="number" step="0.01" min={0}
@@ -1066,6 +1087,45 @@ function DialogMeta(props: DialogMetaProps) {
               <Input type="date" value={periodFim} onChange={e => setPeriodFim(e.target.value)} />
             </div>
           </div>
+
+          {/* Configuração do checklist — só quando campo='checklist' */}
+          {campo === 'checklist' && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/40 overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-100/60 border-b border-slate-200">
+                <ClipboardList className="w-3.5 h-3.5 text-slate-600" />
+                <p className="text-[12.5px] font-semibold text-slate-900">Configuração do Checklist</p>
+                <p className="text-[10.5px] text-slate-700 italic ml-1">
+                  · realizado = total de pontos da aplicação mensal
+                </p>
+              </div>
+              <div className="p-3">
+                {templates.length === 0 ? (
+                  <div className="text-[12px] text-slate-800 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2.5">
+                    Nenhum template cadastrado.{' '}
+                    <Link href="/comissionamento/checklists" className="underline font-semibold">
+                      Cadastre um template
+                    </Link>{' '}
+                    para depois criar metas de checklist.
+                  </div>
+                ) : (
+                  <>
+                    <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Template</Label>
+                    <Select value={checklistTemplateId} onValueChange={setChecklistTemplateId}>
+                      <SelectTrigger><SelectValue placeholder="Selecione o template..." /></SelectTrigger>
+                      <SelectContent>
+                        {templates.map(t => (
+                          <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10.5px] text-slate-500 mt-1.5">
+                      Alvo = <b>{valorMeta || 0}</b> pontos. Atingimento = pontos obtidos ÷ alvo × 100.
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Configuração do mix — só quando campo='mix' */}
           {campo === 'mix' && (
@@ -1148,7 +1208,8 @@ function DialogMeta(props: DialogMetaProps) {
             </div>
           )}
 
-          {/* Filtros (lista — múltiplas regras AND) */}
+          {/* Filtros de venda não fazem sentido para checklist (não vem de venda) */}
+          {campo !== 'checklist' && (
           <div className="rounded-xl border border-gray-200 bg-gray-50/40 overflow-hidden">
             <div className="flex items-center gap-2 px-3 py-2 bg-gray-100/60 border-b border-gray-200">
               <Filter className="w-3.5 h-3.5 text-gray-500" />
@@ -1185,6 +1246,7 @@ function DialogMeta(props: DialogMetaProps) {
               )}
             </div>
           </div>
+          )}
 
         </div>
 

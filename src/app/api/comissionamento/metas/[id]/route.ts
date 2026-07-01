@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { MetaCampo, MetaFiltro, MetaModo, MetaFiltroRegra } from '../route'
 import { validarFiltros } from '../route'
 
-const CAMPOS_VALIDOS:  readonly MetaCampo[]  = ['faturamento','quantidade','margem','mix','markup']
+const CAMPOS_VALIDOS:  readonly MetaCampo[]  = ['faturamento','quantidade','margem','mix','markup','checklist']
 const FILTROS_VALIDOS: readonly MetaFiltro[] = ['produto','grupo_produto','subgrupo_produto','produto_tipo']
 const MODOS_VALIDOS:   readonly MetaModo[]   = ['incluir','excluir']
 
@@ -61,6 +61,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     mix_denominador_categoria_id: string | null
     mix_numerador:   string[] | null
     mix_denominador: string[] | null
+    checklist_template_id: string | null
     valor_meta:      number
     period_start:    string
     period_end:      string
@@ -127,6 +128,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     updates.mix_denominador_categoria_id = null
     updates.mix_numerador   = null
     updates.mix_denominador = null
+  }
+  if (body.checklist_template_id !== undefined) updates.checklist_template_id = body.checklist_template_id || null
+  // Se o campo deixa de ser 'checklist', zera o template_id
+  if (body.campo !== undefined && body.campo !== 'checklist') {
+    updates.checklist_template_id = null
   }
   if (body.valor_meta !== undefined)   updates.valor_meta   = Number(body.valor_meta)
   if (body.period_start !== undefined) updates.period_start = body.period_start

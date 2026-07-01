@@ -119,7 +119,10 @@ export interface Membro {
 // ── Meta + split (distribuição da meta entre membros) ───────────────────────
 // markup = lucro / custo × 100 (marcação sobre o custo). Diferente de
 // margem, que é lucro / faturamento × 100.
-export type MetaCampo  = 'faturamento' | 'quantidade' | 'margem' | 'mix' | 'markup'
+// checklist = pontuação obtida numa aplicação mensal do supervisor
+// sobre um template de checklist (limpeza, uniforme, etc.). Não vem
+// das vendas — é entrada manual. Ver comissio_checklists_*.
+export type MetaCampo  = 'faturamento' | 'quantidade' | 'margem' | 'mix' | 'markup' | 'checklist'
 export type MetaFiltro = 'produto' | 'grupo_produto' | 'subgrupo_produto' | 'produto_tipo'
 export type MetaModo   = 'incluir' | 'excluir'
 
@@ -165,9 +168,47 @@ export interface Meta {
   // null. Preservados também para exibição no diagnóstico.
   mix_numerador:   string[] | null
   mix_denominador: string[] | null
-  valor_meta:      number   // total da empresa/posto
+  // Meta de campo='checklist' aponta para o template. O realizado é
+  // resolvido no data-loader: pega a aplicação (posto × template) que
+  // cruza o período da meta e usa o total_pontos como realizado.
+  checklist_template_id: string | null
+  valor_meta:      number   // total da empresa/posto (ou pontos-alvo p/ checklist)
   period_start:    string   // YYYY-MM-DD
   period_end:      string   // YYYY-MM-DD
+}
+
+// ── Checklist mensal aplicado pelo supervisor ─────────────────────────────
+export interface ChecklistTemplate {
+  id:         string
+  nome:       string
+  descricao:  string
+  ativo:      boolean
+  itens:      ChecklistItem[]
+}
+
+export interface ChecklistItem {
+  id:         string
+  ordem:      number
+  descricao:  string
+  pontos:     number
+}
+
+export interface ChecklistAplicacao {
+  id:           string
+  template_id:  string
+  posto_id:     string
+  period_start: string
+  period_end:   string
+  total_pontos: number
+  observacoes:  string
+  respostas:    ChecklistResposta[]
+}
+
+export interface ChecklistResposta {
+  aplicacao_id: string
+  item_id:      string
+  ok:           boolean
+  motivo:       string
 }
 
 export interface MetaSplit {

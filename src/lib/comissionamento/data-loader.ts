@@ -179,6 +179,7 @@ export async function carregarMetasDoPosto(
       mix_denominador_grids: mixDenominadorGrids,
       mix_numerador:   mixNumerador,
       mix_denominador: mixDenominador,
+      checklist_template_id: (m.checklist_template_id as string | null) ?? null,
       valor_meta:      Number(m.valor_meta),
       period_start:    m.period_start,
       period_end:      m.period_end,
@@ -200,6 +201,42 @@ export async function carregarMetasDoPosto(
   }))
 
   return { metas, splits }
+}
+
+// ── Aplicações de checklist do posto no período ─────────────────────────────
+//
+// Retorna as aplicações cuja janela cruza o intervalo do cálculo. O engine
+// vai casar cada meta de campo='checklist' com a aplicação que tem o mesmo
+// template_id e período compatível. Sem entradas em outras tabelas.
+export interface ChecklistAplicacaoDB {
+  id:            string
+  template_id:   string
+  posto_id:      string
+  period_start:  string
+  period_end:    string
+  total_pontos:  number
+}
+export async function carregarChecklistsDoPosto(
+  postoId: string,
+  dataIni: string,
+  dataFim: string,
+): Promise<ChecklistAplicacaoDB[]> {
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('comissio_checklists_aplicacoes')
+    .select('id, template_id, posto_id, period_start, period_end, total_pontos')
+    .eq('posto_id', postoId)
+    .gte('period_end',   dataIni)
+    .lte('period_start', dataFim)
+  if (error) throw new Error(`Erro ao buscar checklists: ${error.message}`)
+  return (data ?? []).map((a: any) => ({
+    id:            a.id,
+    template_id:   a.template_id,
+    posto_id:      a.posto_id,
+    period_start:  a.period_start,
+    period_end:    a.period_end,
+    total_pontos:  Number(a.total_pontos),
+  }))
 }
 
 // ── Membros de um posto ─────────────────────────────────────────────────────
