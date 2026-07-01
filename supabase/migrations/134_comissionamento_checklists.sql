@@ -159,13 +159,16 @@ ALTER TABLE public.comissio_checklists_itens      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.comissio_checklists_aplicacoes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.comissio_checklists_respostas  ENABLE ROW LEVEL SECURITY;
 
-DO $$ BEGIN
-  FOR t IN SELECT unnest(ARRAY[
+DO $$
+DECLARE
+  t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
     'comissio_checklists_template',
     'comissio_checklists_itens',
     'comissio_checklists_aplicacoes',
     'comissio_checklists_respostas'
-  ]) LOOP
+  ] LOOP
     EXECUTE format('DROP POLICY IF EXISTS "%s_select_authenticated" ON public.%s', t, t);
     EXECUTE format(
       'CREATE POLICY "%s_select_authenticated" ON public.%s FOR SELECT TO authenticated USING (TRUE)', t, t);
