@@ -89,6 +89,12 @@ export interface Regra {
   // (com filtros) NÃO cobre as vendas que devem ser comissionadas.
   meta_referencia_id:   string | null
 
+  // Template do checklist para a condição `pontuacao_checklist`. Quando
+  // preenchido, o engine soma total_pontos das aplicações desse template
+  // que cruzam o período do cálculo (no posto atual) e coloca no ctx
+  // como pontuacao_checklist. Sem esse campo a condição sempre bate zero.
+  checklist_template_referencia_id: string | null
+
   // ── Novo modelo "por vendedor agregado" (migration 093) ─────────────────
   // SE — filtros e dimensão que definem o realizado da meta de referência.
   // Múltiplos filtros combinam por AND. Vazio = todas as vendas do vendedor.

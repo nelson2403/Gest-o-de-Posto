@@ -118,10 +118,20 @@ export async function calcularComissoes(input: CalcularComissoesInput): Promise<
   // de regras que casaram. Sem first-match-wins; várias regras podem
   // contribuir para o mesmo vendedor. `membros` permite que gerentes sem
   // vendas próprias entrem no loop (recebem comissão sobre agregado).
+  // Agrega pontuação de checklist por template (soma total_pontos das
+  // aplicações do posto no período). Alimenta ctx.pontuacao_checklist
+  // nas regras que apontam checklist_template_referencia_id.
+  const pontuacaoChecklistPorTemplate = new Map<string, number>()
+  for (const a of checklists) {
+    const cur = pontuacaoChecklistPorTemplate.get(a.template_id) ?? 0
+    pontuacaoChecklistPorTemplate.set(a.template_id, cur + a.total_pontos)
+  }
+
   const comissaoPorVendedor = calcularComissaoPorVendedor({
     vendas: vendasNoEscopo, regras, metas,
     atingimentoPorVendedorPorMeta,
     atingimentoTotalPorMeta,
+    pontuacaoChecklistPorTemplate,
     membros,
   })
 

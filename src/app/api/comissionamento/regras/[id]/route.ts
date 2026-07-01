@@ -34,6 +34,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     escopo_tipo:           EscopoTipo | null
     escopo_valor:          string
     meta_referencia_id:    string | null
+    checklist_template_referencia_id: string | null
     realizado_filtros:     unknown[]
     realizado_campo:       RegraCampo
     base_filtros:          unknown[]
@@ -86,6 +87,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.escopo_tipo          !== undefined) updates.escopo_tipo          = body.escopo_tipo
   if (body.escopo_valor         !== undefined) updates.escopo_valor         = String(body.escopo_valor).trim()
   if (body.meta_referencia_id   !== undefined) updates.meta_referencia_id   = body.meta_referencia_id || null
+  if (body.checklist_template_referencia_id !== undefined) updates.checklist_template_referencia_id = body.checklist_template_referencia_id || null
   if (body.realizado_filtros    !== undefined) updates.realizado_filtros    = Array.isArray(body.realizado_filtros) ? body.realizado_filtros : []
   if (body.realizado_campo      !== undefined) updates.realizado_campo      = body.realizado_campo
   if (body.base_filtros         !== undefined) updates.base_filtros         = Array.isArray(body.base_filtros) ? body.base_filtros : []

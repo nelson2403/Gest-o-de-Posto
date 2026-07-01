@@ -93,6 +93,10 @@ interface EvalContext {
 
   // Atingimento da meta que cobre essa venda (% — null se sem meta)
   atingimento_meta:  number | null
+  // Pontuação da aplicação do checklist apontado pela regra
+  // (checklist_template_referencia_id). null quando a regra não aponta
+  // nenhum template ou não há aplicação no período.
+  pontuacao_checklist: number | null
 }
 
 interface ConditionLike {
@@ -138,6 +142,18 @@ function evaluateCondition(c: ConditionLike, ctx: EvalContext): boolean {
     if (ctx.atingimento_meta === null) return false
     return compareNumber(
       ctx.atingimento_meta,
+      c.operator,
+      Number(c.value),
+      c.value2 != null ? Number(c.value2) : undefined,
+    )
+  }
+
+  // pontuacao_checklist: mesma lógica — regra tem que apontar um template
+  // e existir aplicação no período; senão, falso (não bate a condição).
+  if (c.field === 'pontuacao_checklist') {
+    if (ctx.pontuacao_checklist === null) return false
+    return compareNumber(
+      ctx.pontuacao_checklist,
       c.operator,
       Number(c.value),
       c.value2 != null ? Number(c.value2) : undefined,
@@ -408,6 +424,7 @@ export function calcularComissaoPorVenda(input: CalcularRegrasInput): VendaComis
         posto:             String(sale.empresa_id ?? ''),
         faturamento, quantidade, mix, margem,
         atingimento_meta: atingimentoFinal,
+        pontuacao_checklist: null,  // não suportado no engine antigo por venda
       }
 
       if (evaluateGroup(regra.condicoes, ctx)) {
@@ -520,6 +537,7 @@ export function simularRegrasVerbose(input: SimularInput): SimulacaoVenda {
       posto:             String(sale.empresa_id ?? ''),
       faturamento, quantidade, mix: 1, margem,
       atingimento_meta:  atingimentoCtx,
+      pontuacao_checklist: null,  // simulação por venda não puxa checklist
     }
 
     // Regra só casa se passa no escopo da ação E nas condições do SE
@@ -705,6 +723,13 @@ export interface CalcularPorVendedorInput {
    * sobre o realizado/base agregado do posto. Migration 127.
    */
   membros?:                       Membro[]
+  /**
+   * Mapa pontuacao_checklist_por_template: template_id → soma de total_pontos
+   * das aplicações do posto no período. Usado por regras que apontam
+   * `checklist_template_referencia_id` para preencher ctx.pontuacao_checklist.
+   * Migration 135.
+   */
+  pontuacaoChecklistPorTemplate?: Map<string, number>
 }
 
 export function calcularComissaoPorVendedor(input: CalcularPorVendedorInput): ComissaoPorVendedor[] {
@@ -821,6 +846,9 @@ export function calcularComissaoPorVendedor(input: CalcularPorVendedorInput): Co
           return (luc / fat) * 100
         })(),
         atingimento_meta:  atingimentoMeta,
+        pontuacao_checklist: regra.checklist_template_referencia_id
+          ? (input.pontuacaoChecklistPorTemplate?.get(regra.checklist_template_referencia_id) ?? null)
+          : null,
       }
 
       if (!evaluateGroup(regra.condicoes, ctx)) continue

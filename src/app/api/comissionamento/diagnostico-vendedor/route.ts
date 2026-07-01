@@ -75,6 +75,18 @@ function avaliaCondicaoTrace(
     return { ...desc, resultado: ok, valor_ctx: at, motivo: ok ? '' : `${at} ${c.operator} ${v} = false` }
   }
 
+  // Pontuação do checklist: null quando a regra não aponta template ou
+  // não há aplicação no período.
+  if (c.field === 'pontuacao_checklist') {
+    const pts = ctx.pontuacao_checklist as number | null
+    if (pts === null || pts === undefined) {
+      return { ...desc, resultado: false, valor_ctx: null, motivo: 'pontuacao_checklist é null — verifique se a regra aponta um Template de referência e se há aplicação no período' }
+    }
+    const v = Number(c.value)
+    const ok = compNum(pts, String(c.operator), v)
+    return { ...desc, resultado: ok, valor_ctx: pts, motivo: ok ? '' : `${pts} ${c.operator} ${v} = false` }
+  }
+
   const raw = ctx[c.field]
   if (raw === null || raw === undefined) {
     return { ...desc, resultado: false, valor_ctx: null, motivo: `campo "${c.field}" sem valor no ctx` }
@@ -163,6 +175,13 @@ export async function GET(req: NextRequest) {
   const { atingimentoPorVendedorPorMeta, atingimentoTotalPorMeta } =
     calcularAtingimento({ vendas, metas, splits, membros, checklists })
 
+  // Pontuação de checklist por template — mesma agregação do orchestrator.
+  const pontuacaoChecklistPorTemplate = new Map<string, number>()
+  for (const a of checklists) {
+    const cur = pontuacaoChecklistPorTemplate.get(a.template_id) ?? 0
+    pontuacaoChecklistPorTemplate.set(a.template_id, cur + a.total_pontos)
+  }
+
   // ── Resolve o membro do vendedor pelo external_person_id ────────────────
   const membro = membros.find(m => m.external_person_id === vendedorId)
   const vendasDoVendedor = vendasNoEscopo.filter(v => String(v.vendedor_id ?? '') === vendedorId)
@@ -203,6 +222,9 @@ export async function GET(req: NextRequest) {
       mix:              new Set(vendasDoVendedor.map(v => v.produto_nome)).size,
       margem:           fat > 0 ? (lucro / fat) * 100 : 0,
       atingimento_meta: atingimento,
+      pontuacao_checklist: r.checklist_template_referencia_id
+        ? (pontuacaoChecklistPorTemplate.get(r.checklist_template_referencia_id) ?? null)
+        : null,
     }
 
     const conds = condicoesPlanas(r)

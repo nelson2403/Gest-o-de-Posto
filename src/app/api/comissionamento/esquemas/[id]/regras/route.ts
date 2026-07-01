@@ -64,6 +64,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     escopo_tipo:           EscopoTipo | null
     escopo_valor:          string
     meta_referencia_id:    string | null
+    checklist_template_referencia_id: string | null
     realizado_filtros:     unknown[]
     realizado_campo:       RegraCampo
     base_filtros:          unknown[]
@@ -133,6 +134,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       escopo_tipo:           body.escopo_tipo ?? null,
       escopo_valor:          String(body.escopo_valor ?? '').trim(),
       meta_referencia_id:    body.meta_referencia_id ?? null,
+      checklist_template_referencia_id: body.checklist_template_referencia_id ?? null,
       realizado_filtros:     Array.isArray(body.realizado_filtros) ? body.realizado_filtros : [],
       realizado_campo:       body.realizado_campo ?? 'faturamento',
       base_filtros:          Array.isArray(body.base_filtros) ? body.base_filtros : [],
