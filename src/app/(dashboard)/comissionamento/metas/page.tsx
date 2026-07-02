@@ -1782,13 +1782,13 @@ function DialogDuplicarGrupo({ grupo, onClose, onFeito }: DialogDuplicarGrupoPro
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl w-[min(95vw,42rem)] max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0">
+        <DialogHeader className="px-5 pt-4 pb-3 border-b border-gray-200 flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <FolderPlus className="w-4 h-4 text-emerald-600" /> Duplicar grupo
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 min-h-0">
           <div>
             <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Nome do novo grupo</Label>
             <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex.: Mês 06/2026" autoFocus />
@@ -1812,43 +1812,49 @@ function DialogDuplicarGrupo({ grupo, onClose, onFeito }: DialogDuplicarGrupoPro
           {/* Metas a duplicar — escolhe quais copiar e quais preservam o valor original */}
           {metasOrigem.length > 0 && (
             <div>
-              <div className="flex items-baseline justify-between mb-1.5">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-1.5">
                 <Label className="text-[11px] uppercase tracking-wide text-gray-500">
                   Metas ({incluir.size} de {metasOrigem.length} selecionadas)
                 </Label>
-                <div className="flex gap-1.5">
+                <div className="flex gap-1.5 flex-wrap">
                   <button
                     type="button"
                     onClick={() => { setIncluir(new Set(metasOrigem.map(m => m.id))); setPreservar(new Set()) }}
-                    className="text-[10.5px] text-gray-500 hover:text-gray-800 underline"
+                    className="text-[10.5px] text-gray-500 hover:text-gray-800 underline whitespace-nowrap"
                   >Todas · zerar valores</button>
                   <span className="text-gray-300">·</span>
                   <button
                     type="button"
                     onClick={() => { setIncluir(new Set(metasOrigem.map(m => m.id))); setPreservar(new Set(metasOrigem.map(m => m.id))) }}
-                    className="text-[10.5px] text-gray-500 hover:text-gray-800 underline"
+                    className="text-[10.5px] text-gray-500 hover:text-gray-800 underline whitespace-nowrap"
                   >Todas · manter valores</button>
                 </div>
               </div>
-              <div className="border border-gray-200 rounded-md divide-y divide-gray-100 max-h-48 overflow-y-auto">
+              <div className="border border-gray-200 rounded-md divide-y divide-gray-100 max-h-52 overflow-y-auto">
                 {metasOrigem.map(m => {
                   const inc = incluir.has(m.id)
                   const pres = preservar.has(m.id)
                   return (
-                    <div key={m.id} className={cn('flex items-center gap-2 px-2.5 py-1.5 text-[11.5px]', !inc && 'opacity-50')}>
-                      <input type="checkbox" checked={inc} onChange={() => toggleIncluir(m.id)} className="flex-shrink-0" />
-                      <div className="flex-1 min-w-0 truncate">
-                        <span className="font-medium text-gray-800">{m.nome}</span>
-                        <span className="text-gray-400 ml-1.5">
-                          · {CAMPO_LABEL[m.campo]} · valor original: <b className="text-gray-600">{valorPorCampo(Number(m.valor_meta), m.campo)}</b>
-                        </span>
+                    <div key={m.id} className={cn('flex items-start gap-2 px-2.5 py-1.5 text-[11.5px]', !inc && 'opacity-50')}>
+                      <input
+                        type="checkbox" checked={inc} onChange={() => toggleIncluir(m.id)}
+                        className="flex-shrink-0 mt-0.5"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-800 truncate" title={m.nome}>{m.nome}</p>
+                        <p className="text-[10.5px] text-gray-500 truncate">
+                          {CAMPO_LABEL[m.campo]} · valor original: <b className="text-gray-700">{valorPorCampo(Number(m.valor_meta), m.campo)}</b>
+                        </p>
                       </div>
-                      <label className={cn('flex items-center gap-1 text-[10.5px] flex-shrink-0', inc ? 'text-gray-700 cursor-pointer' : 'text-gray-300 cursor-not-allowed')}>
+                      <label className={cn(
+                        'flex items-center gap-1 text-[10.5px] flex-shrink-0 mt-0.5',
+                        inc ? 'text-gray-700 cursor-pointer' : 'text-gray-300 cursor-not-allowed',
+                      )}>
                         <input
                           type="checkbox" checked={pres} disabled={!inc}
                           onChange={() => togglePreservar(m.id)}
                         />
-                        Manter valor
+                        <span className="whitespace-nowrap">Manter valor</span>
                       </label>
                     </div>
                   )
@@ -1927,7 +1933,7 @@ function DialogDuplicarGrupo({ grupo, onClose, onFeito }: DialogDuplicarGrupoPro
                       <p className="text-[11px] text-emerald-800">
                         Será criado em <b>{totalPostosRede} posto{totalPostosRede === 1 ? '' : 's'}</b>:
                       </p>
-                      <p className="text-[10.5px] text-emerald-700/80 mt-0.5 leading-snug">
+                      <p className="text-[10.5px] text-emerald-700/80 mt-0.5 leading-snug break-words">
                         {esquemaEscolhido.postos.map(p => p.nome).join(' · ')}
                       </p>
                     </div>
@@ -1937,7 +1943,7 @@ function DialogDuplicarGrupo({ grupo, onClose, onFeito }: DialogDuplicarGrupoPro
             </div>
           )}
         </div>
-        <DialogFooter>
+        <DialogFooter className="px-5 py-3 border-t border-gray-200 flex-shrink-0 bg-white">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button
             onClick={executar}
