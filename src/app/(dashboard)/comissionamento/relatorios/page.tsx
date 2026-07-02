@@ -55,12 +55,24 @@ interface AtingimentoDetalhe {
   meta_individual: number; realizado: number; atingimento: number
 }
 
+type MembroRole = 'supervisor' | 'manager' | 'pit_boss' | 'oil_changer' | 'seller'
+
 interface VendedorResumo {
-  vendedor_id: string; vendedor_nome: string; membro_id: string | null
+  vendedor_id: string; vendedor_nome: string
+  membro_id:   string | null
+  membro_role: MembroRole | null
   vendas_count: number; quantidade: number
   faturamento: number; custo: number; lucro_bruto: number; margem: number
   comissao_total: number
   atingimentos: AtingimentoDetalhe[]
+}
+
+const ROLE_BADGE: Record<MembroRole, { label: string; className: string }> = {
+  manager:     { label: 'Gerente',          className: 'bg-purple-100 text-purple-700 border-purple-200'   },
+  supervisor:  { label: 'Supervisor',       className: 'bg-indigo-100 text-indigo-700 border-indigo-200'   },
+  pit_boss:    { label: 'Chefe de Pista',   className: 'bg-amber-100 text-amber-700 border-amber-200'      },
+  oil_changer: { label: 'Trocador de Óleo', className: 'bg-slate-100 text-slate-700 border-slate-200'      },
+  seller:      { label: 'Vendedor',         className: 'bg-blue-100 text-blue-700 border-blue-200'         },
 }
 
 interface CalcularResponse {
@@ -454,7 +466,17 @@ function RelatorioLinhaVendedor({ v, comissao, aberto, onToggle, postoId, esquem
           <div className="flex items-center gap-2">
             {aberto ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-400" />}
             <div className="min-w-0">
-              <p className="font-semibold text-gray-900 truncate">{v.vendedor_nome}</p>
+              <div className="flex items-center gap-2 min-w-0">
+                <p className="font-semibold text-gray-900 truncate">{v.vendedor_nome}</p>
+                {v.membro_role && (
+                  <span className={cn(
+                    'inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-semibold whitespace-nowrap',
+                    ROLE_BADGE[v.membro_role].className,
+                  )}>
+                    {ROLE_BADGE[v.membro_role].label}
+                  </span>
+                )}
+              </div>
               {!v.membro_id && <p className="text-[10.5px] text-amber-600 italic">não cadastrado em membros</p>}
             </div>
           </div>

@@ -315,6 +315,9 @@ export interface ResumoVendedor {
   vendedor_id:    string   // pessoa.grid
   vendedor_nome:  string
   membro_id:      string | null
+  // Role do membro cadastrado no Supabase — null se o vendedor tem vendas
+  // mas não está cadastrado como membro do posto.
+  membro_role:    MembroRole | null
   vendas_count:   number
   quantidade:     number
   faturamento:    number
