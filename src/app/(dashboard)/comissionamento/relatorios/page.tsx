@@ -292,9 +292,22 @@ export default function ComissionamentoRelatoriosPage() {
         </Button>
 
         <Button
+          onClick={() => {
+            if (!esquemaId) return
+            const params = new URLSearchParams({ esquema_id: esquemaId, data_ini: dataIni, data_fim: dataFim })
+            window.open(`/comissionamento/relatorios/aprovacao?${params}`, '_blank', 'noopener')
+          }}
+          disabled={!esquemaId}
+          variant="outline"
+          className="h-9 ml-auto gap-1.5 border-orange-300 text-orange-800 hover:bg-orange-50 text-[12.5px]"
+          title="Relatório executivo consolidado da rede (todos postos do esquema) para aprovação do proprietário"
+        >
+          <FileText className="w-3.5 h-3.5" /> Aprovação (rede)
+        </Button>
+        <Button
           onClick={abrirImpressao}
           disabled={!data || data.resumoPorVendedor.length === 0}
-          className="h-9 ml-auto gap-1.5 bg-gray-900 hover:bg-black text-white text-[12.5px]"
+          className="h-9 gap-1.5 bg-gray-900 hover:bg-black text-white text-[12.5px]"
         >
           <Printer className="w-3.5 h-3.5" /> Versão imprimível
         </Button>

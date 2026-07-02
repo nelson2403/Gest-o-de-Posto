@@ -33,7 +33,7 @@ const ABAS: AbaDef[] = [
 
 // Rotas onde a barra de abas NÃO deve aparecer (views de impressão, modais
 // full-screen, etc.) — esconder mantém a UX dessas telas intacta.
-const ROTAS_SEM_ABAS = ['/comissionamento/relatorios/imprimir']
+const ROTAS_SEM_ABAS = ['/comissionamento/relatorios/imprimir', '/comissionamento/relatorios/aprovacao']
 
 export function ComissionamentoTabs() {
   const pathname = usePathname()
