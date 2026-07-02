@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Landmark, Loader2, RefreshCw, CheckCircle2, AlertTriangle, CircleDashed, FileQuestion, MessageSquarePlus, MessageSquareText, X } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Landmark, Loader2, RefreshCw, CheckCircle2, AlertTriangle, CircleDashed, FileQuestion, MessageSquarePlus, MessageSquareText, X, Search, ChevronDown, ChevronRight, ArrowRightLeft } from 'lucide-react'
 
 type Status = 'ok' | 'diverge' | 'sem_inicial' | 'sem_extrato'
 type SaldoConta = {
@@ -22,6 +22,29 @@ type SaldoConta = {
   obs_atualizado_por: string | null
 }
 type Dados = { contas: SaldoConta[]; gerado_em: string }
+
+type RastreioDia = {
+  data: string
+  mov_autosystem: number
+  saldo_autosystem: number
+  tem_extrato: boolean
+  saldo_banco: number | null
+  extrato_status: string | null
+  tarefa_status: string | null
+  divergencia: number | null
+  jump: number | null
+  alerta: 'pulo' | 'sem_extrato' | null
+}
+type Rastreio = {
+  posto_nome: string
+  conta_codigo: string
+  conta_numero: string | null
+  banco: string | null
+  saldo_inicial: number
+  divergencia_atual: number | null
+  dias: RastreioDia[]
+}
+type Lancamento = { direcao: 'entrada' | 'saida'; valor: number; motivo: string; pessoa: string; obs: string; documento: string }
 
 const fmt = (n: number | null) =>
   n == null ? '—' : n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -107,6 +130,42 @@ export default function MonitoramentoSaldosPage() {
       setErroObs(e.message)
     } finally {
       setSalvando(false)
+    }
+  }
+
+  // ── Rastreador de saldo ────────────────────────────────────────────────
+  const [rastreioConta, setRastreioConta]   = useState<SaldoConta | null>(null)
+  const [rastreio, setRastreio]             = useState<Rastreio | null>(null)
+  const [rastreioLoading, setRastreioLoading] = useState(false)
+  const [diaAberto, setDiaAberto]           = useState<string | null>(null)
+  const [lancPorDia, setLancPorDia]         = useState<Record<string, Lancamento[]>>({})
+  const [lancLoading, setLancLoading]       = useState<string | null>(null)
+
+  const abrirRastreio = async (c: SaldoConta) => {
+    setRastreioConta(c); setRastreio(null); setDiaAberto(null); setLancPorDia({}); setRastreioLoading(true)
+    try {
+      const r = await fetch(`/api/monitoramento/saldos/rastrear?conta_id=${c.conta_id}`, { cache: 'no-store' })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'Falha ao rastrear')
+      setRastreio(d)
+    } catch (e: any) {
+      setErro(e.message); setRastreioConta(null)
+    } finally {
+      setRastreioLoading(false)
+    }
+  }
+
+  const toggleDia = async (dataDia: string) => {
+    if (diaAberto === dataDia) { setDiaAberto(null); return }
+    setDiaAberto(dataDia)
+    if (lancPorDia[dataDia] || !rastreioConta) return
+    setLancLoading(dataDia)
+    try {
+      const r = await fetch(`/api/monitoramento/saldos/rastrear?conta_id=${rastreioConta.conta_id}&dia=${dataDia}`, { cache: 'no-store' })
+      const d = await r.json()
+      if (r.ok) setLancPorDia(prev => ({ ...prev, [dataDia]: d.lancamentos ?? [] }))
+    } finally {
+      setLancLoading(null)
     }
   }
 
@@ -210,12 +269,19 @@ export default function MonitoramentoSaldosPage() {
                   <td className="px-3 py-2.5 text-center text-gray-500 text-[12px]">{fmtData(c.data_extrato)}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-gray-800">{fmt(c.saldo_banco)}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-gray-600">{fmt(c.saldo_autosystem)}</td>
-                  <td className={`px-3 py-2.5 text-right font-mono font-semibold ${
-                    c.status === 'ok' ? 'text-green-600'
-                    : c.status === 'diverge' ? 'text-red-600'
-                    : 'text-gray-300'
-                  }`}>
-                    {fmt(c.divergencia)}
+                  <td className="px-3 py-2.5 text-right">
+                    <button
+                      onClick={() => abrirRastreio(c)}
+                      disabled={c.saldo_autosystem == null}
+                      title="Rastrear esta divergência dia a dia"
+                      className={`inline-flex items-center gap-1 font-mono font-semibold rounded px-1.5 py-0.5 hover:bg-gray-100 disabled:hover:bg-transparent disabled:cursor-default ${
+                        c.status === 'ok' ? 'text-green-600'
+                        : c.status === 'diverge' ? 'text-red-600'
+                        : 'text-gray-300'
+                      }`}>
+                      {fmt(c.divergencia)}
+                      {c.saldo_autosystem != null && <Search className="w-3 h-3 opacity-40" />}
+                    </button>
                   </td>
                   <td className="px-4 py-2.5 text-center">
                     <StatusPill s={c.status} />
@@ -293,6 +359,90 @@ export default function MonitoramentoSaldosPage() {
               <button onClick={salvarObs} disabled={salvando} className="h-9 px-4 text-[13px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg disabled:opacity-50 flex items-center gap-1.5">
                 {salvando && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Salvar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal do rastreador de saldo */}
+      {rastreioConta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setRastreioConta(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 flex-shrink-0">
+              <div>
+                <h3 className="text-[14px] font-bold text-gray-900 flex items-center gap-1.5"><Search className="w-4 h-4 text-indigo-500" /> Rastrear saldo</h3>
+                <p className="text-[11px] text-gray-400">
+                  {rastreioConta.posto_nome} · conta {rastreioConta.conta_numero ?? rastreioConta.conta_codigo}
+                  {rastreio && <> · divergência atual <b className={rastreio.divergencia_atual != null && Math.abs(rastreio.divergencia_atual) > 1 ? 'text-red-600' : 'text-green-600'}>R$ {fmt(rastreio.divergencia_atual)}</b></>}
+                </p>
+              </div>
+              <button onClick={() => setRastreioConta(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-4 overflow-y-auto">
+              {rastreioLoading ? (
+                <div className="flex items-center justify-center h-40 text-gray-400 gap-2"><Loader2 className="w-5 h-5 animate-spin" /> Rastreando dia a dia...</div>
+              ) : !rastreio ? null : (
+                <>
+                  <p className="text-[11px] text-gray-400 mb-2 flex items-center gap-1">
+                    <ArrowRightLeft className="w-3 h-3" /> Clique num dia para ver os lançamentos do AUTOSYSTEM. <span className="text-red-500 font-semibold">▲</span> = dia em que a divergência mudou · <span className="text-amber-600 font-semibold">sem extrato</span> = movimento no AUTOSYSTEM sem extrato do banco.
+                  </p>
+                  <table className="w-full text-[12px]">
+                    <thead>
+                      <tr className="text-[10px] text-gray-400 uppercase border-b border-gray-100">
+                        <th className="text-left px-2 py-1.5 font-medium">Dia</th>
+                        <th className="text-right px-2 py-1.5 font-medium">Mov. AUTOSYS</th>
+                        <th className="text-right px-2 py-1.5 font-medium">Saldo AUTOSYS</th>
+                        <th className="text-right px-2 py-1.5 font-medium">Saldo banco</th>
+                        <th className="text-right px-2 py-1.5 font-medium">Divergência</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rastreio.dias.map(d => (
+                        <Fragment key={d.data}>
+                          <tr onClick={() => toggleDia(d.data)}
+                            className={`cursor-pointer border-b border-gray-50 ${
+                              d.alerta === 'pulo' ? 'bg-red-50/60 hover:bg-red-50'
+                              : d.alerta === 'sem_extrato' ? 'bg-amber-50/50 hover:bg-amber-50'
+                              : 'hover:bg-gray-50'}`}>
+                            <td className="px-2 py-1.5 font-mono whitespace-nowrap">
+                              <span className="flex items-center gap-1">
+                                {diaAberto === d.data ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-300" />}
+                                {fmtData(d.data)}
+                                {d.alerta === 'pulo' && <span className="text-[9px] font-bold text-red-600">▲ {fmt(d.jump)}</span>}
+                                {d.alerta === 'sem_extrato' && <span className="text-[9px] font-semibold text-amber-600">sem extrato</span>}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1.5 text-right font-mono text-gray-500">{fmt(d.mov_autosystem)}</td>
+                            <td className="px-2 py-1.5 text-right font-mono text-gray-700">{fmt(d.saldo_autosystem)}</td>
+                            <td className="px-2 py-1.5 text-right font-mono text-gray-700">{d.tem_extrato ? fmt(d.saldo_banco) : '—'}</td>
+                            <td className={`px-2 py-1.5 text-right font-mono font-semibold ${d.divergencia == null ? 'text-gray-300' : Math.abs(d.divergencia) > 1 ? 'text-red-600' : 'text-green-600'}`}>{d.tem_extrato ? fmt(d.divergencia) : '—'}</td>
+                          </tr>
+                          {diaAberto === d.data && (
+                            <tr>
+                              <td colSpan={5} className="px-3 py-2 bg-gray-50/60">
+                                {lancLoading === d.data ? (
+                                  <div className="flex items-center gap-2 text-gray-400 text-[12px] py-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> carregando lançamentos...</div>
+                                ) : (lancPorDia[d.data]?.length ?? 0) === 0 ? (
+                                  <p className="text-[12px] text-gray-400 py-1">Nenhum lançamento no AUTOSYSTEM neste dia.</p>
+                                ) : (
+                                  <div className="space-y-0.5">
+                                    {lancPorDia[d.data].map((l, i) => (
+                                      <div key={i} className="flex items-start gap-2 text-[11px]">
+                                        <span className={`font-mono font-semibold w-24 text-right flex-shrink-0 ${l.direcao === 'entrada' ? 'text-green-600' : 'text-red-600'}`}>{l.direcao === 'entrada' ? '+' : '−'}{fmt(l.valor)}</span>
+                                        <span className="text-gray-700">{l.motivo}{l.pessoa ? ` · ${l.pessoa}` : ''}{l.obs ? ` · ${l.obs}` : ''}{l.documento ? ` [${l.documento}]` : ''}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
             </div>
           </div>
         </div>
