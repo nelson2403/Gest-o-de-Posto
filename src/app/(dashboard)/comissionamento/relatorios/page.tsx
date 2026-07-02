@@ -3,6 +3,7 @@
 import { Fragment as FragmentRow, useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -130,6 +131,7 @@ function fmtAgregado(valor: number, campo: RegraCampo): string {
 // ── Página ──────────────────────────────────────────────────────────────────
 
 export default function ComissionamentoRelatoriosPage() {
+  const router = useRouter()
   const { dataIni: iniDef, dataFim: fimDef } = defaultPeriodo()
 
   const [postos,    setPostos]    = useState<Posto[]>([])
@@ -228,7 +230,7 @@ export default function ComissionamentoRelatoriosPage() {
       data_ini: dataIni, data_fim: dataFim,
       auto: '1',
     })
-    window.open(`/comissionamento/relatorios/imprimir?${params}`, '_blank', 'noopener')
+    router.push(`/comissionamento/relatorios/imprimir?${params}`)
   }
 
   const postoSel   = postos.find(p => p.id === postoId)
@@ -295,7 +297,7 @@ export default function ComissionamentoRelatoriosPage() {
           onClick={() => {
             if (!esquemaId) return
             const params = new URLSearchParams({ esquema_id: esquemaId, data_ini: dataIni, data_fim: dataFim })
-            window.open(`/comissionamento/relatorios/aprovacao?${params}`, '_blank', 'noopener')
+            router.push(`/comissionamento/relatorios/aprovacao?${params}`)
           }}
           disabled={!esquemaId}
           variant="outline"

@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Printer, Loader2, AlertCircle, ArrowLeft } from 'lucide-react'
 
@@ -104,6 +104,7 @@ export default function ImprimirRelatorioPage() {
 
 function ImprimirRelatorioConteudo() {
   const sp = useSearchParams()
+  const router = useRouter()
   const postoId   = sp?.get('posto_id')   ?? ''
   const esquemaId = sp?.get('esquema_id') ?? ''
   const dataIni   = sp?.get('data_ini')   ?? ''
@@ -183,8 +184,8 @@ function ImprimirRelatorioConteudo() {
           <AlertCircle className="w-4 h-4 mt-0.5" />
           <p>{erro ?? 'Erro inesperado'}</p>
         </div>
-        <Button variant="outline" onClick={() => window.close()} className="mt-4 gap-2">
-          <ArrowLeft className="w-3.5 h-3.5" /> Fechar
+        <Button variant="outline" onClick={() => router.back()} className="mt-4 gap-2">
+          <ArrowLeft className="w-3.5 h-3.5" /> Voltar
         </Button>
       </div>
     )

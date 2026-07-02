@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
-import Link from 'next/link'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Loader2, AlertCircle, Printer, ArrowLeft, Building2, Users, TrendingUp, DollarSign } from 'lucide-react'
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
@@ -46,6 +45,7 @@ const fmtData = (s: string) => {
 
 export default function AprovacaoRelatorioPage() {
   const sp = useSearchParams()
+  const router = useRouter()
   const esquemaId = sp.get('esquema_id') ?? ''
   const dataIni   = sp.get('data_ini')   ?? ''
   const dataFim   = sp.get('data_fim')   ?? ''
@@ -87,9 +87,12 @@ export default function AprovacaoRelatorioPage() {
       {/* Barra de ações — some no print */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10 print:hidden">
         <div className="max-w-5xl mx-auto px-6 py-2.5 flex items-center justify-between">
-          <Link href="/comissionamento/relatorios" className="text-[12.5px] text-gray-600 hover:text-orange-600 flex items-center gap-1.5">
+          <button
+            onClick={() => router.back()}
+            className="text-[12.5px] text-gray-600 hover:text-orange-600 flex items-center gap-1.5"
+          >
             <ArrowLeft className="w-3.5 h-3.5" /> Voltar ao relatório do posto
-          </Link>
+          </button>
           <button
             onClick={() => window.print()}
             className="h-8 px-3 rounded-md bg-gray-900 text-white text-[12.5px] font-semibold flex items-center gap-1.5 hover:bg-gray-800"
