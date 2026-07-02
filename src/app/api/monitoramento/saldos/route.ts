@@ -23,9 +23,9 @@ export interface SaldoConta {
   obs_atualizado_por:     string | null
 }
 
-// Tolerância de divergência (R$) — diferenças pequenas (centavos / lançamentos
-// pendentes) não contam como divergência real; acima disso é item de conciliação.
-const TOLERANCIA = 50.0
+// Tolerância de divergência (R$) — sem margem: só arredondamento de centavo.
+// Qualquer diferença a partir de ~R$0,02 já conta como divergência.
+const TOLERANCIA = 0.01
 
 // GET /api/monitoramento/saldos?banco=sicoob|stone — somente master
 export async function GET(req: Request) {
@@ -35,6 +35,10 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const banco  = (searchParams.get('banco') || 'sicoob').toLowerCase()
   const filtro = banco === 'stone' ? '%stone%' : '%sicoob%'
+  // O Stone é conta que ZERA todo dia (recebíveis entram e uma transferência
+  // varre o saldo pra 0). O extrato do Stone vem com saldo = 0. Então, pro Stone,
+  // saldo=0 é um saldo VÁLIDO e a conciliação é: AUTOSYSTEM deve estar em 0 também.
+  const ehStone = banco === 'stone'
 
   const admin = createAdminClient()
 
@@ -60,14 +64,16 @@ export async function GET(req: Request) {
   //    dia ainda não fechou, então a divergência seria falsa.
   const ultimoPorConta = new Map<string, { data: string; saldo_dia: number }>()
   await Promise.all(recIds.map(async (rid: string) => {
-    const { data } = await admin
+    let q = admin
       .from('tarefas')
       .select('extrato_data, extrato_saldo_dia')
       .eq('tarefa_recorrente_id', rid)
       .eq('categoria', 'conciliacao_bancaria')
       .eq('status', 'concluido')
       .not('extrato_saldo_dia', 'is', null)
-      .neq('extrato_saldo_dia', 0)
+    // Sicoob: ignora saldo=0 (extrato não parseado). Stone: saldo=0 é válido.
+    if (!ehStone) q = q.neq('extrato_saldo_dia', 0)
+    const { data } = await q
       .order('extrato_data', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -184,6 +190,8 @@ export async function GET(req: Request) {
     const div       = saldoAuto == null ? null : parseFloat((ext.saldo_dia - saldoAuto).toFixed(2))
     const status: SaldoConta['status'] =
       saldoAuto == null ? 'diverge'
+      // Stone: conciliado quando o AUTOSYSTEM está zerado (= extrato); sem "sem inicial".
+      : ehStone           ? (Math.abs(div!) <= TOLERANCIA ? 'ok' : 'diverge')
       : si === 0          ? 'sem_inicial'
       : Math.abs(div!) <= TOLERANCIA ? 'ok'
       : 'diverge'
