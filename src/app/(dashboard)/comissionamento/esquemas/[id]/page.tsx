@@ -1310,6 +1310,7 @@ function RegraForm({ regraForm, setRegraForm, regraEditando, salvando, onCancel,
           <ConditionBuilder
             value={regraForm.condicoes}
             onChange={(g) => setRegraForm(f => ({ ...f, condicoes: g }))}
+            nomesDeMeta={Array.from(new Set(metas.map(m => m.nome))).sort()}
           />
 
           {/* Meta de referência — 2 modos:

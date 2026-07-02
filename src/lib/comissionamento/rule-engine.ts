@@ -93,6 +93,12 @@ interface EvalContext {
 
   // Atingimento da meta que cobre essa venda (% — null se sem meta)
   atingimento_meta:  number | null
+  // Atingimento resolvido por NOME de meta (case-insensitive/trim). Usado
+  // quando a condição atingimento_meta tem meta_ref_nome preenchido —
+  // permite empilhar várias condições, cada uma para uma meta diferente
+  // (ex: 'bateu Meta Produto E bateu Meta Aditivos E bateu Checklist').
+  // Vazio (Map com 0 entradas) quando não é relevante.
+  atingimentos_por_nome: Map<string, number>
   // Pontuação da aplicação do checklist apontado pela regra
   // (checklist_template_referencia_id). null quando a regra não aponta
   // nenhum template ou não há aplicação no período.
@@ -104,6 +110,7 @@ interface ConditionLike {
   operator: OperatorKey | null
   value:    string | number | null
   value2?:  string | number | null
+  meta_ref_nome?: string | null
 }
 
 function compareNumber(a: number, op: OperatorKey, b: number, b2?: number): boolean {
@@ -137,11 +144,19 @@ function compareString(a: string, op: OperatorKey, b: string): boolean {
 function evaluateCondition(c: ConditionLike, ctx: EvalContext): boolean {
   if (!c.field || !c.operator || c.value === null) return true  // ignorar incompletas
 
-  // atingimento_meta: precisa de um valor resolvido — sem meta → falso
+  // atingimento_meta: quando a condição especifica meta_ref_nome, usa o
+  // atingimento DAQUELA meta (permite múltiplas condições de atingimento
+  // por regra, cada uma para uma meta diferente). Senão, cai no
+  // atingimento da meta_referencia da regra (comportamento clássico).
   if (c.field === 'atingimento_meta') {
-    if (ctx.atingimento_meta === null) return false
+    let valor: number | null = ctx.atingimento_meta
+    if (c.meta_ref_nome) {
+      const key = c.meta_ref_nome.trim().toLowerCase()
+      valor = ctx.atingimentos_por_nome.get(key) ?? null
+    }
+    if (valor === null) return false
     return compareNumber(
-      ctx.atingimento_meta,
+      valor,
       c.operator,
       Number(c.value),
       c.value2 != null ? Number(c.value2) : undefined,
@@ -245,6 +260,38 @@ export function resolverMetaReferencia(
     return candidatos.slice().sort((a, b) => b.period_start.localeCompare(a.period_start))[0]
   }
   return null
+}
+
+// Monta o mapa nome→atingimento para o ctx da regra. Escopo respeita a
+// regra (todos vs vendedor): 'todos' usa atingimentoTotalPorMeta;
+// 'vendedor' usa atingimentoPorVendedorPorMeta pra o vKey passado.
+// Como pode haver mais de uma meta com o mesmo nome (renovação mensal),
+// escolhe sempre a de period_start MAIS RECENTE — mesmo desempate do
+// resolverMetaReferencia (evita ambiguidade).
+function montarAtingimentosPorNome(
+  metas: readonly Meta[],
+  escopoTodos: boolean,
+  vKey: string | null,
+  atingimentoTotalPorMeta: Map<string, number> | undefined,
+  atingimentoPorVendedorPorMeta: Map<string, Map<string, number>> | undefined,
+): Map<string, number> {
+  const porNome = new Map<string, Meta>()
+  for (const m of metas) {
+    const key = m.nome.trim().toLowerCase()
+    const atual = porNome.get(key)
+    if (!atual || atual.period_start < m.period_start) porNome.set(key, m)
+  }
+  const out = new Map<string, number>()
+  porNome.forEach((meta, key) => {
+    let at: number | null = null
+    if (escopoTodos) {
+      at = atingimentoTotalPorMeta?.get(meta.id) ?? null
+    } else if (vKey) {
+      at = atingimentoPorVendedorPorMeta?.get(vKey)?.get(meta.id) ?? null
+    }
+    if (at !== null) out.set(key, at)
+  })
+  return out
 }
 
 function metaCobreVenda(meta: Meta, sale: Venda): boolean {
@@ -456,6 +503,18 @@ export function calcularComissaoPorVenda(input: CalcularRegrasInput): VendaComis
         posto:             String(sale.empresa_id ?? ''),
         faturamento, quantidade, mix, margem,
         atingimento_meta: atingimentoFinal,
+        // Mapa por nome — engine antigo (por venda) usa só o atingByMeta
+        // do vendedor da venda. Escopo 'todos' no engine antigo é raro
+        // e não pré-calculamos; se algum dia precisar, migrar pro novo.
+        atingimentos_por_nome: (() => {
+          const out = new Map<string, number>()
+          for (const m of input.metas) {
+            const key = m.nome.trim().toLowerCase()
+            const at = atingByMeta?.get(m.id)
+            if (at != null && !out.has(key)) out.set(key, at)
+          }
+          return out
+        })(),
         pontuacao_checklist: null,  // não suportado no engine antigo por venda
       }
 
@@ -560,6 +619,7 @@ export function simularRegrasVerbose(input: SimularInput): SimulacaoVenda {
       atingimentoCtx = input.atingimentoPorVendedorPorMeta?.get(vKey)?.get(regra.meta_referencia_id) ?? null
     }
 
+    const vKeySim = String(sale.vendedor_id ?? 'sem-vendedor')
     const ctx: EvalContext = {
       produto:           sale.produto_nome ?? '',
       grupo_produto:     sale.grupo_produto ?? '',
@@ -569,6 +629,11 @@ export function simularRegrasVerbose(input: SimularInput): SimulacaoVenda {
       posto:             String(sale.empresa_id ?? ''),
       faturamento, quantidade, mix: 1, margem,
       atingimento_meta:  atingimentoCtx,
+      atingimentos_por_nome: montarAtingimentosPorNome(
+        input.metas ?? [],
+        false, vKeySim,
+        undefined, input.atingimentoPorVendedorPorMeta,
+      ),
       pontuacao_checklist: null,  // simulação por venda não puxa checklist
     }
 
@@ -878,6 +943,13 @@ export function calcularComissaoPorVendedor(input: CalcularPorVendedorInput): Co
           return (luc / fat) * 100
         })(),
         atingimento_meta:  atingimentoMeta,
+        atingimentos_por_nome: montarAtingimentosPorNome(
+          input.metas,
+          regra.realizado_escopo === 'todos',
+          vKey,
+          input.atingimentoTotalPorMeta,
+          input.atingimentoPorVendedorPorMeta,
+        ),
         pontuacao_checklist: regra.checklist_template_referencia_id
           ? (input.pontuacaoChecklistPorTemplate?.get(regra.checklist_template_referencia_id) ?? null)
           : null,

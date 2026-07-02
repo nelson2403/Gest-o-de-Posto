@@ -101,6 +101,12 @@ export interface Condition {
   operator: OperatorKey | null
   value:    string | number | null
   value2?:  string | number | null
+  // Só usado quando field === 'atingimento_meta'. Quando preenchido, a
+  // condição verifica o atingimento DESTA meta (por nome, case-insensitive
+  // no posto do cálculo). Quando null, cai na meta_referencia da REGRA
+  // (comportamento anterior). Permite empilhar várias condições de
+  // atingimento na mesma regra, cada uma para uma meta diferente.
+  meta_ref_nome?: string | null
 }
 
 export interface ConditionGroup {
@@ -160,6 +166,9 @@ function normalizeCondition(c: Partial<Condition>): Condition {
     operator,
     value:    c.value  ?? null,
     value2:   c.value2 ?? null,
+    meta_ref_nome: typeof c.meta_ref_nome === 'string' && c.meta_ref_nome.trim() !== ''
+      ? c.meta_ref_nome
+      : null,
   }
 }
 

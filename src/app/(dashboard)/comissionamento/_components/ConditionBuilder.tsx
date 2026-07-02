@@ -27,11 +27,16 @@ const CARGO_ROLES: readonly { value: string; label: string }[] = [
 interface Props {
   value:    ConditionGroup
   onChange: (g: ConditionGroup) => void
+  // Nomes únicos de metas disponíveis — usado pela condição
+  // atingimento_meta para permitir que CADA condição aponte sua própria
+  // meta (Opção C). Quando não passado, a condição usa a meta_referencia
+  // da regra como antes.
+  nomesDeMeta?: readonly string[]
 }
 
 // Componente recursivo: o grupo raiz é renderizado sem "card" externo; sub-grupos
 // recebem borda + título "Sub-grupo (E/OU)" para distinguir visualmente.
-export function ConditionBuilder({ value, onChange }: Props) {
+export function ConditionBuilder({ value, onChange, nomesDeMeta }: Props) {
   return (
     <GroupNode
       group={value}
@@ -39,6 +44,7 @@ export function ConditionBuilder({ value, onChange }: Props) {
       onRemove={null}     // raiz não pode ser removida
       isRoot
       depth={0}
+      nomesDeMeta={nomesDeMeta ?? []}
     />
   )
 }
@@ -51,9 +57,10 @@ interface GroupNodeProps {
   onRemove: (() => void) | null
   isRoot:   boolean
   depth:    number
+  nomesDeMeta: readonly string[]
 }
 
-function GroupNode({ group, onChange, onRemove, isRoot, depth }: GroupNodeProps) {
+function GroupNode({ group, onChange, onRemove, isRoot, depth, nomesDeMeta }: GroupNodeProps) {
   // Helpers imutáveis pra editar a árvore preservando referências.
   const updateLogic = useCallback((logic: LogicOperator) => {
     onChange({ ...group, logic })
@@ -149,6 +156,7 @@ function GroupNode({ group, onChange, onRemove, isRoot, depth }: GroupNodeProps)
             condition={c}
             onChange={(next) => updateCondition(idx, next)}
             onRemove={() => removeCondition(idx)}
+            nomesDeMeta={nomesDeMeta}
           />
         ))}
 
@@ -161,6 +169,7 @@ function GroupNode({ group, onChange, onRemove, isRoot, depth }: GroupNodeProps)
             onRemove={() => removeSubGroup(idx)}
             isRoot={false}
             depth={depth + 1}
+            nomesDeMeta={nomesDeMeta}
           />
         ))}
 
@@ -204,9 +213,10 @@ interface ConditionRowProps {
   condition: Condition
   onChange:  (c: Condition) => void
   onRemove:  () => void
+  nomesDeMeta: readonly string[]
 }
 
-function ConditionRow({ condition, onChange, onRemove }: ConditionRowProps) {
+function ConditionRow({ condition, onChange, onRemove, nomesDeMeta }: ConditionRowProps) {
   const fieldDef    = condition.field    ? FIELD_DEFS[condition.field]      : null
   const operatorDef = condition.operator ? OPERATOR_DEFS[condition.operator] : null
   const valor1Tipo  = fieldDef?.type === 'number' ? 'number' : 'text'
@@ -338,6 +348,33 @@ function ConditionRow({ condition, onChange, onRemove }: ConditionRowProps) {
       {/* Unidade do campo (decoração) */}
       {fieldDef?.unit && condition.operator && (
         <span className="text-[10.5px] text-gray-400 font-mono">{fieldDef.unit}</span>
+      )}
+
+      {/* Meta específica desta condição — só para atingimento_meta.
+          Vazio = usa a meta_referencia da regra. Permite empilhar várias
+          condições de atingimento, cada uma para uma meta diferente. */}
+      {condition.field === 'atingimento_meta' && (
+        <div className="flex items-center gap-1">
+          <span className="text-[10.5px] text-gray-400 whitespace-nowrap">da meta</span>
+          <Select
+            value={condition.meta_ref_nome ?? '__ref__'}
+            onValueChange={(v) => onChange({ ...condition, meta_ref_nome: v === '__ref__' ? null : v })}
+          >
+            <SelectTrigger className="h-7 text-[11.5px] w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__ref__">
+                <span className="text-gray-500 italic">(meta da regra)</span>
+              </SelectItem>
+              {nomesDeMeta.length === 0 ? (
+                <div className="px-3 py-2 text-[11px] text-gray-400 italic">Cadastre metas primeiro</div>
+              ) : nomesDeMeta.map(n => (
+                <SelectItem key={n} value={n}>{n}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       )}
 
       <button
