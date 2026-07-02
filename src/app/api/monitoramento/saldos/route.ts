@@ -23,9 +23,9 @@ export interface SaldoConta {
   obs_atualizado_por:     string | null
 }
 
-// Tolerância de divergência (R$) — diferenças pequenas (centavos / lançamentos
-// pendentes) não contam como divergência real; acima disso é item de conciliação.
-const TOLERANCIA = 50.0
+// Tolerância de divergência (R$) — sem margem: só arredondamento de centavo.
+// Qualquer diferença a partir de ~R$0,02 já conta como divergência.
+const TOLERANCIA = 0.01
 
 // GET /api/monitoramento/saldos?banco=sicoob|stone — somente master
 export async function GET(req: Request) {
