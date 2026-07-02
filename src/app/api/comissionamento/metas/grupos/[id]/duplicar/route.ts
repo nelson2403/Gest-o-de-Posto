@@ -23,7 +23,28 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
   const { id: grupoOrigemId } = await ctx.params
-  const body = await req.json().catch(() => ({})) as Partial<{ nome: string }>
+  const body = await req.json().catch(() => ({})) as Partial<{
+    nome: string
+    period_start: string   // YYYY-MM-DD — sobrescreve o período do grupo E das metas
+    period_end:   string
+    // IDs das metas do grupo origem a incluir na duplicação. Vazio/omitido
+    // = todas. Permite ao usuário DESMARCAR metas que não quer trazer.
+    metas_incluir_ids: string[]
+    // IDs das metas que devem preservar valor_meta ao invés de zerar. Útil
+    // pra metas que não mudam mês a mês (mix, margem, etc.).
+    metas_preservar_valor_ids: string[]
+  }>
+
+  // Se o cliente enviou um período, propagamos para o grupo E para todas
+  // as metas duplicadas. Caso contrário, herda do origem (compat com o
+  // comportamento anterior). Ambos ou nenhum — não faz sentido enviar só
+  // um dos dois.
+  if ((body.period_start && !body.period_end) || (!body.period_start && body.period_end)) {
+    return NextResponse.json({ error: 'period_start e period_end devem vir juntos' }, { status: 400 })
+  }
+  if (body.period_start && body.period_end && body.period_end < body.period_start) {
+    return NextResponse.json({ error: 'period_end deve ser >= period_start' }, { status: 400 })
+  }
 
   const admin = createAdminClient()
 
@@ -39,14 +60,16 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 
   // 2. Cria o novo grupo
   const novoNome = body.nome?.trim() || `${grupoOrigem.nome} (cópia)`
+  const periodStart = body.period_start ?? grupoOrigem.period_start
+  const periodEnd   = body.period_end   ?? grupoOrigem.period_end
   const { data: novoGrupo, error: erNovoGrupo } = await admin
     .from('comissio_metas_grupos')
     .insert({
       posto_id:     grupoOrigem.posto_id,
       parent_id:    grupoOrigem.parent_id,
       nome:         novoNome,
-      period_start: grupoOrigem.period_start,
-      period_end:   grupoOrigem.period_end,
+      period_start: periodStart,
+      period_end:   periodEnd,
       sort_order:   (grupoOrigem.sort_order ?? 0) + 1,
       criado_por:   user.id,
     })
@@ -65,10 +88,17 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ error: erMetas.message }, { status: 500 })
   }
 
-  // 4. Cria cópias das metas zerando valor_meta e sem splits
+  // 4. Cria cópias das metas — filtra por metas_incluir_ids e preserva
+  //    valor apenas nas escolhidas em metas_preservar_valor_ids.
+  const incluirSet = Array.isArray(body.metas_incluir_ids) && body.metas_incluir_ids.length > 0
+    ? new Set(body.metas_incluir_ids)
+    : null   // null = todas
+  const preservarSet = new Set(Array.isArray(body.metas_preservar_valor_ids) ? body.metas_preservar_valor_ids : [])
+  const metasAIncluir = (metasOrigem ?? []).filter(m => !incluirSet || incluirSet.has(m.id as string))
+
   let metasCriadas = 0
-  if (metasOrigem && metasOrigem.length > 0) {
-    const novasMetas = metasOrigem.map(m => ({
+  if (metasAIncluir.length > 0) {
+    const novasMetas = metasAIncluir.map(m => ({
       posto_id:     m.posto_id,
       grupo_id:     novoGrupo.id,
       nome:         m.nome,
@@ -81,10 +111,14 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       mix_denominador_categoria_id: m.mix_denominador_categoria_id,
       mix_numerador:                m.mix_numerador,
       mix_denominador:              m.mix_denominador,
-      // Zera valor_meta — o usuário define o novo target depois
-      valor_meta:   0,
-      period_start: m.period_start,
-      period_end:   m.period_end,
+      // Preserva valor_meta APENAS quando o cliente marcou essa meta
+      // como "manter valor" — caso contrário, zera pra usuário preencher.
+      valor_meta:   preservarSet.has(m.id as string) ? Number(m.valor_meta) : 0,
+      // Se o cliente passou período novo, replica em todas as metas — assim
+      // um grupo "Mês 06/2026" duplicado de "Mês 05/2026" já entra com as
+      // metas apontando pra Junho, sem precisar editar meta por meta.
+      period_start: periodStart,
+      period_end:   periodEnd,
       criado_por:   user.id,
     }))
     const { error: erInsert, count } = await admin

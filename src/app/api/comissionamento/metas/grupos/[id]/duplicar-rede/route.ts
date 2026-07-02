@@ -32,9 +32,15 @@ export const dynamic = 'force-dynamic'
 
 interface Ctx { params: Promise<{ id: string }> }
 interface Body {
-  nome?:       string
-  esquema_id?: string
-  posto_ids?:  string[]
+  nome?:         string
+  esquema_id?:   string
+  posto_ids?:    string[]
+  period_start?: string   // YYYY-MM-DD — sobrescreve o período do grupo E das metas
+  period_end?:   string
+  // Metas a incluir na duplicação (subset). Vazio/omitido = todas.
+  metas_incluir_ids?: string[]
+  // Metas cujo valor_meta original deve ser preservado (senão, zera).
+  metas_preservar_valor_ids?: string[]
 }
 interface PostoResumo {
   posto_id:      string
@@ -56,6 +62,12 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 
   if (!nomeGrupoNovo) return NextResponse.json({ error: 'nome é obrigatório' }, { status: 400 })
   if (!esquemaId)     return NextResponse.json({ error: 'esquema_id é obrigatório' }, { status: 400 })
+  if ((body.period_start && !body.period_end) || (!body.period_start && body.period_end)) {
+    return NextResponse.json({ error: 'period_start e period_end devem vir juntos' }, { status: 400 })
+  }
+  if (body.period_start && body.period_end && body.period_end < body.period_start) {
+    return NextResponse.json({ error: 'period_end deve ser >= period_start' }, { status: 400 })
+  }
 
   const admin = createAdminClient()
 
@@ -99,6 +111,22 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   const nomePorPosto = new Map<string, string>()
   for (const p of postosData ?? []) nomePorPosto.set(p.id as string, p.nome as string)
 
+  // Se o cliente enviou período novo, propagamos para o grupo E para as
+  // metas — o duplicado costuma ser pra "próximo mês", faz sentido que as
+  // metas também apontem pro período novo (não pro período antigo).
+  const periodStart = body.period_start ?? origem.period_start
+  const periodEnd   = body.period_end   ?? origem.period_end
+
+  // Filtros de metas a incluir / preservar valor. IDs são das metas do
+  // GRUPO ORIGEM. Como estamos replicando pra vários postos, aplicamos o
+  // mesmo filtro para cada posto — a "meta X do origem" gera "meta X" em
+  // cada empresa alvo com a mesma decisão (incluir / preservar).
+  const incluirSet = Array.isArray(body.metas_incluir_ids) && body.metas_incluir_ids.length > 0
+    ? new Set(body.metas_incluir_ids)
+    : null
+  const preservarSet = new Set(Array.isArray(body.metas_preservar_valor_ids) ? body.metas_preservar_valor_ids : [])
+  const metasAIncluir = (metasOrigem ?? []).filter(m => !incluirSet || incluirSet.has(m.id as string))
+
   // 5. Para cada posto alvo: cria grupo + copia metas. Falha individual
   //    vira {erro} no resumo, não derruba o batch. Rollback do próprio
   //    grupo quando a inserção de metas falha (mesma política do /duplicar).
@@ -112,8 +140,8 @@ export async function POST(req: NextRequest, ctx: Ctx) {
           posto_id:     pid,
           parent_id:    null,
           nome:         nomeGrupoNovo,
-          period_start: origem.period_start,
-          period_end:   origem.period_end,
+          period_start: periodStart,
+          period_end:   periodEnd,
           sort_order:   (origem.sort_order ?? 0) + 1,
           criado_por:   user.id,
         })
@@ -122,8 +150,8 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       if (erC || !novoGrupo) throw new Error(erC?.message ?? 'falha ao criar grupo')
 
       let metasCriadas = 0
-      if (metasOrigem && metasOrigem.length > 0) {
-        const novasMetas = metasOrigem.map(m => ({
+      if (metasAIncluir.length > 0) {
+        const novasMetas = metasAIncluir.map(m => ({
           posto_id:     pid,                              // ← empresa alvo
           grupo_id:     novoGrupo.id,
           nome:         m.nome,
@@ -137,9 +165,11 @@ export async function POST(req: NextRequest, ctx: Ctx) {
           mix_numerador:                m.mix_numerador,
           mix_denominador:              m.mix_denominador,
           checklist_template_id:        m.checklist_template_id,
-          valor_meta:   0,                                // ← zera para preencher depois
-          period_start: m.period_start,
-          period_end:   m.period_end,
+          // Preserva valor original apenas quando marcado pelo usuário;
+          // caso contrário, zera. Decisão vale pra TODOS os postos da rede.
+          valor_meta:   preservarSet.has(m.id as string) ? Number(m.valor_meta) : 0,
+          period_start: periodStart,                      // ← herda do input do modal
+          period_end:   periodEnd,
           criado_por:   user.id,
         }))
         const { error: erI, count } = await admin

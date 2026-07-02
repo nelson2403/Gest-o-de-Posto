@@ -1594,13 +1594,74 @@ interface DialogDuplicarGrupoProps {
   onClose: () => void
   onFeito: (novoGrupoIdSelecionar: string | null) => void | Promise<void>
 }
+// Sugere período do próximo mês a partir do período do grupo origem.
+// - Se o origem tem period_start, avança 1 mês; senão, usa mês corrente.
+// - period_start = dia 1 do próximo mês
+// - period_end   = último dia do próximo mês (independente da duração original)
+// Também tenta sugerir um nome baseado no padrão "MM/YYYY" do nome original.
+function sugerirProximoMes(grupo: MetaGrupo): { nome: string; ini: string; fim: string } {
+  const base = grupo.period_start
+    ? new Date(`${grupo.period_start}T00:00:00`)
+    : new Date()
+  const proxIni = new Date(base.getFullYear(), base.getMonth() + 1, 1)
+  const proxFim = new Date(proxIni.getFullYear(), proxIni.getMonth() + 1, 0)  // dia 0 do próximo = último do atual
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+  // Substitui "MM/YYYY" no nome original pelo novo par (comum: "Mês 05/2026" → "Mês 06/2026")
+  const mmYyyy = /\b(\d{2})\/(\d{4})\b/
+  const mmNovo = String(proxIni.getMonth() + 1).padStart(2, '0')
+  const yyyyNovo = String(proxIni.getFullYear())
+  const nomeSugerido = mmYyyy.test(grupo.nome)
+    ? grupo.nome.replace(mmYyyy, `${mmNovo}/${yyyyNovo}`)
+    : `${grupo.nome} (cópia)`
+
+  return { nome: nomeSugerido, ini: fmt(proxIni), fim: fmt(proxFim) }
+}
+
 function DialogDuplicarGrupo({ grupo, onClose, onFeito }: DialogDuplicarGrupoProps) {
-  const [nome, setNome] = useState(`${grupo.nome} (cópia)`)
+  const sugerido = useMemo(() => sugerirProximoMes(grupo), [grupo])
+  const [nome, setNome] = useState(sugerido.nome)
+  const [periodIni, setPeriodIni] = useState(sugerido.ini)
+  const [periodFim, setPeriodFim] = useState(sugerido.fim)
   const [modo, setModo] = useState<'posto' | 'rede'>('posto')
   const [esquemas, setEsquemas] = useState<EsquemaComPostos[]>([])
   const [esquemaId, setEsquemaId] = useState<string>('')
   const [carregando, setCarregando] = useState(true)
   const [salvando, setSalvando] = useState(false)
+
+  // Metas do grupo origem — para o usuário escolher quais duplicar e quais
+  // manter valor original ao invés de zerar.
+  const [metasOrigem, setMetasOrigem] = useState<Meta[]>([])
+  const [incluir, setIncluir] = useState<Set<string>>(new Set())
+  const [preservar, setPreservar] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    fetch(`/api/comissionamento/metas?grupo_id=${grupo.id}`)
+      .then(r => r.json())
+      .then((j: { metas?: Meta[] }) => {
+        const lista = j.metas ?? []
+        setMetasOrigem(lista)
+        setIncluir(new Set(lista.map(m => m.id)))  // todas incluídas por padrão
+        // preservar começa vazio — o usuário marca as que fazem sentido
+      })
+      .catch(() => setMetasOrigem([]))
+  }, [grupo.id])
+  function toggleIncluir(id: string) {
+    setIncluir(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) { next.delete(id); const p = new Set(preservar); p.delete(id); setPreservar(p) }
+      else next.add(id)
+      return next
+    })
+  }
+  function togglePreservar(id: string) {
+    if (!incluir.has(id)) return
+    setPreservar(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
 
   useEffect(() => {
     setCarregando(true)
@@ -1623,12 +1684,24 @@ function DialogDuplicarGrupo({ grupo, onClose, onFeito }: DialogDuplicarGrupoPro
       toast({ variant: 'destructive', title: 'Nome é obrigatório' })
       return
     }
+    if (!periodIni || !periodFim) {
+      toast({ variant: 'destructive', title: 'Preencha o período (início e fim)' })
+      return
+    }
+    if (periodFim < periodIni) {
+      toast({ variant: 'destructive', title: 'Fim do período deve ser >= início' })
+      return
+    }
     setSalvando(true)
     try {
       if (modo === 'posto') {
         const r = await fetch(`/api/comissionamento/metas/grupos/${grupo.id}/duplicar`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nome: nome.trim() }),
+          body: JSON.stringify({
+            nome: nome.trim(), period_start: periodIni, period_end: periodFim,
+            metas_incluir_ids:         Array.from(incluir),
+            metas_preservar_valor_ids: Array.from(preservar),
+          }),
         })
         const j = await r.json().catch(() => ({}))
         if (!r.ok || j.error) throw new Error(j.error ?? 'erro')
@@ -1645,7 +1718,12 @@ function DialogDuplicarGrupo({ grupo, onClose, onFeito }: DialogDuplicarGrupoPro
         }
         const r = await fetch(`/api/comissionamento/metas/grupos/${grupo.id}/duplicar-rede`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nome: nome.trim(), esquema_id: esquemaId }),
+          body: JSON.stringify({
+            nome: nome.trim(), esquema_id: esquemaId,
+            period_start: periodIni, period_end: periodFim,
+            metas_incluir_ids:         Array.from(incluir),
+            metas_preservar_valor_ids: Array.from(preservar),
+          }),
         })
         const j = await r.json().catch(() => ({}))
         if (!r.ok || j.error) throw new Error(j.error ?? 'erro')
@@ -1681,6 +1759,74 @@ function DialogDuplicarGrupo({ grupo, onClose, onFeito }: DialogDuplicarGrupoPro
             <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Nome do novo grupo</Label>
             <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex.: Mês 06/2026" autoFocus />
           </div>
+
+          {/* Período — pré-preenchido com o mês seguinte ao do grupo origem */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Início do período</Label>
+              <Input type="date" value={periodIni} onChange={e => setPeriodIni(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Fim do período</Label>
+              <Input type="date" value={periodFim} onChange={e => setPeriodFim(e.target.value)} />
+            </div>
+            <p className="col-span-2 text-[10.5px] text-gray-500 -mt-1">
+              O grupo E as metas duplicadas passam a apontar pra esse período. Se você deixar como está, cada meta copiada aparece já no mês novo — sem precisar editar meta por meta.
+            </p>
+          </div>
+
+          {/* Metas a duplicar — escolhe quais copiar e quais preservam o valor original */}
+          {metasOrigem.length > 0 && (
+            <div>
+              <div className="flex items-baseline justify-between mb-1.5">
+                <Label className="text-[11px] uppercase tracking-wide text-gray-500">
+                  Metas ({incluir.size} de {metasOrigem.length} selecionadas)
+                </Label>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => { setIncluir(new Set(metasOrigem.map(m => m.id))); setPreservar(new Set()) }}
+                    className="text-[10.5px] text-gray-500 hover:text-gray-800 underline"
+                  >Todas · zerar valores</button>
+                  <span className="text-gray-300">·</span>
+                  <button
+                    type="button"
+                    onClick={() => { setIncluir(new Set(metasOrigem.map(m => m.id))); setPreservar(new Set(metasOrigem.map(m => m.id))) }}
+                    className="text-[10.5px] text-gray-500 hover:text-gray-800 underline"
+                  >Todas · manter valores</button>
+                </div>
+              </div>
+              <div className="border border-gray-200 rounded-md divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                {metasOrigem.map(m => {
+                  const inc = incluir.has(m.id)
+                  const pres = preservar.has(m.id)
+                  return (
+                    <div key={m.id} className={cn('flex items-center gap-2 px-2.5 py-1.5 text-[11.5px]', !inc && 'opacity-50')}>
+                      <input type="checkbox" checked={inc} onChange={() => toggleIncluir(m.id)} className="flex-shrink-0" />
+                      <div className="flex-1 min-w-0 truncate">
+                        <span className="font-medium text-gray-800">{m.nome}</span>
+                        <span className="text-gray-400 ml-1.5">
+                          · {CAMPO_LABEL[m.campo]} · valor original: <b className="text-gray-600">{valorPorCampo(Number(m.valor_meta), m.campo)}</b>
+                        </span>
+                      </div>
+                      <label className={cn('flex items-center gap-1 text-[10.5px] flex-shrink-0', inc ? 'text-gray-700 cursor-pointer' : 'text-gray-300 cursor-not-allowed')}>
+                        <input
+                          type="checkbox" checked={pres} disabled={!inc}
+                          onChange={() => togglePreservar(m.id)}
+                        />
+                        Manter valor
+                      </label>
+                    </div>
+                  )
+                })}
+              </div>
+              {preservar.size > 0 && (
+                <p className="text-[10.5px] text-emerald-700 mt-1.5">
+                  ✓ {preservar.size} meta{preservar.size === 1 ? '' : 's'} manterá{preservar.size === 1 ? '' : 'ão'} o valor original. As demais entram zeradas.
+                </p>
+              )}
+            </div>
+          )}
 
           <div>
             <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Onde criar</Label>
