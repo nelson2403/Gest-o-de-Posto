@@ -240,28 +240,9 @@ export default function ComissionamentoMetasPage() {
   }
 
   // ── Duplicar grupo ───────────────────────────────────────────────────────
-  // Cria um novo grupo com as MESMAS metas do original (mesmos filtros/campo/
-  // período/mix), mas com valor_meta zerado e sem splits — o usuário define
-  // os novos targets e a distribuição.
-  async function duplicarGrupo(g: MetaGrupo) {
-    const r = await fetch(`/api/comissionamento/metas/grupos/${g.id}/duplicar`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    const json = await r.json().catch(() => ({}))
-    if (!r.ok || json.error) {
-      toast({ variant: 'destructive', title: 'Erro ao duplicar', description: json.error })
-      return
-    }
-    toast({
-      title: 'Grupo duplicado',
-      description: `${json.metas_criadas ?? 0} meta(s) copiada(s). Defina os valores e a distribuição.`,
-    })
-    await carregar()
-    // Seleciona o novo grupo para o usuário começar a editar
-    if (json.grupo?.id) setGrupoSelId(json.grupo.id)
-  }
+  // Abre o modal de duplicação. Antes disparava direto — agora o modal
+  // pergunta nome e destino (só este posto ou toda a rede do esquema).
+  const [duplicarDialog, setDuplicarDialog] = useState<MetaGrupo | null>(null)
 
   // ── Confirmações de exclusão ─────────────────────────────────────────────
   async function confirmarExcluirGrupo() {
@@ -385,7 +366,7 @@ export default function ComissionamentoMetasPage() {
               selectedId={grupoSelId}
               onSelect={setGrupoSelId}
               onEdit={(g) => setGrupoDialog({ open: true, edit: g })}
-              onDuplicate={(g) => duplicarGrupo(g)}
+              onDuplicate={(g) => setDuplicarDialog(g)}
               onDelete={(g) => setExcluindoGrupo(g)}
               metas={metas}
               onCreateChild={(parentId) => setGrupoDialog({ open: true, edit: { id:'', posto_id: postoId, parent_id: parentId, nome:'', period_start:null, period_end:null, sort_order:0, criado_em:'', atualizado_em:'' } as MetaGrupo })}
@@ -499,6 +480,19 @@ export default function ComissionamentoMetasPage() {
               next.delete(metaId)
               return next
             })
+          }}
+        />
+      )}
+
+      {/* Duplicar grupo — modal com escolha (só posto ou rede) */}
+      {duplicarDialog && (
+        <DialogDuplicarGrupo
+          grupo={duplicarDialog}
+          onClose={() => setDuplicarDialog(null)}
+          onFeito={async (novoGrupoId) => {
+            setDuplicarDialog(null)
+            await carregar()
+            if (novoGrupoId) setGrupoSelId(novoGrupoId)
           }}
         />
       )}
@@ -1580,5 +1574,201 @@ function FiltroMetaLinha({ filtro, gruposAS, subgruposAS, onChange, onRemove }: 
         />
       </div>
     </div>
+  )
+}
+
+// ── Modal: Duplicar grupo ──────────────────────────────────────────────────
+//
+// Dois destinos:
+//   • Só este posto → chama /duplicar (simples, comportamento anterior)
+//   • Em todas as empresas do esquema → chama /duplicar-rede
+// No modo rede, precisamos escolher UM esquema (posto pode estar em vários).
+// Se estiver em 1 só, seleciona automaticamente e mostra a contagem.
+
+interface EsquemaComPostos {
+  id: string; nome: string; status: string
+  postos: Array<{ id: string; nome: string }>
+}
+interface DialogDuplicarGrupoProps {
+  grupo: MetaGrupo
+  onClose: () => void
+  onFeito: (novoGrupoIdSelecionar: string | null) => void | Promise<void>
+}
+function DialogDuplicarGrupo({ grupo, onClose, onFeito }: DialogDuplicarGrupoProps) {
+  const [nome, setNome] = useState(`${grupo.nome} (cópia)`)
+  const [modo, setModo] = useState<'posto' | 'rede'>('posto')
+  const [esquemas, setEsquemas] = useState<EsquemaComPostos[]>([])
+  const [esquemaId, setEsquemaId] = useState<string>('')
+  const [carregando, setCarregando] = useState(true)
+  const [salvando, setSalvando] = useState(false)
+
+  useEffect(() => {
+    setCarregando(true)
+    fetch(`/api/comissionamento/metas/grupos/${grupo.id}/esquemas-do-posto`)
+      .then(r => r.json())
+      .then((j: { esquemas?: EsquemaComPostos[] }) => {
+        const lista = j.esquemas ?? []
+        setEsquemas(lista)
+        if (lista.length === 1) setEsquemaId(lista[0].id)
+      })
+      .catch(() => setEsquemas([]))
+      .finally(() => setCarregando(false))
+  }, [grupo.id])
+
+  const esquemaEscolhido = esquemas.find(e => e.id === esquemaId)
+  const totalPostosRede = esquemaEscolhido?.postos.length ?? 0
+
+  async function executar() {
+    if (!nome.trim()) {
+      toast({ variant: 'destructive', title: 'Nome é obrigatório' })
+      return
+    }
+    setSalvando(true)
+    try {
+      if (modo === 'posto') {
+        const r = await fetch(`/api/comissionamento/metas/grupos/${grupo.id}/duplicar`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nome: nome.trim() }),
+        })
+        const j = await r.json().catch(() => ({}))
+        if (!r.ok || j.error) throw new Error(j.error ?? 'erro')
+        toast({
+          title: 'Grupo duplicado',
+          description: `${j.metas_criadas ?? 0} meta(s) copiada(s). Defina os valores e a distribuição.`,
+        })
+        onFeito(j.grupo?.id ?? null)
+      } else {
+        if (!esquemaId) {
+          toast({ variant: 'destructive', title: 'Escolha o esquema para replicar' })
+          setSalvando(false)
+          return
+        }
+        const r = await fetch(`/api/comissionamento/metas/grupos/${grupo.id}/duplicar-rede`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nome: nome.trim(), esquema_id: esquemaId }),
+        })
+        const j = await r.json().catch(() => ({}))
+        if (!r.ok || j.error) throw new Error(j.error ?? 'erro')
+        const criados = j.grupos_criados ?? 0
+        const metas   = j.metas_criadas_total ?? 0
+        const erros   = j.erros ?? 0
+        toast({
+          title: 'Duplicação em rede concluída',
+          description: `${criados} grupo(s) criado(s) em ${criados} posto(s), ${metas} meta(s) total.${erros > 0 ? ` ${erros} posto(s) com erro.` : ''}`,
+        })
+        // Seleciona o grupo criado NO POSTO ATUAL (se existir na resposta)
+        const meu = (j.postos as Array<{ posto_id: string; grupo_novo_id: string | null }> | undefined)
+          ?.find(p => p.posto_id === grupo.posto_id)
+        onFeito(meu?.grupo_novo_id ?? null)
+      }
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Erro ao duplicar', description: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FolderPlus className="w-4 h-4 text-emerald-600" /> Duplicar grupo
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Nome do novo grupo</Label>
+            <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex.: Mês 06/2026" autoFocus />
+          </div>
+
+          <div>
+            <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Onde criar</Label>
+            <div className="flex flex-col gap-1.5">
+              <label className={cn(
+                'flex items-start gap-2 px-3 py-2 rounded-md border cursor-pointer transition-colors',
+                modo === 'posto' ? 'border-emerald-400 bg-emerald-50/50' : 'border-gray-200 bg-white',
+              )}>
+                <input
+                  type="radio" name="dupmodo" className="mt-0.5"
+                  checked={modo === 'posto'}
+                  onChange={() => setModo('posto')}
+                />
+                <div className="min-w-0">
+                  <p className="text-[12.5px] font-semibold text-gray-800">Só neste posto</p>
+                  <p className="text-[11px] text-gray-500">Cria o grupo apenas na empresa atual — mesmo comportamento de antes.</p>
+                </div>
+              </label>
+              <label className={cn(
+                'flex items-start gap-2 px-3 py-2 rounded-md border cursor-pointer transition-colors',
+                modo === 'rede' ? 'border-emerald-400 bg-emerald-50/50' : 'border-gray-200 bg-white',
+              )}>
+                <input
+                  type="radio" name="dupmodo" className="mt-0.5"
+                  checked={modo === 'rede'}
+                  onChange={() => setModo('rede')}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12.5px] font-semibold text-gray-800">Em todas as empresas do esquema</p>
+                  <p className="text-[11px] text-gray-500">
+                    Cria o mesmo grupo (com as mesmas metas zeradas, sem distribuição) em cada empresa vinculada ao esquema escolhido.
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {modo === 'rede' && (
+            <div>
+              <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Esquema de referência</Label>
+              {carregando ? (
+                <p className="text-[12px] text-gray-500 flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Buscando esquemas...</p>
+              ) : esquemas.length === 0 ? (
+                <p className="text-[12px] text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded">
+                  Este posto não está vinculado a nenhum esquema. Vincule primeiro em Esquemas.
+                </p>
+              ) : (
+                <>
+                  <Select value={esquemaId} onValueChange={setEsquemaId}>
+                    <SelectTrigger><SelectValue placeholder="Selecione o esquema..." /></SelectTrigger>
+                    <SelectContent>
+                      {esquemas.map(e => (
+                        <SelectItem key={e.id} value={e.id}>
+                          <span className="flex items-center gap-2">
+                            {e.nome}
+                            <span className="text-[10px] text-gray-400">· {e.postos.length} posto{e.postos.length === 1 ? '' : 's'}</span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {esquemaEscolhido && (
+                    <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50/60 px-3 py-2">
+                      <p className="text-[11px] text-emerald-800">
+                        Será criado em <b>{totalPostosRede} posto{totalPostosRede === 1 ? '' : 's'}</b>:
+                      </p>
+                      <p className="text-[10.5px] text-emerald-700/80 mt-0.5 leading-snug">
+                        {esquemaEscolhido.postos.map(p => p.nome).join(' · ')}
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button
+            onClick={executar}
+            disabled={salvando || (modo === 'rede' && !esquemaId)}
+            className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+          >
+            {salvando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
+            {modo === 'posto' ? 'Duplicar aqui' : `Duplicar em ${totalPostosRede} posto${totalPostosRede === 1 ? '' : 's'}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
