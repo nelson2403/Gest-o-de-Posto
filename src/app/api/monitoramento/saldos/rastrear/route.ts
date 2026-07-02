@@ -32,6 +32,8 @@ export async function GET(req: Request) {
   const emp  = Number((conta.posto as any)?.codigo_empresa_externo)
   const code = conta.codigo_conta_externo as string
   if (!emp || !code) return NextResponse.json({ error: 'Conta sem empresa/código externo' }, { status: 400 })
+  // Stone zera todo dia (extrato = 0); saldo=0 é válido e a conciliação é contra 0.
+  const ehStone = /stone/i.test(String(conta.banco || ''))
 
   // ── Detalhe de um dia: lançamentos do AUTOSYSTEM ──────────────────────────
   if (dia) {
@@ -118,7 +120,7 @@ export async function GET(req: Request) {
     acumulado += movPorDia.get(d) ?? 0
     const saldoAuto = parseFloat((saldoInicial + base31 + acumulado).toFixed(2))
     const ext = extPorDia.get(d)
-    const temExtrato = !!ext && ext.saldo_dia !== 0
+    const temExtrato = !!ext && (ehStone || ext.saldo_dia !== 0)
     const saldoBanco = temExtrato ? ext!.saldo_dia : null
     const divergencia = temExtrato ? parseFloat((saldoBanco! - saldoAuto).toFixed(2)) : null
     let jump: number | null = null

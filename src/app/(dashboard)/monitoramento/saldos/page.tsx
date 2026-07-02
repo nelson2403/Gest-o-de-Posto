@@ -318,6 +318,14 @@ export default function MonitoramentoSaldosPage() {
         extrato anexado. Enquanto o saldo inicial não for lançado, a conta aparece como <b>“Sem inicial”</b> e a
         divergência reflete o acumulado a corrigir.
       </p>
+      {banco === 'stone' && (
+        <p className="text-[11px] text-gray-400">
+          <b>Stone:</b> a conta <b>zera todo dia</b> (os recebíveis entram e uma transferência varre o saldo pra 0), então o
+          extrato vem com saldo <b>0,00</b>. Aqui a conta fica <b>Conciliada</b> quando o AUTOSYSTEM também está zerado; se
+          aparecer <b>divergência</b>, é porque a transferência que zera a conta <b>não foi lançada</b> em algum dia (clique no
+          valor pra rastrear e ver o dia).
+        </p>
+      )}
 
       {/* Modal de observação */}
       {editando && (
