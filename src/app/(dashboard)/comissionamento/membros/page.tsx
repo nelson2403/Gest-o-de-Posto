@@ -21,6 +21,7 @@ import {
   XCircle, AlertCircle,
 } from 'lucide-react'
 import type { ComissioMembro, ComissioRole } from '@/app/api/comissionamento/membros/route'
+import { PostoCombobox } from '../_components/PostoCombobox'
 
 // ── Tipos auxiliares (locais) ──────────────────────────────────────────────────
 
@@ -521,16 +522,13 @@ export default function ComissionamentoMembrosPage() {
             {/* Posto */}
             <div>
               <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Posto</Label>
-              <Select value={postoAddId} onValueChange={setPostoAddId}>
-                <SelectTrigger className="h-9 text-[13px]">
-                  <SelectValue placeholder="Selecione o posto" />
-                </SelectTrigger>
-                <SelectContent>
-                  {postos.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <PostoCombobox
+                postos={postos}
+                value={postoAddId}
+                onChange={setPostoAddId}
+                placeholder="Selecione o posto"
+                className="w-full"
+              />
             </div>
 
             {/* Função */}
