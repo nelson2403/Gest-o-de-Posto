@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validarSessao, extrairToken } from '@/lib/caixa-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buscarDadosCaixaFrentista } from '@/lib/autosystem'
 
 interface ItemFechamento {
   tipo:             string
@@ -36,49 +35,8 @@ export async function POST(req: NextRequest) {
     const admin = createAdminClient()
     const hoje = hojeBrasil()
 
-    // Regra: se o frentista DECLAROU dinheiro, a Sangria (dinheiro) OU o Depósito
-    // (deposito_cofre) precisa ter sido lançado NO SISTEMA (AUTOSYSTEM) antes de
-    // finalizar. Caixa sem dinheiro não tem o que depositar — não bloqueia.
-    const camposSangriaDeposito = body.itens.filter(
-      i => i.tipo === 'dinheiro' || i.tipo === 'deposito_cofre',
-    )
-    const dinheiroDeclarado = camposSangriaDeposito.reduce((s, i) => s + (Number(i.valor_frentista) || 0), 0)
-    if (dinheiroDeclarado > 0) {
-      // Começa com o valor que o cliente enviou (pode estar VELHO se ela lançou o
-      // cofre/sangria depois de abrir o fechamento).
-      let lancadoNoAS = camposSangriaDeposito.some(i => (i.valor_as ?? 0) > 0)
-
-      // Revalida AO VIVO no AUTOSYSTEM — assim o lançamento feito agora é detectado
-      // sem precisar recarregar a tela.
-      if (!lancadoNoAS && sessao.codigo_operador_as) {
-        try {
-          const { data: posto } = await admin
-            .from('postos').select('codigo_empresa_externo').eq('id', sessao.posto_id).single()
-          if (posto?.codigo_empresa_externo) {
-            const [{ data: motivoRows }, { data: tefRows }] = await Promise.all([
-              admin.from('frentista_motivo_grupo').select('motivo_grid, grupo'),
-              admin.from('frentista_tef_grupo').select('operadora_chave, grupo'),
-            ])
-            const motivoGrupos: Record<number, string> = {}
-            for (const r of motivoRows ?? []) if (r.grupo) motivoGrupos[Number(r.motivo_grid)] = r.grupo
-            const tefGrupos: Record<string, string> = {}
-            for (const r of tefRows ?? []) if (r.grupo) tefGrupos[r.operadora_chave] = r.grupo
-            const fresco = await buscarDadosCaixaFrentista(
-              Number(posto.codigo_empresa_externo), body.data, sessao.codigo_operador_as,
-              motivoGrupos, tefGrupos, false,
-            )
-            if ((fresco.dinheiro ?? 0) > 0 || (fresco.deposito_cofre ?? 0) > 0) lancadoNoAS = true
-          }
-        } catch { /* AUTOSYSTEM indisponível — mantém o valor do cliente */ }
-      }
-
-      if (!lancadoNoAS) {
-        return NextResponse.json(
-          { error: 'Lance a Sangria ou o Depósito (Dep. Cofre) no sistema antes de finalizar o fechamento.' },
-          { status: 400 },
-        )
-      }
-    }
+    // (Bloqueio de Sangria/Depósito removido a pedido — o frentista pode finalizar
+    // o fechamento mesmo que a sangria/depósito ainda não esteja lançada no AUTOSYSTEM.)
 
     // Regra 1: frentista só pode fechar o dia atual
     if (body.data && body.data !== hoje) {
