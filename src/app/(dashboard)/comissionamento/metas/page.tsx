@@ -253,7 +253,11 @@ export default function ComissionamentoMetasPage() {
       toast({ variant: 'destructive', title: 'Erro ao excluir', description: json.error })
       return
     }
-    toast({ title: 'Grupo excluído' })
+    const metasExc = Number(json.metas_excluidas ?? 0)
+    toast({
+      title: 'Grupo excluído',
+      description: metasExc > 0 ? `${metasExc} meta${metasExc === 1 ? '' : 's'} também foi${metasExc === 1 ? '' : 'ram'} excluída${metasExc === 1 ? '' : 's'}.` : undefined,
+    })
     if (grupoSelId === excluindoGrupo.id) setGrupoSelId(null)
     setExcluindoGrupo(null)
     await carregar()
@@ -505,12 +509,42 @@ export default function ComissionamentoMetasPage() {
               <Trash2 className="w-4 h-4" /> Excluir grupo
             </DialogTitle>
           </DialogHeader>
-          {excluindoGrupo && (
-            <p className="text-[13.5px] text-gray-700 py-2">
-              Excluir o grupo <strong>{excluindoGrupo.nome}</strong>? Sub-grupos também serão excluídos.
-              As metas vinculadas ficarão sem grupo (aparecem em &quot;Todas as metas&quot;).
-            </p>
-          )}
+          {excluindoGrupo && (() => {
+            // Conta metas do próprio grupo E dos subgrupos descendentes.
+            // Mesmo CASCADE do banco, mas a UI antecipa pro usuário decidir.
+            const descendentes = new Set<string>([excluindoGrupo.id])
+            let mudou = true
+            while (mudou) {
+              mudou = false
+              for (const g of grupos) {
+                if (g.parent_id && descendentes.has(g.parent_id) && !descendentes.has(g.id)) {
+                  descendentes.add(g.id); mudou = true
+                }
+              }
+            }
+            const qtdMetas = metas.filter(m => m.grupo_id && descendentes.has(m.grupo_id)).length
+            const qtdSubgrupos = descendentes.size - 1  // não conta o próprio
+            return (
+              <div className="text-[13.5px] text-gray-700 py-2 space-y-2">
+                <p>
+                  Excluir o grupo <strong>{excluindoGrupo.nome}</strong>?
+                </p>
+                <div className="rounded-md border border-red-200 bg-red-50/70 px-3 py-2 text-[12.5px] text-red-900 space-y-0.5">
+                  <p>
+                    Serão excluídos <b>em cascata</b>:
+                  </p>
+                  <ul className="list-disc pl-5">
+                    {qtdSubgrupos > 0 && <li>{qtdSubgrupos} sub-grupo{qtdSubgrupos === 1 ? '' : 's'}</li>}
+                    <li>
+                      <b>{qtdMetas}</b> meta{qtdMetas === 1 ? '' : 's'} {qtdMetas === 0 && '(nenhuma no grupo)'}
+                    </li>
+                    {qtdMetas > 0 && <li className="text-red-800">Distribuições (splits) dessas metas</li>}
+                  </ul>
+                </div>
+                <p className="text-[11.5px] text-gray-500">Ação irreversível.</p>
+              </div>
+            )
+          })()}
           <DialogFooter>
             <Button variant="outline" onClick={() => setExcluindoGrupo(null)}>Cancelar</Button>
             <Button onClick={confirmarExcluirGrupo} className="bg-red-600 hover:bg-red-700 text-white gap-2">

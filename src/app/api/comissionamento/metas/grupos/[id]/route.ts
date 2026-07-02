@@ -45,7 +45,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   return NextResponse.json({ grupo: data })
 }
 
-// ─── DELETE — remove grupo (cascade nos filhos) ─────────────────────────────
+// ─── DELETE — remove grupo (metas em cascata pela FK) ──────────────────────
+// A migration 141 mudou comissio_metas.grupo_id para ON DELETE CASCADE, então
+// excluir o grupo aqui remove todas as metas dele automaticamente (e os
+// splits das metas, também via CASCADE — migration 082). Contamos as metas
+// ANTES pra devolver a métrica no response e a UI mostrar quantas sumiram.
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
@@ -54,7 +58,13 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
   const admin = createAdminClient()
+  // Contagem prévia (head+count é 1 query só, sem trazer as linhas)
+  const { count: metasNoGrupo } = await admin
+    .from('comissio_metas')
+    .select('id', { count: 'exact', head: true })
+    .eq('grupo_id', id)
+
   const { error } = await admin.from('comissio_metas_grupos').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, metas_excluidas: metasNoGrupo ?? 0 })
 }
