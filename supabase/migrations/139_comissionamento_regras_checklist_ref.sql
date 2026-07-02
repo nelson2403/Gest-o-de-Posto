@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 135_comissionamento_regras_checklist_ref.sql
+-- 139_comissionamento_regras_checklist_ref.sql
 --
 -- Adiciona referência de template de checklist na regra. Análoga ao
 -- meta_referencia_id, mas específica para condições do campo

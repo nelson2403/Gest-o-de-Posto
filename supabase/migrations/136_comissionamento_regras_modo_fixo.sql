@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 132_comissionamento_regras_modo_fixo.sql
+-- 136_comissionamento_regras_modo_fixo.sql
 --
 -- Adiciona 'fixo' como 4º modo do ENTÃO. Antes só existiam:
 --   • sobre        — % sobre uma base agregada

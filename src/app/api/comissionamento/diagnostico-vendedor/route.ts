@@ -6,7 +6,7 @@ import {
   carregarChecklistsDoPosto,
 } from '@/lib/comissionamento/data-loader'
 import { calcularAtingimento } from '@/lib/comissionamento/goals-aggregation'
-import { vendaPassaProductFilters } from '@/lib/comissionamento/rule-engine'
+import { vendaPassaProductFilters, resolverMetaReferencia } from '@/lib/comissionamento/rule-engine'
 import type { Regra, Venda } from '@/lib/comissionamento/types'
 
 export const dynamic = 'force-dynamic'
@@ -64,15 +64,27 @@ function avaliaCondicaoTrace(
     return { ...desc, resultado: true, valor_ctx: null, motivo: 'condição incompleta — ignorada' }
   }
 
-  // Atingimento de meta: precisa de valor numérico no ctx
+  // Atingimento de meta: quando a condição tem meta_ref_nome (Opção C —
+  // condição aponta sua própria meta), usa esse mapa; senão cai no
+  // atingimento da meta_referencia da regra.
   if (c.field === 'atingimento_meta') {
-    const at = ctx.atingimento_meta as number | null
+    let at: number | null
+    let refDesc = 'meta_referencia da regra'
+    const cond = c as { meta_ref_nome?: string | null }
+    if (cond.meta_ref_nome) {
+      const key = String(cond.meta_ref_nome).trim().toLowerCase()
+      const mapa = ctx.atingimentos_por_nome as Map<string, number> | undefined
+      at = mapa?.get(key) ?? null
+      refDesc = `meta "${cond.meta_ref_nome}"`
+    } else {
+      at = (ctx.atingimento_meta as number | null) ?? null
+    }
     if (at === null || at === undefined) {
-      return { ...desc, resultado: false, valor_ctx: null, motivo: 'atingimento_meta no ctx é null — meta de referência não resolve' }
+      return { ...desc, resultado: false, valor_ctx: null, motivo: `atingimento_meta é null — ${refDesc} não resolve no período` }
     }
     const v = Number(c.value)
     const ok = compNum(at, String(c.operator), v)
-    return { ...desc, resultado: ok, valor_ctx: at, motivo: ok ? '' : `${at} ${c.operator} ${v} = false` }
+    return { ...desc, resultado: ok, valor_ctx: at, motivo: ok ? `${refDesc}: ${at.toFixed(1)}%` : `${refDesc}: ${at} ${c.operator} ${v} = false` }
   }
 
   // Pontuação do checklist: null quando a regra não aponta template ou
@@ -195,15 +207,14 @@ export async function GET(req: NextRequest) {
     let metaRefNome: string | null = null
     let atingimento: number | null = null
 
-    if (r.meta_referencia_id) {
-      const meta = metaPorId.get(r.meta_referencia_id)
-      metaRefNome = meta?.nome ?? null
-      if (meta) {
-        if (r.realizado_escopo === 'todos') {
-          atingimento = atingimentoTotalPorMeta.get(meta.id) ?? null
-        } else {
-          atingimento = atingimentoPorVendedorPorMeta.get(vendedorId)?.get(meta.id) ?? null
-        }
+    // Resolve meta de referência: primeiro por id, se null cai pra nome.
+    const meta = resolverMetaReferencia(r, metas, metaPorId)
+    if (meta) {
+      metaRefNome = meta.nome
+      if (r.realizado_escopo === 'todos') {
+        atingimento = atingimentoTotalPorMeta.get(meta.id) ?? null
+      } else {
+        atingimento = atingimentoPorVendedorPorMeta.get(vendedorId)?.get(meta.id) ?? null
       }
     }
 
@@ -222,6 +233,26 @@ export async function GET(req: NextRequest) {
       mix:              new Set(vendasDoVendedor.map(v => v.produto_nome)).size,
       margem:           fat > 0 ? (lucro / fat) * 100 : 0,
       atingimento_meta: atingimento,
+      // Map por nome (case-insensitive) para condições que apontam
+      // meta_ref_nome. Só metas com atingimento resolvido no escopo
+      // apropriado entram no mapa. Mesma lógica do engine.
+      atingimentos_por_nome: (() => {
+        const usarTodos = r.realizado_escopo === 'todos'
+        const porNome = new Map<string, typeof metas[number]>()
+        for (const m of metas) {
+          const key = m.nome.trim().toLowerCase()
+          const cur = porNome.get(key)
+          if (!cur || cur.period_start < m.period_start) porNome.set(key, m)
+        }
+        const out = new Map<string, number>()
+        porNome.forEach((m, key) => {
+          const at = usarTodos
+            ? (atingimentoTotalPorMeta.get(m.id) ?? null)
+            : (atingimentoPorVendedorPorMeta.get(vendedorId)?.get(m.id) ?? null)
+          if (at !== null) out.set(key, at)
+        })
+        return out
+      })(),
       pontuacao_checklist: r.checklist_template_referencia_id
         ? (pontuacaoChecklistPorTemplate.get(r.checklist_template_referencia_id) ?? null)
         : null,

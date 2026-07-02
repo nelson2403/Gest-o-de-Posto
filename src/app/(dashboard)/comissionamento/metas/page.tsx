@@ -240,28 +240,9 @@ export default function ComissionamentoMetasPage() {
   }
 
   // ── Duplicar grupo ───────────────────────────────────────────────────────
-  // Cria um novo grupo com as MESMAS metas do original (mesmos filtros/campo/
-  // período/mix), mas com valor_meta zerado e sem splits — o usuário define
-  // os novos targets e a distribuição.
-  async function duplicarGrupo(g: MetaGrupo) {
-    const r = await fetch(`/api/comissionamento/metas/grupos/${g.id}/duplicar`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    const json = await r.json().catch(() => ({}))
-    if (!r.ok || json.error) {
-      toast({ variant: 'destructive', title: 'Erro ao duplicar', description: json.error })
-      return
-    }
-    toast({
-      title: 'Grupo duplicado',
-      description: `${json.metas_criadas ?? 0} meta(s) copiada(s). Defina os valores e a distribuição.`,
-    })
-    await carregar()
-    // Seleciona o novo grupo para o usuário começar a editar
-    if (json.grupo?.id) setGrupoSelId(json.grupo.id)
-  }
+  // Abre o modal de duplicação. Antes disparava direto — agora o modal
+  // pergunta nome e destino (só este posto ou toda a rede do esquema).
+  const [duplicarDialog, setDuplicarDialog] = useState<MetaGrupo | null>(null)
 
   // ── Confirmações de exclusão ─────────────────────────────────────────────
   async function confirmarExcluirGrupo() {
@@ -272,7 +253,11 @@ export default function ComissionamentoMetasPage() {
       toast({ variant: 'destructive', title: 'Erro ao excluir', description: json.error })
       return
     }
-    toast({ title: 'Grupo excluído' })
+    const metasExc = Number(json.metas_excluidas ?? 0)
+    toast({
+      title: 'Grupo excluído',
+      description: metasExc > 0 ? `${metasExc} meta${metasExc === 1 ? '' : 's'} também foi${metasExc === 1 ? '' : 'ram'} excluída${metasExc === 1 ? '' : 's'}.` : undefined,
+    })
     if (grupoSelId === excluindoGrupo.id) setGrupoSelId(null)
     setExcluindoGrupo(null)
     await carregar()
@@ -385,7 +370,7 @@ export default function ComissionamentoMetasPage() {
               selectedId={grupoSelId}
               onSelect={setGrupoSelId}
               onEdit={(g) => setGrupoDialog({ open: true, edit: g })}
-              onDuplicate={(g) => duplicarGrupo(g)}
+              onDuplicate={(g) => setDuplicarDialog(g)}
               onDelete={(g) => setExcluindoGrupo(g)}
               metas={metas}
               onCreateChild={(parentId) => setGrupoDialog({ open: true, edit: { id:'', posto_id: postoId, parent_id: parentId, nome:'', period_start:null, period_end:null, sort_order:0, criado_em:'', atualizado_em:'' } as MetaGrupo })}
@@ -503,6 +488,19 @@ export default function ComissionamentoMetasPage() {
         />
       )}
 
+      {/* Duplicar grupo — modal com escolha (só posto ou rede) */}
+      {duplicarDialog && (
+        <DialogDuplicarGrupo
+          grupo={duplicarDialog}
+          onClose={() => setDuplicarDialog(null)}
+          onFeito={async (novoGrupoId) => {
+            setDuplicarDialog(null)
+            await carregar()
+            if (novoGrupoId) setGrupoSelId(novoGrupoId)
+          }}
+        />
+      )}
+
       {/* Confirmar exclusão de grupo */}
       <Dialog open={!!excluindoGrupo} onOpenChange={(o) => !o && setExcluindoGrupo(null)}>
         <DialogContent>
@@ -511,12 +509,42 @@ export default function ComissionamentoMetasPage() {
               <Trash2 className="w-4 h-4" /> Excluir grupo
             </DialogTitle>
           </DialogHeader>
-          {excluindoGrupo && (
-            <p className="text-[13.5px] text-gray-700 py-2">
-              Excluir o grupo <strong>{excluindoGrupo.nome}</strong>? Sub-grupos também serão excluídos.
-              As metas vinculadas ficarão sem grupo (aparecem em &quot;Todas as metas&quot;).
-            </p>
-          )}
+          {excluindoGrupo && (() => {
+            // Conta metas do próprio grupo E dos subgrupos descendentes.
+            // Mesmo CASCADE do banco, mas a UI antecipa pro usuário decidir.
+            const descendentes = new Set<string>([excluindoGrupo.id])
+            let mudou = true
+            while (mudou) {
+              mudou = false
+              for (const g of grupos) {
+                if (g.parent_id && descendentes.has(g.parent_id) && !descendentes.has(g.id)) {
+                  descendentes.add(g.id); mudou = true
+                }
+              }
+            }
+            const qtdMetas = metas.filter(m => m.grupo_id && descendentes.has(m.grupo_id)).length
+            const qtdSubgrupos = descendentes.size - 1  // não conta o próprio
+            return (
+              <div className="text-[13.5px] text-gray-700 py-2 space-y-2">
+                <p>
+                  Excluir o grupo <strong>{excluindoGrupo.nome}</strong>?
+                </p>
+                <div className="rounded-md border border-red-200 bg-red-50/70 px-3 py-2 text-[12.5px] text-red-900 space-y-0.5">
+                  <p>
+                    Serão excluídos <b>em cascata</b>:
+                  </p>
+                  <ul className="list-disc pl-5">
+                    {qtdSubgrupos > 0 && <li>{qtdSubgrupos} sub-grupo{qtdSubgrupos === 1 ? '' : 's'}</li>}
+                    <li>
+                      <b>{qtdMetas}</b> meta{qtdMetas === 1 ? '' : 's'} {qtdMetas === 0 && '(nenhuma no grupo)'}
+                    </li>
+                    {qtdMetas > 0 && <li className="text-red-800">Distribuições (splits) dessas metas</li>}
+                  </ul>
+                </div>
+                <p className="text-[11.5px] text-gray-500">Ação irreversível.</p>
+              </div>
+            )
+          })()}
           <DialogFooter>
             <Button variant="outline" onClick={() => setExcluindoGrupo(null)}>Cancelar</Button>
             <Button onClick={confirmarExcluirGrupo} className="bg-red-600 hover:bg-red-700 text-white gap-2">
@@ -1580,5 +1608,353 @@ function FiltroMetaLinha({ filtro, gruposAS, subgruposAS, onChange, onRemove }: 
         />
       </div>
     </div>
+  )
+}
+
+// ── Modal: Duplicar grupo ──────────────────────────────────────────────────
+//
+// Dois destinos:
+//   • Só este posto → chama /duplicar (simples, comportamento anterior)
+//   • Em todas as empresas do esquema → chama /duplicar-rede
+// No modo rede, precisamos escolher UM esquema (posto pode estar em vários).
+// Se estiver em 1 só, seleciona automaticamente e mostra a contagem.
+
+interface EsquemaComPostos {
+  id: string; nome: string; status: string
+  postos: Array<{ id: string; nome: string }>
+}
+interface DialogDuplicarGrupoProps {
+  grupo: MetaGrupo
+  onClose: () => void
+  onFeito: (novoGrupoIdSelecionar: string | null) => void | Promise<void>
+}
+// Sugere período do próximo mês a partir do período do grupo origem.
+// - Se o origem tem period_start, avança 1 mês; senão, usa mês corrente.
+// - period_start = dia 1 do próximo mês
+// - period_end   = último dia do próximo mês (independente da duração original)
+// Também tenta sugerir um nome baseado no padrão "MM/YYYY" do nome original.
+function sugerirProximoMes(grupo: MetaGrupo): { nome: string; ini: string; fim: string } {
+  const base = grupo.period_start
+    ? new Date(`${grupo.period_start}T00:00:00`)
+    : new Date()
+  const proxIni = new Date(base.getFullYear(), base.getMonth() + 1, 1)
+  const proxFim = new Date(proxIni.getFullYear(), proxIni.getMonth() + 1, 0)  // dia 0 do próximo = último do atual
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+  // Substitui "MM/YYYY" no nome original pelo novo par (comum: "Mês 05/2026" → "Mês 06/2026")
+  const mmYyyy = /\b(\d{2})\/(\d{4})\b/
+  const mmNovo = String(proxIni.getMonth() + 1).padStart(2, '0')
+  const yyyyNovo = String(proxIni.getFullYear())
+  const nomeSugerido = mmYyyy.test(grupo.nome)
+    ? grupo.nome.replace(mmYyyy, `${mmNovo}/${yyyyNovo}`)
+    : `${grupo.nome} (cópia)`
+
+  return { nome: nomeSugerido, ini: fmt(proxIni), fim: fmt(proxFim) }
+}
+
+function DialogDuplicarGrupo({ grupo, onClose, onFeito }: DialogDuplicarGrupoProps) {
+  const sugerido = useMemo(() => sugerirProximoMes(grupo), [grupo])
+  const [nome, setNome] = useState(sugerido.nome)
+  const [periodIni, setPeriodIni] = useState(sugerido.ini)
+  const [periodFim, setPeriodFim] = useState(sugerido.fim)
+  const [modo, setModo] = useState<'posto' | 'rede'>('posto')
+  const [esquemas, setEsquemas] = useState<EsquemaComPostos[]>([])
+  const [esquemaId, setEsquemaId] = useState<string>('')
+  const [carregando, setCarregando] = useState(true)
+  const [salvando, setSalvando] = useState(false)
+
+  // Metas do grupo origem — para o usuário escolher quais duplicar e quais
+  // manter valor original ao invés de zerar.
+  const [metasOrigem, setMetasOrigem] = useState<Meta[]>([])
+  const [incluir, setIncluir] = useState<Set<string>>(new Set())
+  const [preservar, setPreservar] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    fetch(`/api/comissionamento/metas?grupo_id=${grupo.id}`)
+      .then(r => r.json())
+      .then((j: { metas?: Meta[] }) => {
+        const lista = j.metas ?? []
+        setMetasOrigem(lista)
+        setIncluir(new Set(lista.map(m => m.id)))  // todas incluídas por padrão
+        // preservar começa vazio — o usuário marca as que fazem sentido
+      })
+      .catch(() => setMetasOrigem([]))
+  }, [grupo.id])
+  function toggleIncluir(id: string) {
+    setIncluir(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) { next.delete(id); const p = new Set(preservar); p.delete(id); setPreservar(p) }
+      else next.add(id)
+      return next
+    })
+  }
+  function togglePreservar(id: string) {
+    if (!incluir.has(id)) return
+    setPreservar(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  useEffect(() => {
+    setCarregando(true)
+    fetch(`/api/comissionamento/metas/grupos/${grupo.id}/esquemas-do-posto`)
+      .then(r => r.json())
+      .then((j: { esquemas?: EsquemaComPostos[] }) => {
+        const lista = j.esquemas ?? []
+        setEsquemas(lista)
+        if (lista.length === 1) setEsquemaId(lista[0].id)
+      })
+      .catch(() => setEsquemas([]))
+      .finally(() => setCarregando(false))
+  }, [grupo.id])
+
+  const esquemaEscolhido = esquemas.find(e => e.id === esquemaId)
+  const totalPostosRede = esquemaEscolhido?.postos.length ?? 0
+
+  async function executar() {
+    if (!nome.trim()) {
+      toast({ variant: 'destructive', title: 'Nome é obrigatório' })
+      return
+    }
+    if (!periodIni || !periodFim) {
+      toast({ variant: 'destructive', title: 'Preencha o período (início e fim)' })
+      return
+    }
+    if (periodFim < periodIni) {
+      toast({ variant: 'destructive', title: 'Fim do período deve ser >= início' })
+      return
+    }
+    setSalvando(true)
+    try {
+      if (modo === 'posto') {
+        const r = await fetch(`/api/comissionamento/metas/grupos/${grupo.id}/duplicar`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nome: nome.trim(), period_start: periodIni, period_end: periodFim,
+            metas_incluir_ids:         Array.from(incluir),
+            metas_preservar_valor_ids: Array.from(preservar),
+          }),
+        })
+        const j = await r.json().catch(() => ({}))
+        if (!r.ok || j.error) throw new Error(j.error ?? 'erro')
+        toast({
+          title: 'Grupo duplicado',
+          description: `${j.metas_criadas ?? 0} meta(s) copiada(s). Defina os valores e a distribuição.`,
+        })
+        onFeito(j.grupo?.id ?? null)
+      } else {
+        if (!esquemaId) {
+          toast({ variant: 'destructive', title: 'Escolha o esquema para replicar' })
+          setSalvando(false)
+          return
+        }
+        const r = await fetch(`/api/comissionamento/metas/grupos/${grupo.id}/duplicar-rede`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nome: nome.trim(), esquema_id: esquemaId,
+            period_start: periodIni, period_end: periodFim,
+            metas_incluir_ids:         Array.from(incluir),
+            metas_preservar_valor_ids: Array.from(preservar),
+          }),
+        })
+        const j = await r.json().catch(() => ({}))
+        if (!r.ok || j.error) throw new Error(j.error ?? 'erro')
+        const criados = j.grupos_criados ?? 0
+        const metas   = j.metas_criadas_total ?? 0
+        const erros   = j.erros ?? 0
+        toast({
+          title: 'Duplicação em rede concluída',
+          description: `${criados} grupo(s) criado(s) em ${criados} posto(s), ${metas} meta(s) total.${erros > 0 ? ` ${erros} posto(s) com erro.` : ''}`,
+        })
+        // Seleciona o grupo criado NO POSTO ATUAL (se existir na resposta)
+        const meu = (j.postos as Array<{ posto_id: string; grupo_novo_id: string | null }> | undefined)
+          ?.find(p => p.posto_id === grupo.posto_id)
+        onFeito(meu?.grupo_novo_id ?? null)
+      }
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Erro ao duplicar', description: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl w-[min(95vw,42rem)] max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0">
+        <DialogHeader className="px-5 pt-4 pb-3 border-b border-gray-200 flex-shrink-0">
+          <DialogTitle className="flex items-center gap-2">
+            <FolderPlus className="w-4 h-4 text-emerald-600" /> Duplicar grupo
+          </DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 min-h-0">
+          <div>
+            <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Nome do novo grupo</Label>
+            <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex.: Mês 06/2026" autoFocus />
+          </div>
+
+          {/* Período — pré-preenchido com o mês seguinte ao do grupo origem */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Início do período</Label>
+              <Input type="date" value={periodIni} onChange={e => setPeriodIni(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Fim do período</Label>
+              <Input type="date" value={periodFim} onChange={e => setPeriodFim(e.target.value)} />
+            </div>
+            <p className="col-span-2 text-[10.5px] text-gray-500 -mt-1">
+              O grupo E as metas duplicadas passam a apontar pra esse período. Se você deixar como está, cada meta copiada aparece já no mês novo — sem precisar editar meta por meta.
+            </p>
+          </div>
+
+          {/* Metas a duplicar — escolhe quais copiar e quais preservam o valor original */}
+          {metasOrigem.length > 0 && (
+            <div>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-1.5">
+                <Label className="text-[11px] uppercase tracking-wide text-gray-500">
+                  Metas ({incluir.size} de {metasOrigem.length} selecionadas)
+                </Label>
+                <div className="flex gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => { setIncluir(new Set(metasOrigem.map(m => m.id))); setPreservar(new Set()) }}
+                    className="text-[10.5px] text-gray-500 hover:text-gray-800 underline whitespace-nowrap"
+                  >Todas · zerar valores</button>
+                  <span className="text-gray-300">·</span>
+                  <button
+                    type="button"
+                    onClick={() => { setIncluir(new Set(metasOrigem.map(m => m.id))); setPreservar(new Set(metasOrigem.map(m => m.id))) }}
+                    className="text-[10.5px] text-gray-500 hover:text-gray-800 underline whitespace-nowrap"
+                  >Todas · manter valores</button>
+                </div>
+              </div>
+              <div className="border border-gray-200 rounded-md divide-y divide-gray-100 max-h-52 overflow-y-auto">
+                {metasOrigem.map(m => {
+                  const inc = incluir.has(m.id)
+                  const pres = preservar.has(m.id)
+                  return (
+                    <div key={m.id} className={cn('flex items-start gap-2 px-2.5 py-1.5 text-[11.5px]', !inc && 'opacity-50')}>
+                      <input
+                        type="checkbox" checked={inc} onChange={() => toggleIncluir(m.id)}
+                        className="flex-shrink-0 mt-0.5"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-800 truncate" title={m.nome}>{m.nome}</p>
+                        <p className="text-[10.5px] text-gray-500 truncate">
+                          {CAMPO_LABEL[m.campo]} · valor original: <b className="text-gray-700">{valorPorCampo(Number(m.valor_meta), m.campo)}</b>
+                        </p>
+                      </div>
+                      <label className={cn(
+                        'flex items-center gap-1 text-[10.5px] flex-shrink-0 mt-0.5',
+                        inc ? 'text-gray-700 cursor-pointer' : 'text-gray-300 cursor-not-allowed',
+                      )}>
+                        <input
+                          type="checkbox" checked={pres} disabled={!inc}
+                          onChange={() => togglePreservar(m.id)}
+                        />
+                        <span className="whitespace-nowrap">Manter valor</span>
+                      </label>
+                    </div>
+                  )
+                })}
+              </div>
+              {preservar.size > 0 && (
+                <p className="text-[10.5px] text-emerald-700 mt-1.5">
+                  ✓ {preservar.size} meta{preservar.size === 1 ? '' : 's'} manterá{preservar.size === 1 ? '' : 'ão'} o valor original. As demais entram zeradas.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div>
+            <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Onde criar</Label>
+            <div className="flex flex-col gap-1.5">
+              <label className={cn(
+                'flex items-start gap-2 px-3 py-2 rounded-md border cursor-pointer transition-colors',
+                modo === 'posto' ? 'border-emerald-400 bg-emerald-50/50' : 'border-gray-200 bg-white',
+              )}>
+                <input
+                  type="radio" name="dupmodo" className="mt-0.5"
+                  checked={modo === 'posto'}
+                  onChange={() => setModo('posto')}
+                />
+                <div className="min-w-0">
+                  <p className="text-[12.5px] font-semibold text-gray-800">Só neste posto</p>
+                  <p className="text-[11px] text-gray-500">Cria o grupo apenas na empresa atual — mesmo comportamento de antes.</p>
+                </div>
+              </label>
+              <label className={cn(
+                'flex items-start gap-2 px-3 py-2 rounded-md border cursor-pointer transition-colors',
+                modo === 'rede' ? 'border-emerald-400 bg-emerald-50/50' : 'border-gray-200 bg-white',
+              )}>
+                <input
+                  type="radio" name="dupmodo" className="mt-0.5"
+                  checked={modo === 'rede'}
+                  onChange={() => setModo('rede')}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12.5px] font-semibold text-gray-800">Em todas as empresas do esquema</p>
+                  <p className="text-[11px] text-gray-500">
+                    Cria o mesmo grupo (com as mesmas metas zeradas, sem distribuição) em cada empresa vinculada ao esquema escolhido.
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {modo === 'rede' && (
+            <div>
+              <Label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5 block">Esquema de referência</Label>
+              {carregando ? (
+                <p className="text-[12px] text-gray-500 flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Buscando esquemas...</p>
+              ) : esquemas.length === 0 ? (
+                <p className="text-[12px] text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded">
+                  Este posto não está vinculado a nenhum esquema. Vincule primeiro em Esquemas.
+                </p>
+              ) : (
+                <>
+                  <Select value={esquemaId} onValueChange={setEsquemaId}>
+                    <SelectTrigger><SelectValue placeholder="Selecione o esquema..." /></SelectTrigger>
+                    <SelectContent>
+                      {esquemas.map(e => (
+                        <SelectItem key={e.id} value={e.id}>
+                          <span className="flex items-center gap-2">
+                            {e.nome}
+                            <span className="text-[10px] text-gray-400">· {e.postos.length} posto{e.postos.length === 1 ? '' : 's'}</span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {esquemaEscolhido && (
+                    <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50/60 px-3 py-2">
+                      <p className="text-[11px] text-emerald-800">
+                        Será criado em <b>{totalPostosRede} posto{totalPostosRede === 1 ? '' : 's'}</b>:
+                      </p>
+                      <p className="text-[10.5px] text-emerald-700/80 mt-0.5 leading-snug break-words">
+                        {esquemaEscolhido.postos.map(p => p.nome).join(' · ')}
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter className="px-5 py-3 border-t border-gray-200 flex-shrink-0 bg-white">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button
+            onClick={executar}
+            disabled={salvando || (modo === 'rede' && !esquemaId)}
+            className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+          >
+            {salvando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
+            {modo === 'posto' ? 'Duplicar aqui' : `Duplicar em ${totalPostosRede} posto${totalPostosRede === 1 ? '' : 's'}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

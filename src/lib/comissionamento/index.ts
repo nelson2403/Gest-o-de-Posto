@@ -166,6 +166,7 @@ export async function calcularComissoes(input: CalcularComissoesInput): Promise<
         vendedor_id:    key,
         vendedor_nome:  v.vendedor_nome ?? m?.nome ?? 'Sem vendedor',
         membro_id:      m?.id ?? null,
+        membro_role:    m?.role ?? null,
         vendas_count:   0,
         quantidade:     0,
         faturamento:    0,
@@ -187,10 +188,12 @@ export async function calcularComissoes(input: CalcularComissoesInput): Promise<
   // engine consome vendasNoEscopo, mas defensivo).
   for (const cv of comissaoPorVendedor) {
     if (resumoMap.has(cv.vendedor_id)) continue
+    const m = externalToMembro.get(cv.vendedor_id) ?? null
     resumoMap.set(cv.vendedor_id, {
       vendedor_id:    cv.vendedor_id,
       vendedor_nome:  cv.vendedor_nome,
-      membro_id:      externalToMembro.get(cv.vendedor_id)?.id ?? null,
+      membro_id:      m?.id ?? null,
+      membro_role:    m?.role ?? null,
       vendas_count:   0,
       quantidade:     0,
       faturamento:    0,

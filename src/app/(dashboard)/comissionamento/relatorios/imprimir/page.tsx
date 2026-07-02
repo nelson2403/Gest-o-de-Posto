@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Printer, Loader2, AlertCircle, ArrowLeft } from 'lucide-react'
 
@@ -36,12 +36,21 @@ interface AtingimentoDetalhe {
   membro_id: string; vendedor_id: string
   meta_individual: number; realizado: number; atingimento: number
 }
+type MembroRole = 'supervisor' | 'manager' | 'pit_boss' | 'oil_changer' | 'seller'
+
 interface VendedorResumo {
-  vendedor_id: string; vendedor_nome: string; membro_id: string | null
+  vendedor_id: string; vendedor_nome: string
+  membro_id:   string | null
+  membro_role: MembroRole | null
   vendas_count: number; quantidade: number
   faturamento: number; custo: number; lucro_bruto: number; margem: number
   comissao_total: number
   atingimentos: AtingimentoDetalhe[]
+}
+
+const ROLE_LABEL: Record<MembroRole, string> = {
+  manager: 'Gerente', supervisor: 'Supervisor',
+  pit_boss: 'Chefe de Pista', oil_changer: 'Trocador de Óleo', seller: 'Vendedor',
 }
 interface CalcularResponse {
   postoId: string; esquemaId: string; dataIni: string; dataFim: string
@@ -95,6 +104,7 @@ export default function ImprimirRelatorioPage() {
 
 function ImprimirRelatorioConteudo() {
   const sp = useSearchParams()
+  const router = useRouter()
   const postoId   = sp?.get('posto_id')   ?? ''
   const esquemaId = sp?.get('esquema_id') ?? ''
   const dataIni   = sp?.get('data_ini')   ?? ''
@@ -174,8 +184,8 @@ function ImprimirRelatorioConteudo() {
           <AlertCircle className="w-4 h-4 mt-0.5" />
           <p>{erro ?? 'Erro inesperado'}</p>
         </div>
-        <Button variant="outline" onClick={() => window.close()} className="mt-4 gap-2">
-          <ArrowLeft className="w-3.5 h-3.5" /> Fechar
+        <Button variant="outline" onClick={() => router.back()} className="mt-4 gap-2">
+          <ArrowLeft className="w-3.5 h-3.5" /> Voltar
         </Button>
       </div>
     )
@@ -286,7 +296,14 @@ function BlocoVendedor({ v, comissao, indice }: BlocoVendedorProps) {
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Vendedor #{indice}</p>
-            <h3 className="text-[14px] font-bold text-gray-900 truncate">{v.vendedor_nome}</h3>
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="text-[14px] font-bold text-gray-900 truncate">{v.vendedor_nome}</h3>
+              {v.membro_role && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded border border-gray-300 bg-white text-[10px] font-semibold text-gray-700 whitespace-nowrap print:border-black">
+                  {ROLE_LABEL[v.membro_role]}
+                </span>
+              )}
+            </div>
           </div>
           <div className="text-right flex-shrink-0">
             <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">A receber</p>
