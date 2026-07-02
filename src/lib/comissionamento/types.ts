@@ -89,6 +89,13 @@ export interface Regra {
   // (com filtros) NÃO cobre as vendas que devem ser comissionadas.
   meta_referencia_id:   string | null
 
+  // Referência DINÂMICA por nome: quando meta_referencia_id é null e este
+  // campo está preenchido, o engine procura no momento do cálculo uma meta
+  // com este nome (case-insensitive) no posto atual cujo período cruze o
+  // intervalo do cálculo. Permite que a mesma regra funcione em vários
+  // meses sem precisar duplicar toda vez que a meta é renovada.
+  meta_referencia_nome: string | null
+
   // Template do checklist para a condição `pontuacao_checklist`. Quando
   // preenchido, o engine soma total_pontos das aplicações desse template
   // que cruzam o período do cálculo (no posto atual) e coloca no ctx

@@ -215,6 +215,38 @@ function vendaMatchesProductConditions(sale: Venda, conds: ConditionLike[]): boo
 // Quando há múltiplas metas elegíveis, prefere a mais específica (filtro
 // "incluir" > "excluir" > sem filtro).
 
+// Resolve a meta de referência de uma regra. Precedência:
+//   1. meta_referencia_id (UUID) → busca a meta com esse id nas metas
+//      carregadas. Nada muda em relação ao comportamento anterior.
+//   2. meta_referencia_nome (texto) → busca meta cujo nome bate
+//      (case-insensitive, trim) dentro das metas carregadas. Como o
+//      data-loader já filtra por posto e por período overlap, todas as
+//      metas em `metas` já são do posto+período do cálculo.
+//   3. Se múltiplas metas casam por nome (erro de cadastro ou renovação
+//      no mesmo mês), usa a com period_start mais recente — a "mais nova"
+//      é quase sempre a intenção.
+// Retorna null se não achou.
+export function resolverMetaReferencia(
+  regra: { meta_referencia_id: string | null; meta_referencia_nome: string | null },
+  metas: readonly Meta[],
+  metaPorId?: Map<string, Meta>,
+): Meta | null {
+  if (regra.meta_referencia_id) {
+    return (metaPorId?.get(regra.meta_referencia_id))
+      ?? metas.find(m => m.id === regra.meta_referencia_id)
+      ?? null
+  }
+  if (regra.meta_referencia_nome) {
+    const alvo = regra.meta_referencia_nome.trim().toLowerCase()
+    if (!alvo) return null
+    const candidatos = metas.filter(m => m.nome.trim().toLowerCase() === alvo)
+    if (candidatos.length === 0) return null
+    if (candidatos.length === 1) return candidatos[0]
+    return candidatos.slice().sort((a, b) => b.period_start.localeCompare(a.period_start))[0]
+  }
+  return null
+}
+
 function metaCobreVenda(meta: Meta, sale: Venda): boolean {
   // 1. Período da meta tem que cobrir a data da venda
   if (sale.data < meta.period_start || sale.data > meta.period_end) return false
@@ -797,26 +829,26 @@ export function calcularComissaoPorVendedor(input: CalcularPorVendedorInput): Co
         : poolRealizado.filter(v => vendaPassaProductFilters(v, regra.realizado_filtros))
 
       // ── 2. Resolve atingimento via meta de referência ────────────────────
+      // Precedência: meta_referencia_id (meta específica) > meta_referencia_nome
+      // (dinâmica: procura no período do cálculo por nome). Ver resolverMetaReferencia.
       let metaValor:        number | null = null
       let atingimentoMeta:  number | null = null
 
-      if (regra.meta_referencia_id) {
-        const meta = metaPorId.get(regra.meta_referencia_id)
-        if (meta) {
-          metaValor = Number(meta.valor_meta) || 0
-          // Quando escopo='todos': puxa do mapa TOTAL (atingimento da meta inteira).
-          // Quando escopo='vendedor': puxa do mapa individual; fallback usa o
-          // realizado calculado localmente.
-          if (regra.realizado_escopo === 'todos') {
-            atingimentoMeta = input.atingimentoTotalPorMeta?.get(meta.id) ?? null
-          } else {
-            const preCalc = input.atingimentoPorVendedorPorMeta?.get(vKey)?.get(meta.id)
-            if (preCalc != null) {
-              atingimentoMeta = preCalc
-            } else if (metaValor > 0 && regra.realizado_campo !== 'atingimento_meta') {
-              const realizadoFallback = agregarCampo(vendasRealizado, regra.realizado_campo)
-              atingimentoMeta = (realizadoFallback / metaValor) * 100
-            }
+      const meta = resolverMetaReferencia(regra, input.metas, metaPorId)
+      if (meta) {
+        metaValor = Number(meta.valor_meta) || 0
+        // Quando escopo='todos': puxa do mapa TOTAL (atingimento da meta inteira).
+        // Quando escopo='vendedor': puxa do mapa individual; fallback usa o
+        // realizado calculado localmente.
+        if (regra.realizado_escopo === 'todos') {
+          atingimentoMeta = input.atingimentoTotalPorMeta?.get(meta.id) ?? null
+        } else {
+          const preCalc = input.atingimentoPorVendedorPorMeta?.get(vKey)?.get(meta.id)
+          if (preCalc != null) {
+            atingimentoMeta = preCalc
+          } else if (metaValor > 0 && regra.realizado_campo !== 'atingimento_meta') {
+            const realizadoFallback = agregarCampo(vendasRealizado, regra.realizado_campo)
+            atingimentoMeta = (realizadoFallback / metaValor) * 100
           }
         }
       }
@@ -874,7 +906,9 @@ export function calcularComissaoPorVendedor(input: CalcularPorVendedorInput): Co
         realizado_campo:      regra.realizado_campo,
         realizado_valor:      realizadoValor,
         realizado_qtd_vendas: vendasRealizado.length,
-        meta_referencia_id:   regra.meta_referencia_id,
+        // Ecoa a meta efetivamente resolvida — se a regra usa referência
+        // por nome, o consumidor vê qual meta específica foi escolhida.
+        meta_referencia_id:   meta?.id ?? regra.meta_referencia_id,
         meta_valor:           metaValor,
         atingimento_meta:     atingimentoMeta,
         base_campo:           regra.base_campo,

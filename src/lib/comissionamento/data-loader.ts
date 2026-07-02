@@ -58,6 +58,7 @@ export async function carregarRegrasDoEsquema(esquemaId: string): Promise<Regra[
     escopo_tipo:          (r.escopo_tipo ?? null) as EscopoRegraTipo | null,
     escopo_valor:         String(r.escopo_valor ?? ''),
     meta_referencia_id:   (r.meta_referencia_id ?? null) as string | null,
+    meta_referencia_nome: (r.meta_referencia_nome ?? null) as string | null,
     checklist_template_referencia_id: (r.checklist_template_referencia_id ?? null) as string | null,
     // Filtros JSONB — defensivos: confiamos no CHECK do banco para os enums
     // de campo; para os filtros validamos apenas que veio um array.

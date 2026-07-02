@@ -96,6 +96,7 @@ interface Regra {
   escopo_tipo:           EscopoTipoUI | null
   escopo_valor:          string
   meta_referencia_id:    string | null
+  meta_referencia_nome:  string | null
   checklist_template_referencia_id: string | null
   realizado_filtros:     ProductFilter[]
   realizado_campo:       RegraCampo
@@ -302,6 +303,7 @@ export default function EsquemaDetailPage({ params }: { params: Promise<{ id: st
     escopo_tipo:           null as EscopoTipoUI | null,    // LEGADO
     escopo_valor:          '',                             // LEGADO
     meta_referencia_id:    null as string | null,          // fornece valor_meta para atingimento
+    meta_referencia_nome:  null as string | null,          // referência dinâmica por nome
     checklist_template_referencia_id: null as string | null,  // fornece pontuacao_checklist no ctx
     realizado_filtros:     [] as ProductFilter[],          // SE — filtros do realizado
     realizado_campo:       'faturamento' as RegraCampo,    // SE — dimensão do realizado
@@ -482,6 +484,7 @@ export default function EsquemaDetailPage({ params }: { params: Promise<{ id: st
       escopo_tipo:           null,
       escopo_valor:          '',
       meta_referencia_id:    null,
+      meta_referencia_nome:  null,
       checklist_template_referencia_id: null,
       realizado_filtros:     [],
       realizado_campo:       'faturamento',
@@ -515,6 +518,7 @@ export default function EsquemaDetailPage({ params }: { params: Promise<{ id: st
       escopo_tipo:           (r.escopo_tipo ?? null) as EscopoTipoUI | null,
       escopo_valor:          r.escopo_valor ?? '',
       meta_referencia_id:    r.meta_referencia_id ?? null,
+      meta_referencia_nome:  (r as unknown as { meta_referencia_nome?: string | null }).meta_referencia_nome ?? null,
       checklist_template_referencia_id: (r as unknown as { checklist_template_referencia_id?: string | null }).checklist_template_referencia_id ?? null,
       realizado_filtros:     Array.isArray(r.realizado_filtros) ? r.realizado_filtros : [],
       realizado_campo:       (r.realizado_campo ?? 'faturamento') as RegraCampo,
@@ -1211,6 +1215,7 @@ interface RegraFormState {
   escopo_tipo:           EscopoTipoUI | null
   escopo_valor:          string
   meta_referencia_id:    string | null
+  meta_referencia_nome:  string | null
   checklist_template_referencia_id: string | null
   realizado_filtros:     ProductFilter[]
   realizado_campo:       RegraCampo
@@ -1307,48 +1312,107 @@ function RegraForm({ regraForm, setRegraForm, regraEditando, salvando, onCancel,
             onChange={(g) => setRegraForm(f => ({ ...f, condicoes: g }))}
           />
 
-          {/* Meta de referência — desacopla o atingimento da meta-cobrindo */}
-          <div className={cn(
-            'rounded-lg border bg-white p-3',
-            regraForm.meta_referencia_id ? 'border-blue-300' : 'border-dashed border-gray-200',
-          )}>
-            <div className="flex items-start gap-2">
-              <Target className={cn('w-3.5 h-3.5 mt-0.5', regraForm.meta_referencia_id ? 'text-blue-600' : 'text-gray-400')} />
-              <div className="flex-1 min-w-0">
-                <Label className="text-[11px] font-semibold text-gray-700 block mb-1">
-                  Meta de referência para <code className="font-mono text-[10.5px] bg-gray-100 px-1 rounded">atingimento_meta</code>
-                </Label>
-                <p className="text-[10.5px] text-gray-500 mb-2">
-                  Quando preenchida, condições de atingimento usam o realizado <strong>desta</strong> meta — mesmo que ela
-                  não cubra as vendas onde a regra será aplicada (resolve o caso "meta exclui baldes, mas comissiono baldes").
-                </p>
-                <Select
-                  value={regraForm.meta_referencia_id ?? '__none'}
-                  onValueChange={(v) => setRegraForm(f => ({ ...f, meta_referencia_id: v === '__none' ? null : v }))}
-                >
-                  <SelectTrigger><SelectValue placeholder="Sem referência (usa a meta atribuída à venda)" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">
-                      <span className="text-gray-500">Sem referência — usa a meta da venda</span>
-                    </SelectItem>
-                    {metas.length === 0 ? (
-                      <div className="px-3 py-2 text-[11.5px] text-gray-400 italic">
-                        Nenhuma meta nos postos vinculados a este esquema
-                      </div>
-                    ) : metas.map(m => (
-                      <SelectItem key={m.id} value={m.id}>
-                        <span className="flex items-center gap-2">
-                          <Target className="w-3 h-3 text-blue-500" />
-                          {m.nome}
-                          <span className="text-[10px] text-gray-400">· {m.campo} · {m.period_start} → {m.period_end}</span>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+          {/* Meta de referência — 2 modos:
+              (a) específica → meta_referencia_id (trava a regra num mês)
+              (b) dinâmica por nome → meta_referencia_nome (regra vale
+                  todos os meses; engine resolve a meta certa no cálculo) */}
+          {(() => {
+            const modo: 'nenhuma' | 'especifica' | 'nome' =
+              regraForm.meta_referencia_id ? 'especifica'
+              : regraForm.meta_referencia_nome ? 'nome'
+              : 'nenhuma'
+            const nomesUnicos = Array.from(new Set(metas.map(m => m.nome))).sort()
+            const ativa = modo !== 'nenhuma'
+            return (
+              <div className={cn(
+                'rounded-lg border bg-white p-3',
+                ativa ? 'border-blue-300' : 'border-dashed border-gray-200',
+              )}>
+                <div className="flex items-start gap-2">
+                  <Target className={cn('w-3.5 h-3.5 mt-0.5', ativa ? 'text-blue-600' : 'text-gray-400')} />
+                  <div className="flex-1 min-w-0">
+                    <Label className="text-[11px] font-semibold text-gray-700 block mb-1">
+                      Meta de referência para <code className="font-mono text-[10.5px] bg-gray-100 px-1 rounded">atingimento_meta</code>
+                    </Label>
+
+                    {/* Seletor de modo — radio buttons compactos */}
+                    <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                      <ModoBtn ativo={modo === 'nenhuma'} onClick={() => setRegraForm(f => ({ ...f, meta_referencia_id: null, meta_referencia_nome: null }))}>
+                        Sem referência
+                      </ModoBtn>
+                      <ModoBtn ativo={modo === 'especifica'} onClick={() => setRegraForm(f => ({ ...f, meta_referencia_nome: null, meta_referencia_id: f.meta_referencia_id ?? (metas[0]?.id ?? null) }))}>
+                        Meta específica (fixa)
+                      </ModoBtn>
+                      <ModoBtn ativo={modo === 'nome'} onClick={() => setRegraForm(f => ({ ...f, meta_referencia_id: null, meta_referencia_nome: f.meta_referencia_nome ?? (nomesUnicos[0] ?? null) }))}>
+                        Por nome (dinâmica)
+                      </ModoBtn>
+                    </div>
+
+                    {/* Descrição contextual */}
+                    <p className="text-[10.5px] text-gray-500 mb-2">
+                      {modo === 'nenhuma' && 'Usa a meta atribuída à venda (fallback). Não funciona para metas de checklist ou quando as vendas ficam fora do filtro da meta.'}
+                      {modo === 'especifica' && (
+                        <>Trava a regra numa meta específica. <b>Atenção:</b> ao rodar o relatório de outros meses, essa meta pode não estar no período e a regra deixa de casar.</>
+                      )}
+                      {modo === 'nome' && (
+                        <>O engine procura toda vez a meta com esse nome no posto do cálculo cujo período cobre o intervalo. A mesma regra vale pra vários meses — basta cadastrar a meta nova mantendo o nome.</>
+                      )}
+                    </p>
+
+                    {modo === 'especifica' && (
+                      <Select
+                        value={regraForm.meta_referencia_id ?? ''}
+                        onValueChange={(v) => setRegraForm(f => ({ ...f, meta_referencia_id: v || null }))}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Selecione a meta..." /></SelectTrigger>
+                        <SelectContent>
+                          {metas.length === 0 ? (
+                            <div className="px-3 py-2 text-[11.5px] text-gray-400 italic">
+                              Nenhuma meta nos postos vinculados a este esquema
+                            </div>
+                          ) : metas.map(m => (
+                            <SelectItem key={m.id} value={m.id}>
+                              <span className="flex items-center gap-2">
+                                <Target className="w-3 h-3 text-blue-500" />
+                                {m.nome}
+                                <span className="text-[10px] text-gray-400">· {m.campo} · {m.period_start} → {m.period_end}</span>
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+
+                    {modo === 'nome' && (
+                      <Select
+                        value={regraForm.meta_referencia_nome ?? ''}
+                        onValueChange={(v) => setRegraForm(f => ({ ...f, meta_referencia_nome: v || null }))}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Selecione o nome da meta..." /></SelectTrigger>
+                        <SelectContent>
+                          {nomesUnicos.length === 0 ? (
+                            <div className="px-3 py-2 text-[11.5px] text-gray-400 italic">
+                              Cadastre uma meta primeiro para poder escolher o nome
+                            </div>
+                          ) : nomesUnicos.map(n => (
+                            <SelectItem key={n} value={n}>
+                              <span className="flex items-center gap-2">
+                                <Target className="w-3 h-3 text-blue-500" />
+                                {n}
+                                <span className="text-[10px] text-gray-400">
+                                  · {metas.filter(m => m.nome === n).length} meta{metas.filter(m => m.nome === n).length === 1 ? '' : 's'} cadastrada{metas.filter(m => m.nome === n).length === 1 ? '' : 's'}
+                                </span>
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            )
+          })()}
 
           {/* Template de referência do checklist — fornece pontuacao_checklist */}
           <div className={cn(
@@ -1893,5 +1957,23 @@ function FiltrosERealizadoBox(props: FiltrosERealizadoBoxProps) {
         </div>
       </div>
     </div>
+  )
+}
+
+// Botão pill compacto usado no seletor de modo da Meta de referência.
+function ModoBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'h-7 px-2.5 rounded-md border text-[11.5px] font-semibold transition-colors',
+        ativo
+          ? 'bg-blue-600 text-white border-blue-700'
+          : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300 hover:text-blue-700',
+      )}
+    >
+      {children}
+    </button>
   )
 }

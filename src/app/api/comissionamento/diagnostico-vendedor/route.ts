@@ -6,7 +6,7 @@ import {
   carregarChecklistsDoPosto,
 } from '@/lib/comissionamento/data-loader'
 import { calcularAtingimento } from '@/lib/comissionamento/goals-aggregation'
-import { vendaPassaProductFilters } from '@/lib/comissionamento/rule-engine'
+import { vendaPassaProductFilters, resolverMetaReferencia } from '@/lib/comissionamento/rule-engine'
 import type { Regra, Venda } from '@/lib/comissionamento/types'
 
 export const dynamic = 'force-dynamic'
@@ -195,15 +195,14 @@ export async function GET(req: NextRequest) {
     let metaRefNome: string | null = null
     let atingimento: number | null = null
 
-    if (r.meta_referencia_id) {
-      const meta = metaPorId.get(r.meta_referencia_id)
-      metaRefNome = meta?.nome ?? null
-      if (meta) {
-        if (r.realizado_escopo === 'todos') {
-          atingimento = atingimentoTotalPorMeta.get(meta.id) ?? null
-        } else {
-          atingimento = atingimentoPorVendedorPorMeta.get(vendedorId)?.get(meta.id) ?? null
-        }
+    // Resolve meta de referência: primeiro por id, se null cai pra nome.
+    const meta = resolverMetaReferencia(r, metas, metaPorId)
+    if (meta) {
+      metaRefNome = meta.nome
+      if (r.realizado_escopo === 'todos') {
+        atingimento = atingimentoTotalPorMeta.get(meta.id) ?? null
+      } else {
+        atingimento = atingimentoPorVendedorPorMeta.get(vendedorId)?.get(meta.id) ?? null
       }
     }
 

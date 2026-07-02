@@ -64,6 +64,7 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
       escopo_tipo:          origem.escopo_tipo,
       escopo_valor:         origem.escopo_valor,
       meta_referencia_id:   origem.meta_referencia_id,
+      meta_referencia_nome: origem.meta_referencia_nome,
       checklist_template_referencia_id: origem.checklist_template_referencia_id,
       realizado_filtros:    origem.realizado_filtros,
       realizado_campo:      origem.realizado_campo,
