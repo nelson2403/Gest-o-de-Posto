@@ -9,6 +9,7 @@ type Alteracao = {
   quando: string
   alterou: string
   operador: string
+  operador_login: string
   terceiro: boolean
   dia: string | null
   motivo: string
@@ -17,13 +18,15 @@ type Alteracao = {
   documento: string | null
   mlid: string | null
 }
+type LoginNome = { login: string; nome: string }
 type Dados = {
   alteracoes: Alteracao[]
   total: number
-  operadores: string[]
-  usuarios: string[]
+  frentistas: LoginNome[]
+  usuarios: LoginNome[]
   periodo: { ini: string; fim: string }
 }
+const HOJE = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
 
 const fmt = (n: number | null) => n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtQuando = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
@@ -36,8 +39,8 @@ const TIPO_INFO = {
 
 export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
   const [postoId, setPostoId] = useState(postos[0]?.id ?? '')
-  const [dataIni, setDataIni] = useState('')
-  const [dataFim, setDataFim] = useState('')
+  const [dataIni, setDataIni] = useState(HOJE)
+  const [dataFim, setDataFim] = useState(HOJE)
   const [operador, setOperador] = useState('')
   const [alterou, setAlterou] = useState('')
   const [tipo, setTipo] = useState('')
@@ -106,17 +109,17 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Frentista (caixa)</label>
               <select value={operador} onChange={e => { setOperador(e.target.value) }}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm min-w-[180px]">
-                <option value="">Todos</option>
-                {dados.operadores.map(o => <option key={o} value={o}>{o}</option>)}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm min-w-[200px]">
+                <option value="">Todos os frentistas</option>
+                {dados.frentistas.map(f => <option key={f.login} value={f.login}>{f.nome}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Quem alterou</label>
               <select value={alterou} onChange={e => setAlterou(e.target.value)}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm min-w-[180px]">
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm min-w-[200px]">
                 <option value="">Todos</option>
-                {dados.usuarios.map(u => <option key={u} value={u}>{u}</option>)}
+                {dados.usuarios.map(u => <option key={u.login} value={u.login}>{u.nome}</option>)}
               </select>
             </div>
             <div>
@@ -154,10 +157,11 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase">
-                  <th className="text-left px-4 py-2 font-medium">Quando</th>
+                  <th className="text-left px-4 py-2 font-medium">Data / Hora</th>
                   <th className="text-left px-3 py-2 font-medium">Operação</th>
                   <th className="text-left px-3 py-2 font-medium">Quem alterou</th>
                   <th className="text-left px-3 py-2 font-medium">Frentista (caixa)</th>
+                  <th className="text-left px-3 py-2 font-medium">Documento</th>
                   <th className="text-left px-3 py-2 font-medium">Motivo</th>
                   <th className="text-right px-4 py-2 font-medium">Valor</th>
                 </tr>
@@ -179,7 +183,8 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
                         {a.alterou || '—'}
                       </td>
                       <td className={`px-3 py-2 ${a.terceiro ? 'text-red-700 font-medium' : 'text-gray-600'}`}>{a.operador || '—'}</td>
-                      <td className="px-3 py-2 text-gray-600 text-[12px]">{a.motivo}{a.documento ? <span className="text-gray-400"> · {a.documento}</span> : ''}</td>
+                      <td className="px-3 py-2 text-gray-700 font-mono text-[12px]">{a.documento || '—'}</td>
+                      <td className="px-3 py-2 text-gray-600 text-[12px]">{a.motivo}</td>
                       <td className="px-4 py-2 text-right font-mono text-gray-800 whitespace-nowrap">
                         {a.tipo === 'alteracao' && a.valor_antes != null
                           ? <span><span className="text-gray-400 line-through">{fmt(a.valor_antes)}</span> → {fmt(a.valor)}</span>
@@ -189,7 +194,7 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
                   )
                 })}
                 {dados.alteracoes.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">Nenhuma alteração no período/filtro.</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">Nenhuma alteração no período/filtro.</td></tr>
                 )}
               </tbody>
             </table>
