@@ -7,22 +7,23 @@ export const dynamic = 'force-dynamic'
 
 const dec = (b: unknown) => (b && Buffer.isBuffer(b) ? (b as Buffer).toString('latin1') : (b == null ? '' : String(b)))
 
+// Usuários "de sistema" (não são pessoas) — não contam como alteração de usuário.
+const USUARIOS_SISTEMA = new Set(['PDV', 'SYSTEM', 'SISTEMA', 'AUTOSYSTEM'])
+
+export interface CampoDetalhe { campo: string; antes: string | null; depois: string | null; mudou: boolean }
 export interface AlteracaoCaixa {
-  tipo:          'insercao' | 'exclusao' | 'alteracao'
-  quando:        string
-  alterou:       string          // nome de quem mexeu
-  operador:      string          // nome do frentista dono do caixa
+  tipo:           'insercao' | 'exclusao' | 'alteracao'
+  quando:         string
+  alterou:        string
+  operador:       string
   operador_login: string
-  terceiro:      boolean
-  dia:           string | null
-  motivo:        string
-  valor:         number | null
-  valor_antes:   number | null
-  documento:     string | null
-  mlid:          string | null
+  terceiro:       boolean
+  estacao:        string
+  documento:      string | null
+  valor:          number | null
+  campos:         CampoDetalhe[]
 }
 
-// Mapa login → nome completo (usuario.nome = login → usuario.pessoa → pessoa.nome)
 async function mapaNomes(logins: string[]): Promise<Map<string, string>> {
   const m = new Map<string, string>()
   const lst = [...new Set(logins.filter(Boolean))]
@@ -30,14 +31,15 @@ async function mapaNomes(logins: string[]): Promise<Map<string, string>> {
   try {
     const rows = await queryAS<{ login: string; nome: string }>(
       `SELECT u.nome AS login, convert_to(coalesce(p.nome,''),'LATIN1') AS nome
-         FROM usuario u LEFT JOIN pessoa p ON p.grid = u.pessoa
-        WHERE u.nome = ANY($1::text[])`,
+         FROM usuario u LEFT JOIN pessoa p ON p.grid = u.pessoa WHERE u.nome = ANY($1::text[])`,
       [lst],
     )
-    for (const r of rows) { const nome = dec(r.nome); if (nome) m.set(r.login, nome) }
-  } catch { /* sem mapa — usa o login */ }
+    for (const r of rows) { const n = dec(r.nome); if (n) m.set(r.login, n) }
+  } catch { /* usa o login */ }
   return m
 }
+
+const fmtVal = (v: number | null | undefined) => v == null ? null : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 // GET /api/caixa/alteracoes?posto_id=&data_ini=&data_fim=&operador=&alterou=&tipo=&so_terceiros=
 export async function GET(req: Request) {
@@ -51,8 +53,8 @@ export async function GET(req: Request) {
   const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
   const dataIni = searchParams.get('data_ini') || hoje
   const dataFim = searchParams.get('data_fim') || hoje
-  const fOperador   = searchParams.get('operador')?.trim() || null   // login do frentista
-  const fAlterou    = searchParams.get('alterou')?.trim() || null    // login de quem alterou
+  const fOperador   = searchParams.get('operador')?.trim() || null
+  const fAlterou    = searchParams.get('alterou')?.trim() || null
   const fTipo       = searchParams.get('tipo')?.trim() || null
   const soTerceiros = searchParams.get('so_terceiros') === '1'
 
@@ -62,86 +64,129 @@ export async function GET(req: Request) {
   const emp = Number(posto?.codigo_empresa_externo)
   if (!emp) return NextResponse.json({ error: 'Posto sem empresa externa' }, { status: 400 })
 
-  // 1) TODOS os frentistas do dia (operadores dos movimentos), com nome completo
+  // Frentistas do dia (operadores dos movimentos)
   let frentistasLogins: string[] = []
   try {
     const fr = await queryAS<{ usuario: string }>(
-      `SELECT DISTINCT convert_to(coalesce(usuario,''),'LATIN1') AS usuario
+      `SELECT DISTINCT convert_to(coalesce(usuario,''),'LATIN1') usuario
          FROM movto WHERE empresa=$1 AND data BETWEEN $2 AND $3 AND usuario IS NOT NULL`,
       [emp, dataIni, dataFim],
     )
-    frentistasLogins = fr.map(r => dec(r.usuario)).filter(Boolean)
-  } catch { /* segue sem a lista completa */ }
+    frentistasLogins = fr.map(r => dec(r.usuario)).filter(u => u && !USUARIOS_SISTEMA.has(u))
+  } catch { /* segue */ }
 
-  // 2) Alterações (movto_flow)
+  // Alterações (movto_flow) — SEM o usuário de sistema "PDV"
   let rows: any[] = []
   try {
     rows = await queryAS<any>(
-      `SELECT mf.pgd_optype op, mf.pgd_when quando,
+      `SELECT mf.pgd_optype op, mf.pgd_when quando, mf.pgd_gfid gfid, mf.mlid, mf.grid rgrid,
               convert_to(coalesce(mf.pgd_username,''),'LATIN1') alterou,
               convert_to(coalesce(mf.usuario,''),'LATIN1')     operador,
-              to_char(mf.data,'YYYY-MM-DD') dia, mf.valor::float valor, mf.mlid,
+              convert_to(coalesce(mf.estacao,''),'LATIN1')     estacao,
+              to_char(mf.data_doc,'DD/MM/YYYY') data_doc, to_char(mf.vencto,'DD/MM/YYYY') vencto,
+              mf.valor::float valor, mf.pessoa,
+              convert_to(coalesce(mf.obs,''),'LATIN1') obs,
               convert_to(coalesce(mf.documento,''),'LATIN1') documento,
-              convert_to(coalesce(mo.nome,''),'LATIN1') motivo
+              convert_to(coalesce(mo.nome,''),'LATIN1') forma_pgto
          FROM movto_flow mf
          LEFT JOIN motivo_movto mo ON mo.grid = mf.motivo
         WHERE mf.empresa = $1 AND mf.data BETWEEN $2 AND $3
+          AND coalesce(mf.pgd_username,'') NOT IN ('PDV','SYSTEM','SISTEMA','AUTOSYSTEM')
         ORDER BY mf.pgd_when DESC
-        LIMIT 6000`,
+        LIMIT 8000`,
       [emp, dataIni, dataFim],
     )
   } catch (e: any) {
     return NextResponse.json({ error: 'AUTOSYSTEM indisponível: ' + (e?.message ?? '') }, { status: 502 })
   }
 
-  // Mapa de nomes p/ todos os logins que aparecem
-  const nomes = await mapaNomes([
-    ...frentistasLogins,
-    ...rows.map(r => dec(r.operador)),
-    ...rows.map(r => dec(r.alterou)),
-  ])
+  // Nomes das pessoas (campo "Pessoa" do lançamento)
+  const pessoaIds = [...new Set(rows.map(r => r.pessoa).filter((p: any) => p != null))]
+  const pessoaNome = new Map<string, string>()
+  if (pessoaIds.length) {
+    try {
+      const pr = await queryAS<{ grid: string; nome: string }>(
+        `SELECT grid, convert_to(coalesce(nome,''),'LATIN1') nome FROM pessoa WHERE grid = ANY($1::bigint[])`,
+        [pessoaIds],
+      )
+      for (const p of pr) pessoaNome.set(String(p.grid), dec(p.nome))
+    } catch { /* ignora */ }
+  }
+
+  const nomes = await mapaNomes([...frentistasLogins, ...rows.map(r => dec(r.operador)), ...rows.map(r => dec(r.alterou))])
   const nomeDe = (login: string) => nomes.get(login) || login
 
-  // Pareia Uo (antes) + Un (depois)
-  const antes = new Map<string, number>()
-  for (const r of rows) if (r.op === 'Uo') antes.set(`${r.mlid}|${r.quando?.toISOString?.() ?? r.quando}`, Number(r.valor))
+  // Agrupa pelo REGISTRO individual (grid) + instante → um evento (I / D / Uo+Un).
+  // (mlid é o documento e agrupa várias linhas — venda + pagamentos — misturando tudo.)
+  const grupos = new Map<string, any[]>()
+  for (const r of rows) {
+    const k = `${r.rgrid ?? r.mlid}|${r.quando?.toISOString?.() ?? r.quando}`
+    if (!grupos.has(k)) grupos.set(k, [])
+    grupos.get(k)!.push(r)
+  }
+
+  const registro = (r: any) => ({
+    'Forma de pagamento': dec(r.forma_pgto) || null,
+    'Pessoa':             r.pessoa != null ? (pessoaNome.get(String(r.pessoa)) || String(r.pessoa)) : null,
+    'Valor':              fmtVal(r.valor),
+    'Data do documento':  r.data_doc || null,
+    'Vencimento':         r.vencto || null,
+    'Observação':         dec(r.obs) || null,
+    'Documento':          dec(r.documento) || null,
+  })
+  const CAMPOS = ['Forma de pagamento', 'Pessoa', 'Valor', 'Data do documento', 'Vencimento', 'Observação', 'Documento']
 
   const alteracoes: AlteracaoCaixa[] = []
-  for (const r of rows) {
-    if (r.op === 'Uo') continue
-    const opLogin = dec(r.operador)
-    const altLogin = dec(r.alterou)
-    const tipo: AlteracaoCaixa['tipo'] = r.op === 'I' ? 'insercao' : r.op === 'D' ? 'exclusao' : 'alteracao'
-    const terceiro = !!altLogin && !!opLogin && altLogin !== opLogin
+  for (const grp of grupos.values()) {
+    // dedupe por gfid
+    const uniq = Array.from(new Map(grp.map(r => [r.gfid, r])).values())
+    const i  = uniq.find(r => r.op === 'I')
+    const d  = uniq.find(r => r.op === 'D')
+    const un = uniq.find(r => r.op === 'Un')
+    const uo = uniq.find(r => r.op === 'Uo')
+    const ref = i || un || d || uo
+    if (!ref) continue
+
+    const tipo: AlteracaoCaixa['tipo'] = i ? 'insercao' : d ? 'exclusao' : 'alteracao'
+    const alterou = dec(ref.alterou), operador = dec(ref.operador)
+    const terceiro = !!alterou && !!operador && alterou !== operador
+
     if (fTipo && tipo !== fTipo) continue
-    if (fOperador && opLogin !== fOperador) continue
-    if (fAlterou && altLogin !== fAlterou) continue
+    if (fOperador && operador !== fOperador) continue
+    if (fAlterou && alterou !== fAlterou) continue
     if (soTerceiros && !terceiro) continue
-    const chave = `${r.mlid}|${r.quando?.toISOString?.() ?? r.quando}`
+
+    const depoisRec = tipo === 'exclusao' ? null : registro(i || un)
+    const antesRec  = tipo === 'insercao' ? null : registro(d ? d : uo)
+    const campos: CampoDetalhe[] = CAMPOS.map(campo => {
+      const antes  = antesRec  ? (antesRec  as any)[campo] : null
+      const depois = depoisRec ? (depoisRec as any)[campo] : null
+      return { campo, antes, depois, mudou: (antes ?? '') !== (depois ?? '') }
+    }).filter(c => c.antes != null || c.depois != null)
+
     alteracoes.push({
       tipo,
-      quando:        typeof r.quando === 'string' ? r.quando : r.quando?.toISOString?.() ?? '',
-      alterou:       nomeDe(altLogin),
-      operador:      nomeDe(opLogin),
-      operador_login: opLogin,
+      quando:         typeof ref.quando === 'string' ? ref.quando : ref.quando?.toISOString?.() ?? '',
+      alterou:        nomeDe(alterou),
+      operador:       nomeDe(operador),
+      operador_login: operador,
       terceiro,
-      dia:           r.dia ?? null,
-      motivo:        dec(r.motivo) || String(r.motivo ?? ''),
-      valor:         r.valor == null ? null : Number(r.valor),
-      valor_antes:   tipo === 'alteracao' ? (antes.get(chave) ?? null) : null,
-      documento:     dec(r.documento) || null,
-      mlid:          r.mlid != null ? String(r.mlid) : null,
+      estacao:        dec(ref.estacao) || '',
+      documento:      dec(ref.documento) || null,
+      valor:          ref.valor == null ? null : Number(ref.valor),
+      campos,
     })
   }
 
-  // Frentistas (todos do dia) + quem alterou, com nome — para os selects
+  alteracoes.sort((a, b) => b.quando.localeCompare(a.quando))
+
   const frentistas = [...new Set([...frentistasLogins, ...rows.map(r => dec(r.operador))])]
-    .filter(Boolean).map(login => ({ login, nome: nomeDe(login) })).sort((a, b) => a.nome.localeCompare(b.nome))
+    .filter(l => l && !USUARIOS_SISTEMA.has(l)).map(login => ({ login, nome: nomeDe(login) })).sort((a, b) => a.nome.localeCompare(b.nome))
   const usuarios = [...new Set(rows.map(r => dec(r.alterou)))]
-    .filter(Boolean).map(login => ({ login, nome: nomeDe(login) })).sort((a, b) => a.nome.localeCompare(b.nome))
+    .filter(l => l && !USUARIOS_SISTEMA.has(l)).map(login => ({ login, nome: nomeDe(login) })).sort((a, b) => a.nome.localeCompare(b.nome))
 
   return NextResponse.json({
-    alteracoes: alteracoes.slice(0, 1200),
+    alteracoes: alteracoes.slice(0, 1500),
     total: alteracoes.length,
     frentistas, usuarios,
     periodo: { ini: dataIni, fim: dataFim },

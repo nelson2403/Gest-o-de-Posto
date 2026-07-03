@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
-import { Loader2, Search, Plus, Pencil, Trash2, AlertTriangle } from 'lucide-react'
+import { Fragment, useState } from 'react'
+import { Loader2, Search, Plus, Pencil, Trash2, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
 
 type PostoRow = { id: string; nome: string }
+type CampoDetalhe = { campo: string; antes: string | null; depois: string | null; mudou: boolean }
 type Alteracao = {
   tipo: 'insercao' | 'exclusao' | 'alteracao'
   quando: string
@@ -11,12 +12,10 @@ type Alteracao = {
   operador: string
   operador_login: string
   terceiro: boolean
-  dia: string | null
-  motivo: string
-  valor: number | null
-  valor_antes: number | null
+  estacao: string
   documento: string | null
-  mlid: string | null
+  valor: number | null
+  campos: CampoDetalhe[]
 }
 type LoginNome = { login: string; nome: string }
 type Dados = {
@@ -48,6 +47,7 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
   const [dados, setDados] = useState<Dados | null>(null)
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const [aberto, setAberto] = useState<number | null>(null)
 
   async function buscar() {
     if (!postoId) return
@@ -157,12 +157,13 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase">
+                  <th className="w-6" />
                   <th className="text-left px-4 py-2 font-medium">Data / Hora</th>
                   <th className="text-left px-3 py-2 font-medium">Operação</th>
                   <th className="text-left px-3 py-2 font-medium">Quem alterou</th>
                   <th className="text-left px-3 py-2 font-medium">Frentista (caixa)</th>
                   <th className="text-left px-3 py-2 font-medium">Documento</th>
-                  <th className="text-left px-3 py-2 font-medium">Motivo</th>
+                  <th className="text-left px-3 py-2 font-medium">Estação</th>
                   <th className="text-right px-4 py-2 font-medium">Valor</th>
                 </tr>
               </thead>
@@ -170,31 +171,34 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
                 {dados.alteracoes.map((a, i) => {
                   const info = TIPO_INFO[a.tipo]
                   const Icon = info.icon
+                  const exp = aberto === i
                   return (
-                    <tr key={i} className={a.terceiro ? 'bg-red-50/50' : 'hover:bg-gray-50'}>
-                      <td className="px-4 py-2 text-gray-600 whitespace-nowrap text-[12px]">{fmtQuando(a.quando)}</td>
-                      <td className="px-3 py-2">
-                        <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${info.cls}`}>
-                          <Icon className="w-3 h-3" /> {info.label}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 font-medium text-gray-800">
-                        {a.terceiro && <AlertTriangle className="w-3.5 h-3.5 text-red-500 inline mr-1" />}
-                        {a.alterou || '—'}
-                      </td>
-                      <td className={`px-3 py-2 ${a.terceiro ? 'text-red-700 font-medium' : 'text-gray-600'}`}>{a.operador || '—'}</td>
-                      <td className="px-3 py-2 text-gray-700 font-mono text-[12px]">{a.documento || '—'}</td>
-                      <td className="px-3 py-2 text-gray-600 text-[12px]">{a.motivo}</td>
-                      <td className="px-4 py-2 text-right font-mono text-gray-800 whitespace-nowrap">
-                        {a.tipo === 'alteracao' && a.valor_antes != null
-                          ? <span><span className="text-gray-400 line-through">{fmt(a.valor_antes)}</span> → {fmt(a.valor)}</span>
-                          : fmt(a.valor)}
-                      </td>
-                    </tr>
+                    <Fragment key={i}>
+                      <tr onClick={() => setAberto(exp ? null : i)} className={`cursor-pointer ${a.terceiro ? 'bg-red-50/50 hover:bg-red-50' : 'hover:bg-gray-50'}`}>
+                        <td className="pl-3 text-gray-400">{exp ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}</td>
+                        <td className="px-4 py-2 text-gray-600 whitespace-nowrap text-[12px]">{fmtQuando(a.quando)}</td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${info.cls}`}>
+                            <Icon className="w-3 h-3" /> {info.label}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-medium text-gray-800">
+                          {a.terceiro && <AlertTriangle className="w-3.5 h-3.5 text-red-500 inline mr-1" />}
+                          {a.alterou || '—'}
+                        </td>
+                        <td className={`px-3 py-2 ${a.terceiro ? 'text-red-700 font-medium' : 'text-gray-600'}`}>{a.operador || '—'}</td>
+                        <td className="px-3 py-2 text-gray-700 font-mono text-[12px]">{a.documento || '—'}</td>
+                        <td className="px-3 py-2 text-gray-500 text-[11px] font-mono">{a.estacao || '—'}</td>
+                        <td className="px-4 py-2 text-right font-mono text-gray-800 whitespace-nowrap">{fmt(a.valor)}</td>
+                      </tr>
+                      {exp && (
+                        <tr><td colSpan={8} className="px-4 py-3 bg-gray-50/70"><Detalhe a={a} /></td></tr>
+                      )}
+                    </Fragment>
                   )
                 })}
                 {dados.alteracoes.length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">Nenhuma alteração no período/filtro.</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">Nenhuma alteração no período/filtro.</td></tr>
                 )}
               </tbody>
             </table>
@@ -207,6 +211,53 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
           Selecione o posto e período e clique em Buscar.
         </div>
       )}
+    </div>
+  )
+}
+
+function Detalhe({ a }: { a: Alteracao }) {
+  if (!a.campos.length) return <p className="text-[12px] text-gray-400">Sem detalhes do registro.</p>
+
+  if (a.tipo === 'alteracao') {
+    return (
+      <div className="max-w-2xl">
+        <p className="text-[12px] font-semibold text-amber-700 mb-1.5">O que foi alterado (antes → depois):</p>
+        <table className="w-full text-[12px] border border-gray-200 rounded-lg overflow-hidden bg-white">
+          <thead>
+            <tr className="bg-gray-100 text-gray-500">
+              <th className="text-left px-3 py-1.5 font-medium">Campo</th>
+              <th className="text-left px-3 py-1.5 font-medium">Antes</th>
+              <th className="text-left px-3 py-1.5 font-medium">Depois</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {a.campos.map((c, i) => (
+              <tr key={i} className={c.mudou ? 'bg-amber-50' : ''}>
+                <td className="px-3 py-1.5 font-medium text-gray-700">{c.campo}</td>
+                <td className="px-3 py-1.5 text-gray-500">{c.antes ?? '—'}</td>
+                <td className={`px-3 py-1.5 ${c.mudou ? 'text-amber-800 font-semibold' : 'text-gray-500'}`}>{c.depois ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  const inser = a.tipo === 'insercao'
+  return (
+    <div className="max-w-xl">
+      <p className={`text-[12px] font-semibold mb-1.5 ${inser ? 'text-emerald-700' : 'text-red-700'}`}>
+        {inser ? 'Conteúdo inserido:' : 'Conteúdo excluído:'}
+      </p>
+      <div className={`border rounded-lg divide-y bg-white ${inser ? 'border-emerald-200 divide-emerald-50' : 'border-red-200 divide-red-50'}`}>
+        {a.campos.map((c, i) => (
+          <div key={i} className="flex justify-between gap-4 px-3 py-1.5 text-[12px]">
+            <span className="text-gray-500">{c.campo}</span>
+            <span className="text-gray-800 font-medium text-right">{(inser ? c.depois : c.antes) ?? '—'}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
