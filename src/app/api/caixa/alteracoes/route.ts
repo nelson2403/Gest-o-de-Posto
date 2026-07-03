@@ -125,7 +125,7 @@ export async function GET(req: Request) {
     grupos.get(k)!.push(r)
   }
 
-  const registro = (r: any) => ({
+  const registro = (r: any): Record<string, string | null> | null => r ? ({
     'Forma de pagamento': dec(r.forma_pgto) || null,
     'Pessoa':             r.pessoa != null ? (pessoaNome.get(String(r.pessoa)) || String(r.pessoa)) : null,
     'Valor':              fmtVal(r.valor),
@@ -133,7 +133,7 @@ export async function GET(req: Request) {
     'Vencimento':         r.vencto || null,
     'Observação':         dec(r.obs) || null,
     'Documento':          dec(r.documento) || null,
-  })
+  }) : null
   const CAMPOS = ['Forma de pagamento', 'Pessoa', 'Valor', 'Data do documento', 'Vencimento', 'Observação', 'Documento']
 
   const alteracoes: AlteracaoCaixa[] = []

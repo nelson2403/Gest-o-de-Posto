@@ -61,8 +61,11 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
       if (tipo) p.set('tipo', tipo)
       if (soTerceiros) p.set('so_terceiros', '1')
       const r = await fetch(`/api/caixa/alteracoes?${p}`, { cache: 'no-store' })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error || 'Falha ao buscar')
+      const txt = await r.text()
+      let d: any = null
+      try { d = txt ? JSON.parse(txt) : null } catch { /* resposta não-JSON */ }
+      if (!r.ok) throw new Error(d?.error || `Erro ${r.status} ao buscar`)
+      if (!d) throw new Error('Resposta vazia do servidor (a busca pode ter demorado). Tente um período menor.')
       setDados(d)
     } catch (e: any) {
       setErro(e.message)
