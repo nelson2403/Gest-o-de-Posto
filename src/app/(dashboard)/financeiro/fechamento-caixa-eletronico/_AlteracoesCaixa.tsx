@@ -18,9 +18,11 @@ type Alteracao = {
   campos: CampoDetalhe[]
 }
 type LoginNome = { login: string; nome: string }
+type Resumo = { total: number; insercoes: number; alteracoes: number; exclusoes: number; terceiros: number }
 type Dados = {
   alteracoes: Alteracao[]
   total: number
+  resumo: Resumo
   frentistas: LoginNome[]
   usuarios: LoginNome[]
   periodo: { ini: string; fim: string }
@@ -49,8 +51,9 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
   const [erro, setErro] = useState<string | null>(null)
   const [aberto, setAberto] = useState<number | null>(null)
 
-  async function buscar() {
+  async function buscar(soTerceirosArg?: boolean) {
     if (!postoId) return
+    const st = typeof soTerceirosArg === 'boolean' ? soTerceirosArg : soTerceiros
     setLoading(true); setErro(null)
     try {
       const p = new URLSearchParams({ posto_id: postoId })
@@ -59,7 +62,7 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
       if (operador) p.set('operador', operador)
       if (alterou) p.set('alterou', alterou)
       if (tipo) p.set('tipo', tipo)
-      if (soTerceiros) p.set('so_terceiros', '1')
+      if (st) p.set('so_terceiros', '1')
       const r = await fetch(`/api/caixa/alteracoes?${p}`, { cache: 'no-store' })
       const txt = await r.text()
       let d: any = null
@@ -101,7 +104,7 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
             <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)}
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
           </div>
-          <button onClick={buscar} disabled={loading}
+          <button onClick={() => buscar()} disabled={loading}
             className="px-5 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50 flex items-center gap-1.5">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Buscar
           </button>
@@ -139,7 +142,7 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
               <input type="checkbox" checked={soTerceiros} onChange={e => setSoTerceiros(e.target.checked)} className="w-4 h-4" />
               Só quem não é o frentista
             </label>
-            <button onClick={buscar} disabled={loading}
+            <button onClick={() => buscar()} disabled={loading}
               className="px-4 py-2 border border-orange-300 text-orange-700 rounded-lg text-sm font-medium hover:bg-orange-50">
               Aplicar filtros
             </button>
@@ -148,6 +151,32 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
       </div>
 
       {erro && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">{erro}</div>}
+
+      {/* Resumo */}
+      {dados && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {[
+            { label: 'Total', valor: dados.resumo.total, cls: 'text-gray-900' },
+            { label: 'Inserções', valor: dados.resumo.insercoes, cls: 'text-emerald-600' },
+            { label: 'Alterações', valor: dados.resumo.alteracoes, cls: 'text-amber-600' },
+            { label: 'Exclusões', valor: dados.resumo.exclusoes, cls: 'text-red-600' },
+          ].map(c => (
+            <div key={c.label} className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+              <p className="text-[11px] text-gray-400">{c.label}</p>
+              <p className={`text-[20px] font-bold mt-0.5 ${c.cls}`}>{c.valor}</p>
+            </div>
+          ))}
+          <button
+            onClick={() => { setSoTerceiros(true); buscar(true) }}
+            className={`text-left rounded-xl p-3 shadow-sm border transition ${
+              dados.resumo.terceiros > 0 ? 'bg-red-50 border-red-200 hover:bg-red-100' : 'bg-white border-gray-200'
+            }`}
+            title="Ver só as alterações feitas por quem não é o frentista">
+            <p className="text-[11px] text-red-500 font-medium">Por terceiros ⚠</p>
+            <p className="text-[20px] font-bold mt-0.5 text-red-600">{dados.resumo.terceiros}</p>
+          </button>
+        </div>
+      )}
 
       {/* Resultado */}
       {dados && (

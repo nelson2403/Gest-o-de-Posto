@@ -185,10 +185,18 @@ export async function GET(req: Request) {
   const usuarios = [...new Set(rows.map(r => dec(r.alterou)))]
     .filter(l => l && !USUARIOS_SISTEMA.has(l)).map(login => ({ login, nome: nomeDe(login) })).sort((a, b) => a.nome.localeCompare(b.nome))
 
+  const resumo = {
+    total:      alteracoes.length,
+    insercoes:  alteracoes.filter(a => a.tipo === 'insercao').length,
+    alteracoes: alteracoes.filter(a => a.tipo === 'alteracao').length,
+    exclusoes:  alteracoes.filter(a => a.tipo === 'exclusao').length,
+    terceiros:  alteracoes.filter(a => a.terceiro).length,
+  }
+
   return NextResponse.json({
     alteracoes: alteracoes.slice(0, 1500),
     total: alteracoes.length,
-    frentistas, usuarios,
+    resumo, frentistas, usuarios,
     periodo: { ini: dataIni, fim: dataFim },
   })
 }
