@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import { useAuthContext } from '@/contexts/AuthContext'
+import { AlteracoesCaixa } from './_AlteracoesCaixa'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,9 @@ export default function ConsultaFechamentoCaixaPage() {
   const role = usuario?.role
   const podeAcessar = ['master', 'adm_financeiro', 'gerente', 'operador_caixa'].includes(role ?? '')
   const podeLiberar = ['master', 'adm_financeiro'].includes(role ?? '')
+  const podeAuditar = ['master', 'adm_financeiro'].includes(role ?? '')
+
+  const [aba, setAba] = useState<'fechamentos' | 'alteracoes' | 'cartoes'>('fechamentos')
 
   const [postos,  setPostos]  = useState<PostoRow[]>([])
   const [postoId, setPostoId] = useState('')
@@ -199,6 +203,28 @@ export default function ConsultaFechamentoCaixaPage() {
         description="Consulte os fechamentos de caixa registrados pelos frentistas"
       />
 
+      {/* Abas */}
+      <div className="px-4 md:px-6 pt-4 flex gap-1 border-b border-gray-200">
+        {([
+          { key: 'fechamentos', label: 'Fechamentos', mostrar: true },
+          { key: 'alteracoes',  label: 'Alterações no Caixa', mostrar: podeAuditar },
+          { key: 'cartoes',     label: 'Conciliação de Cartões', mostrar: podeAuditar },
+        ] as const).filter(t => t.mostrar).map(t => (
+          <button key={t.key} onClick={() => setAba(t.key)}
+            className={`px-4 py-2.5 text-[13px] font-medium border-b-2 -mb-px transition-colors ${
+              aba === t.key ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {aba === 'alteracoes' && podeAuditar && <AlteracoesCaixa postos={postos} />}
+      {aba === 'cartoes' && podeAuditar && (
+        <div className="p-6 max-w-5xl text-gray-500 text-sm">Conciliação de Cartões — <b>em construção</b> (próxima etapa: casar cada venda com a transação do cartão por NSU).</div>
+      )}
+
+      {aba === 'fechamentos' && (
       <div className="p-4 md:p-6 max-w-5xl space-y-5">
 
         {/* Filtros */}
@@ -460,6 +486,7 @@ export default function ConsultaFechamentoCaixaPage() {
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }
