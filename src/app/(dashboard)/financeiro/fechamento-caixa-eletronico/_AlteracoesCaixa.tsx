@@ -80,8 +80,9 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
   return (
     <div className="p-4 md:p-6 max-w-6xl space-y-5">
       <p className="text-[13px] text-gray-500">
-        Todo o histórico de <b>inserções, alterações e exclusões</b> nos lançamentos do caixa. Quando <b>quem alterou</b> é
-        diferente do <b>frentista</b> dono do caixa, a linha fica <span className="text-red-600 font-medium">destacada</span>.
+        Mostra quando <b>alguém mexe no lançamento de outro frentista</b> (alteração/inserção por terceiro) e <b>todas as
+        exclusões</b> — as operações normais do próprio frentista (venda/re-gravação) ficam de fora. As linhas de terceiro
+        ficam <span className="text-red-600 font-medium">destacadas</span>.
       </p>
 
       {/* Filtros */}

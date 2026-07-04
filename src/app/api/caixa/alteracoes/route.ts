@@ -15,6 +15,7 @@ export interface AlteracaoCaixa {
   tipo:           'insercao' | 'exclusao' | 'alteracao'
   quando:         string
   alterou:        string
+  alterou_login:  string
   operador:       string
   operador_login: string
   terceiro:       boolean
@@ -64,17 +65,6 @@ export async function GET(req: Request) {
   const emp = Number(posto?.codigo_empresa_externo)
   if (!emp) return NextResponse.json({ error: 'Posto sem empresa externa' }, { status: 400 })
 
-  // Frentistas do dia (operadores dos movimentos)
-  let frentistasLogins: string[] = []
-  try {
-    const fr = await queryAS<{ usuario: string }>(
-      `SELECT DISTINCT convert_to(coalesce(usuario,''),'LATIN1') usuario
-         FROM movto WHERE empresa=$1 AND data BETWEEN $2 AND $3 AND usuario IS NOT NULL`,
-      [emp, dataIni, dataFim],
-    )
-    frentistasLogins = fr.map(r => dec(r.usuario)).filter(u => u && !USUARIOS_SISTEMA.has(u))
-  } catch { /* segue */ }
-
   // Alterações (movto_flow) — SEM o usuário de sistema "PDV"
   let rows: any[] = []
   try {
@@ -113,7 +103,7 @@ export async function GET(req: Request) {
     } catch { /* ignora */ }
   }
 
-  const nomes = await mapaNomes([...frentistasLogins, ...rows.map(r => dec(r.operador)), ...rows.map(r => dec(r.alterou))])
+  const nomes = await mapaNomes([...rows.map(r => dec(r.operador)), ...rows.map(r => dec(r.alterou))])
   const nomeDe = (login: string) => nomes.get(login) || login
 
   // Agrupa pelo REGISTRO individual (grid) + instante → um evento (I / D / Uo+Un).
@@ -151,10 +141,10 @@ export async function GET(req: Request) {
     const alterou = dec(ref.alterou), operador = dec(ref.operador)
     const terceiro = !!alterou && !!operador && alterou !== operador
 
-    if (fTipo && tipo !== fTipo) continue
-    if (fOperador && operador !== fOperador) continue
-    if (fAlterou && alterou !== fAlterou) continue
-    if (soTerceiros && !terceiro) continue
+    // "Alteração no caixa" = quando alguém mexe no lançamento de OUTRO (terceiro),
+    // ou qualquer EXCLUSÃO. Operações do próprio operador (venda/edição da própria
+    // conferência, muitas vezes re-gravação automática) NÃO contam — inflam a lista.
+    if (!terceiro && tipo !== 'exclusao') continue
 
     const depoisRec = tipo === 'exclusao' ? null : registro(i || un)
     const antesRec  = tipo === 'insercao' ? null : registro(d ? d : uo)
@@ -168,6 +158,7 @@ export async function GET(req: Request) {
       tipo,
       quando:         typeof ref.quando === 'string' ? ref.quando : ref.quando?.toISOString?.() ?? '',
       alterou:        nomeDe(alterou),
+      alterou_login:  alterou,
       operador:       nomeDe(operador),
       operador_login: operador,
       terceiro,
@@ -180,22 +171,35 @@ export async function GET(req: Request) {
 
   alteracoes.sort((a, b) => b.quando.localeCompare(a.quando))
 
-  const frentistas = [...new Set([...frentistasLogins, ...rows.map(r => dec(r.operador))])]
-    .filter(l => l && !USUARIOS_SISTEMA.has(l)).map(login => ({ login, nome: nomeDe(login) })).sort((a, b) => a.nome.localeCompare(b.nome))
-  const usuarios = [...new Set(rows.map(r => dec(r.alterou)))]
-    .filter(l => l && !USUARIOS_SISTEMA.has(l)).map(login => ({ login, nome: nomeDe(login) })).sort((a, b) => a.nome.localeCompare(b.nome))
+  // Listas montadas SÓ a partir das alterações reais (quem realmente mexeu / cujos
+  // caixas foram mexidos) — não de todos os operadores do dia.
+  const frentSet = new Map<string, string>()
+  const altSet   = new Map<string, string>()
+  for (const a of alteracoes) {
+    if (a.operador_login && !USUARIOS_SISTEMA.has(a.operador_login)) frentSet.set(a.operador_login, a.operador)
+    if (a.alterou_login  && !USUARIOS_SISTEMA.has(a.alterou_login))  altSet.set(a.alterou_login, a.alterou)
+  }
+  const frentistas = [...frentSet].map(([login, nome]) => ({ login, nome })).sort((a, b) => a.nome.localeCompare(b.nome))
+  const usuarios   = [...altSet].map(([login, nome]) => ({ login, nome })).sort((a, b) => a.nome.localeCompare(b.nome))
+
+  // Aplica os filtros só no resultado (as listas acima continuam completas)
+  const filtradas = alteracoes.filter(a =>
+    (!fTipo || a.tipo === fTipo) &&
+    (!fOperador || a.operador_login === fOperador) &&
+    (!fAlterou || a.alterou_login === fAlterou) &&
+    (!soTerceiros || a.terceiro))
 
   const resumo = {
-    total:      alteracoes.length,
-    insercoes:  alteracoes.filter(a => a.tipo === 'insercao').length,
-    alteracoes: alteracoes.filter(a => a.tipo === 'alteracao').length,
-    exclusoes:  alteracoes.filter(a => a.tipo === 'exclusao').length,
-    terceiros:  alteracoes.filter(a => a.terceiro).length,
+    total:      filtradas.length,
+    insercoes:  filtradas.filter(a => a.tipo === 'insercao').length,
+    alteracoes: filtradas.filter(a => a.tipo === 'alteracao').length,
+    exclusoes:  filtradas.filter(a => a.tipo === 'exclusao').length,
+    terceiros:  filtradas.filter(a => a.terceiro).length,
   }
 
   return NextResponse.json({
-    alteracoes: alteracoes.slice(0, 1500),
-    total: alteracoes.length,
+    alteracoes: filtradas.slice(0, 1500),
+    total: filtradas.length,
     resumo, frentistas, usuarios,
     periodo: { ini: dataIni, fim: dataFim },
   })
