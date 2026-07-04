@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import { useAuthContext } from '@/contexts/AuthContext'
 import { AlteracoesCaixa } from './_AlteracoesCaixa'
+import { ConciliacaoCartoes } from './_ConciliacaoCartoes'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -220,9 +221,7 @@ export default function ConsultaFechamentoCaixaPage() {
       </div>
 
       {aba === 'alteracoes' && podeAuditar && <AlteracoesCaixa postos={postos} />}
-      {aba === 'cartoes' && podeAuditar && (
-        <div className="p-6 max-w-5xl text-gray-500 text-sm">Conciliação de Cartões — <b>em construção</b> (próxima etapa: casar cada venda com a transação do cartão por NSU).</div>
-      )}
+      {aba === 'cartoes' && podeAuditar && <ConciliacaoCartoes postos={postos} />}
 
       {aba === 'fechamentos' && (
       <div className="p-4 md:p-6 max-w-5xl space-y-5">
