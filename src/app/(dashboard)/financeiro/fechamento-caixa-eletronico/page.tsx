@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { Header } from '@/components/layout/Header'
 import { useAuthContext } from '@/contexts/AuthContext'
 import { AlteracoesCaixa } from './_AlteracoesCaixa'
-import { ConfirmacaoConciliacao } from './_ConfirmacaoConciliacao'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -40,9 +39,8 @@ export default function ConsultaFechamentoCaixaPage() {
   const podeAcessar = ['master', 'adm_financeiro', 'gerente', 'operador_caixa'].includes(role ?? '')
   const podeLiberar = ['master', 'adm_financeiro'].includes(role ?? '')
   const podeAuditar = ['master', 'adm_financeiro'].includes(role ?? '')
-  const podeConciliar = role === 'master'
 
-  const [aba, setAba] = useState<'fechamentos' | 'alteracoes' | 'conciliacao'>('fechamentos')
+  const [aba, setAba] = useState<'fechamentos' | 'alteracoes'>('fechamentos')
 
   const [postos,  setPostos]  = useState<PostoRow[]>([])
   const [postoId, setPostoId] = useState('')
@@ -210,7 +208,6 @@ export default function ConsultaFechamentoCaixaPage() {
         {([
           { key: 'fechamentos', label: 'Fechamentos', mostrar: true },
           { key: 'alteracoes',  label: 'Alterações no Caixa', mostrar: podeAuditar },
-          { key: 'conciliacao', label: 'Confirmação da Conciliação', mostrar: podeConciliar },
         ] as const).filter(t => t.mostrar).map(t => (
           <button key={t.key} onClick={() => setAba(t.key)}
             className={`px-4 py-2.5 text-[13px] font-medium border-b-2 -mb-px transition-colors ${
@@ -222,7 +219,6 @@ export default function ConsultaFechamentoCaixaPage() {
       </div>
 
       {aba === 'alteracoes' && podeAuditar && <AlteracoesCaixa postos={postos} />}
-      {aba === 'conciliacao' && podeConciliar && <ConfirmacaoConciliacao postos={postos} />}
 
       {aba === 'fechamentos' && (
       <div className="p-4 md:p-6 max-w-5xl space-y-5">

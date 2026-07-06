@@ -9,7 +9,7 @@ import {
   PackageSearch, Truck, CalendarDays, ShoppingCart,
   Banknote, Hash, AlertTriangle, Croissant, Wheat, Factory,
   Scale, GraduationCap, DollarSign,
-  BookOpen, FileBarChart, Download, Activity,
+  BookOpen, FileBarChart, Download, Activity, ArrowRightLeft,
 } from 'lucide-react'
 import type { Role } from '@/types/database.types'
 import type { Permission } from '@/lib/utils/permissions'
@@ -81,6 +81,7 @@ export const NAV_GROUPS: NavGroup[] = [
           { href: '/tarefas/conciliacao',          label: 'Geração de Tarefas',   icon: ClipboardList, permission: 'contas_bancarias.view' as Permission },
           { href: '/conciliadores',                label: 'Conciliadores',        icon: Users,         permission: 'usuarios.edit' as Permission },
           { href: '/monitoramento/saldos',          label: 'Saldos Bancários',     icon: Landmark,      permission: 'monitoramento.view' as Permission },
+          { href: '/conciliadores/confirmacao',     label: 'Confirmação da Conciliação', icon: ArrowRightLeft, permission: 'monitoramento.view' as Permission },
         ],
       },
       { href: '/controle-caixas',     label: 'Controle de Caixas',   icon: CheckSquare, permission: 'controle_caixas.view' as Permission },
