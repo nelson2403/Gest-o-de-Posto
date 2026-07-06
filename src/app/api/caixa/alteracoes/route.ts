@@ -65,7 +65,19 @@ export async function GET(req: Request) {
   const emp = Number(posto?.codigo_empresa_externo)
   if (!emp) return NextResponse.json({ error: 'Posto sem empresa externa' }, { status: 400 })
 
-  // Alterações (movto_flow) — SEM o usuário de sistema "PDV"
+  // Frentistas do dia = operadores dos movimentos na CONTA DO CAIXA (1.1.2.%)
+  let frentLogins: string[] = []
+  try {
+    const fr = await queryAS<{ u: string }>(
+      `SELECT DISTINCT convert_to(coalesce(usuario,''),'LATIN1') u
+         FROM movto WHERE empresa=$1 AND data BETWEEN $2 AND $3 AND usuario IS NOT NULL
+          AND (conta_debitar LIKE '1.1.2.%' OR conta_creditar LIKE '1.1.2.%')`,
+      [emp, dataIni, dataFim],
+    )
+    frentLogins = fr.map(r => dec(r.u)).filter(u => u && !USUARIOS_SISTEMA.has(u))
+  } catch { /* segue */ }
+
+  // Alterações (movto_flow) — só na CONTA DO CAIXA (1.1.2.%), sem usuário de sistema
   let rows: any[] = []
   try {
     rows = await queryAS<any>(
@@ -82,6 +94,7 @@ export async function GET(req: Request) {
          LEFT JOIN motivo_movto mo ON mo.grid = mf.motivo
         WHERE mf.empresa = $1 AND mf.data BETWEEN $2 AND $3
           AND coalesce(mf.pgd_username,'') NOT IN ('PDV','SYSTEM','SISTEMA','AUTOSYSTEM')
+          AND (mf.conta_debitar LIKE '1.1.2.%' OR mf.conta_creditar LIKE '1.1.2.%')
         ORDER BY mf.pgd_when DESC
         LIMIT 8000`,
       [emp, dataIni, dataFim],
@@ -103,7 +116,7 @@ export async function GET(req: Request) {
     } catch { /* ignora */ }
   }
 
-  const nomes = await mapaNomes([...rows.map(r => dec(r.operador)), ...rows.map(r => dec(r.alterou))])
+  const nomes = await mapaNomes([...frentLogins, ...rows.map(r => dec(r.operador)), ...rows.map(r => dec(r.alterou))])
   const nomeDe = (login: string) => nomes.get(login) || login
 
   // Agrupa pelo REGISTRO individual (grid) + instante → um evento (I / D / Uo+Un).
@@ -171,16 +184,13 @@ export async function GET(req: Request) {
 
   alteracoes.sort((a, b) => b.quando.localeCompare(a.quando))
 
-  // Listas montadas SÓ a partir das alterações reais (quem realmente mexeu / cujos
-  // caixas foram mexidos) — não de todos os operadores do dia.
-  const frentSet = new Map<string, string>()
-  const altSet   = new Map<string, string>()
-  for (const a of alteracoes) {
-    if (a.operador_login && !USUARIOS_SISTEMA.has(a.operador_login)) frentSet.set(a.operador_login, a.operador)
-    if (a.alterou_login  && !USUARIOS_SISTEMA.has(a.alterou_login))  altSet.set(a.alterou_login, a.alterou)
-  }
-  const frentistas = [...frentSet].map(([login, nome]) => ({ login, nome })).sort((a, b) => a.nome.localeCompare(b.nome))
-  const usuarios   = [...altSet].map(([login, nome]) => ({ login, nome })).sort((a, b) => a.nome.localeCompare(b.nome))
+  // Frentistas do dia = operadores do caixa (conta 1.1.2.%). "Quem alterou" = só
+  // quem realmente fez alterações.
+  const frentistas = [...new Set(frentLogins)]
+    .map(login => ({ login, nome: nomeDe(login) })).sort((a, b) => a.nome.localeCompare(b.nome))
+  const altSet = new Map<string, string>()
+  for (const a of alteracoes) if (a.alterou_login && !USUARIOS_SISTEMA.has(a.alterou_login)) altSet.set(a.alterou_login, a.alterou)
+  const usuarios = [...altSet].map(([login, nome]) => ({ login, nome })).sort((a, b) => a.nome.localeCompare(b.nome))
 
   // Aplica os filtros só no resultado (as listas acima continuam completas)
   const filtradas = alteracoes.filter(a =>

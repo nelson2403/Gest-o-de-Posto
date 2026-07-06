@@ -1,7 +1,7 @@
 'use client'
 
-import { Fragment, useState } from 'react'
-import { Loader2, Search, Plus, Pencil, Trash2, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Loader2, Search, Plus, Pencil, Trash2, AlertTriangle, User } from 'lucide-react'
 
 type PostoRow = { id: string; nome: string }
 type CampoDetalhe = { campo: string; antes: string | null; depois: string | null; mudou: boolean }
@@ -9,6 +9,7 @@ type Alteracao = {
   tipo: 'insercao' | 'exclusao' | 'alteracao'
   quando: string
   alterou: string
+  alterou_login: string
   operador: string
   operador_login: string
   terceiro: boolean
@@ -28,14 +29,29 @@ type Dados = {
   periodo: { ini: string; fim: string }
 }
 const HOJE = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+const hora = (iso: string) => iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''
 
-const fmt = (n: number | null) => n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const fmtQuando = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
+// ── Frases descritivas ─────────────────────────────────────────────────────
+const campoVal = (a: Alteracao, campo: string, lado: 'antes' | 'depois') =>
+  a.campos.find(c => c.campo === campo)?.[lado] ?? null
+
+function descreverAlteracao(a: Alteracao): string {
+  const mud = a.campos.filter(c => c.mudou)
+  if (!mud.length) return 'lançamento re-gravado (sem mudança de valor)'
+  return mud.map(c => `${c.campo.toLowerCase()} estava "${c.antes ?? '—'}", alterado para "${c.depois ?? '—'}"`).join(' · ')
+}
+function descreverLinha(a: Alteracao, lado: 'antes' | 'depois'): string {
+  const forma = campoVal(a, 'Forma de pagamento', lado) || 'lançamento'
+  const valor = campoVal(a, 'Valor', lado)
+  const doc   = campoVal(a, 'Documento', lado)
+  const pessoa = campoVal(a, 'Pessoa', lado)
+  return `${forma}${valor ? ` de ${valor}` : ''}${doc ? ` · autorização/doc ${doc}` : ''}${pessoa ? ` · ${pessoa}` : ''}`
+}
 
 const TIPO_INFO = {
-  insercao:  { label: 'Inserção',  cls: 'bg-emerald-100 text-emerald-700', icon: Plus },
-  alteracao: { label: 'Alteração', cls: 'bg-amber-100 text-amber-700',     icon: Pencil },
-  exclusao:  { label: 'Exclusão',  cls: 'bg-red-100 text-red-700',         icon: Trash2 },
+  insercao:  { label: 'Inserções', cls: 'text-emerald-700', dot: 'bg-emerald-500', icon: Plus },
+  alteracao: { label: 'Alterações', cls: 'text-amber-700', dot: 'bg-amber-500', icon: Pencil },
+  exclusao:  { label: 'Exclusões', cls: 'text-red-700', dot: 'bg-red-500', icon: Trash2 },
 } as const
 
 export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
@@ -44,12 +60,10 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
   const [dataFim, setDataFim] = useState(HOJE)
   const [operador, setOperador] = useState('')
   const [alterou, setAlterou] = useState('')
-  const [tipo, setTipo] = useState('')
   const [soTerceiros, setSoTerceiros] = useState(false)
   const [dados, setDados] = useState<Dados | null>(null)
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
-  const [aberto, setAberto] = useState<number | null>(null)
 
   async function buscar(soTerceirosArg?: boolean) {
     if (!postoId) return
@@ -61,14 +75,13 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
       if (dataFim) p.set('data_fim', dataFim)
       if (operador) p.set('operador', operador)
       if (alterou) p.set('alterou', alterou)
-      if (tipo) p.set('tipo', tipo)
       if (st) p.set('so_terceiros', '1')
       const r = await fetch(`/api/caixa/alteracoes?${p}`, { cache: 'no-store' })
       const txt = await r.text()
       let d: any = null
-      try { d = txt ? JSON.parse(txt) : null } catch { /* resposta não-JSON */ }
+      try { d = txt ? JSON.parse(txt) : null } catch { /* não-JSON */ }
       if (!r.ok) throw new Error(d?.error || `Erro ${r.status} ao buscar`)
-      if (!d) throw new Error('Resposta vazia do servidor (a busca pode ter demorado). Tente um período menor.')
+      if (!d) throw new Error('Resposta vazia do servidor (tente um período menor).')
       setDados(d)
     } catch (e: any) {
       setErro(e.message)
@@ -77,12 +90,25 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
     }
   }
 
+  // Agrupa por QUEM ALTEROU → e dentro, por tipo
+  const grupos = useMemo(() => {
+    if (!dados) return []
+    const m = new Map<string, { alterou: string; terceiro: boolean; alteracao: Alteracao[]; insercao: Alteracao[]; exclusao: Alteracao[] }>()
+    for (const a of dados.alteracoes) {
+      if (!m.has(a.alterou)) m.set(a.alterou, { alterou: a.alterou, terceiro: false, alteracao: [], insercao: [], exclusao: [] })
+      const g = m.get(a.alterou)!
+      g[a.tipo].push(a)
+      if (a.terceiro) g.terceiro = true
+    }
+    return [...m.values()].sort((x, y) =>
+      (y.alteracao.length + y.insercao.length + y.exclusao.length) - (x.alteracao.length + x.insercao.length + x.exclusao.length))
+  }, [dados])
+
   return (
-    <div className="p-4 md:p-6 max-w-6xl space-y-5">
+    <div className="p-4 md:p-6 max-w-5xl space-y-5">
       <p className="text-[13px] text-gray-500">
-        Mostra quando <b>alguém mexe no lançamento de outro frentista</b> (alteração/inserção por terceiro) e <b>todas as
-        exclusões</b> — as operações normais do próprio frentista (venda/re-gravação) ficam de fora. As linhas de terceiro
-        ficam <span className="text-red-600 font-medium">destacadas</span>.
+        Histórico detalhado de <b>quem mexeu no caixa dos frentistas</b> — alterações, inserções e exclusões feitas por
+        terceiros (e todas as exclusões). Agrupado por quem alterou.
       </p>
 
       {/* Filtros */}
@@ -98,24 +124,23 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">De</label>
             <input type="date" value={dataIni} onChange={e => setDataIni(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Até</label>
             <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <button onClick={() => buscar()} disabled={loading}
             className="px-5 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50 flex items-center gap-1.5">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Buscar
           </button>
         </div>
-        {/* Filtros pós-busca (populados do resultado) */}
         {dados && (
           <div className="flex items-end gap-3 flex-wrap pt-2 border-t border-gray-100">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Frentista (caixa)</label>
-              <select value={operador} onChange={e => { setOperador(e.target.value) }}
+              <select value={operador} onChange={e => setOperador(e.target.value)}
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm min-w-[200px]">
                 <option value="">Todos os frentistas</option>
                 {dados.frentistas.map(f => <option key={f.login} value={f.login}>{f.nome}</option>)}
@@ -127,16 +152,6 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm min-w-[200px]">
                 <option value="">Todos</option>
                 {dados.usuarios.map(u => <option key={u.login} value={u.login}>{u.nome}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Operação</label>
-              <select value={tipo} onChange={e => setTipo(e.target.value)}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                <option value="">Todas</option>
-                <option value="insercao">Inserção</option>
-                <option value="alteracao">Alteração</option>
-                <option value="exclusao">Exclusão</option>
               </select>
             </div>
             <label className="flex items-center gap-2 text-sm text-gray-700 pb-2 cursor-pointer">
@@ -155,88 +170,64 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
 
       {/* Resumo */}
       {dados && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {[
-            { label: 'Total', valor: dados.resumo.total, cls: 'text-gray-900' },
-            { label: 'Inserções', valor: dados.resumo.insercoes, cls: 'text-emerald-600' },
-            { label: 'Alterações', valor: dados.resumo.alteracoes, cls: 'text-amber-600' },
-            { label: 'Exclusões', valor: dados.resumo.exclusoes, cls: 'text-red-600' },
-          ].map(c => (
-            <div key={c.label} className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
-              <p className="text-[11px] text-gray-400">{c.label}</p>
-              <p className={`text-[20px] font-bold mt-0.5 ${c.cls}`}>{c.valor}</p>
-            </div>
-          ))}
-          <button
-            onClick={() => { setSoTerceiros(true); buscar(true) }}
-            className={`text-left rounded-xl p-3 shadow-sm border transition ${
-              dados.resumo.terceiros > 0 ? 'bg-red-50 border-red-200 hover:bg-red-100' : 'bg-white border-gray-200'
-            }`}
-            title="Ver só as alterações feitas por quem não é o frentista">
-            <p className="text-[11px] text-red-500 font-medium">Por terceiros ⚠</p>
-            <p className="text-[20px] font-bold mt-0.5 text-red-600">{dados.resumo.terceiros}</p>
-          </button>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <ResumoCard label="Alterações" valor={dados.resumo.alteracoes} cls="text-amber-600" />
+          <ResumoCard label="Inserções" valor={dados.resumo.insercoes} cls="text-emerald-600" />
+          <ResumoCard label="Exclusões" valor={dados.resumo.exclusoes} cls="text-red-600" />
+          <ResumoCard label="Por terceiros ⚠" valor={dados.resumo.terceiros} cls="text-red-600" />
         </div>
       )}
 
-      {/* Resultado */}
+      {/* Narrativa agrupada por quem alterou */}
       {dados && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
-            {dados.total} alteração(ões) no período {dados.periodo.ini.split('-').reverse().join('/')} a {dados.periodo.fim.split('-').reverse().join('/')}
-            {dados.total > dados.alteracoes.length && ` · exibindo ${dados.alteracoes.length}`}
+        grupos.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 py-12 text-center text-gray-400 text-sm">
+            Nenhuma alteração no caixa no período/filtro.
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase">
-                  <th className="w-6" />
-                  <th className="text-left px-4 py-2 font-medium">Data / Hora</th>
-                  <th className="text-left px-3 py-2 font-medium">Operação</th>
-                  <th className="text-left px-3 py-2 font-medium">Quem alterou</th>
-                  <th className="text-left px-3 py-2 font-medium">Frentista (caixa)</th>
-                  <th className="text-left px-3 py-2 font-medium">Documento</th>
-                  <th className="text-left px-3 py-2 font-medium">Estação</th>
-                  <th className="text-right px-4 py-2 font-medium">Valor</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {dados.alteracoes.map((a, i) => {
-                  const info = TIPO_INFO[a.tipo]
-                  const Icon = info.icon
-                  const exp = aberto === i
-                  return (
-                    <Fragment key={i}>
-                      <tr onClick={() => setAberto(exp ? null : i)} className={`cursor-pointer ${a.terceiro ? 'bg-red-50/50 hover:bg-red-50' : 'hover:bg-gray-50'}`}>
-                        <td className="pl-3 text-gray-400">{exp ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}</td>
-                        <td className="px-4 py-2 text-gray-600 whitespace-nowrap text-[12px]">{fmtQuando(a.quando)}</td>
-                        <td className="px-3 py-2">
-                          <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${info.cls}`}>
-                            <Icon className="w-3 h-3" /> {info.label}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 font-medium text-gray-800">
-                          {a.terceiro && <AlertTriangle className="w-3.5 h-3.5 text-red-500 inline mr-1" />}
-                          {a.alterou || '—'}
-                        </td>
-                        <td className={`px-3 py-2 ${a.terceiro ? 'text-red-700 font-medium' : 'text-gray-600'}`}>{a.operador || '—'}</td>
-                        <td className="px-3 py-2 text-gray-700 font-mono text-[12px]">{a.documento || '—'}</td>
-                        <td className="px-3 py-2 text-gray-500 text-[11px] font-mono">{a.estacao || '—'}</td>
-                        <td className="px-4 py-2 text-right font-mono text-gray-800 whitespace-nowrap">{fmt(a.valor)}</td>
-                      </tr>
-                      {exp && (
-                        <tr><td colSpan={8} className="px-4 py-3 bg-gray-50/70"><Detalhe a={a} /></td></tr>
-                      )}
-                    </Fragment>
-                  )
-                })}
-                {dados.alteracoes.length === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">Nenhuma alteração no período/filtro.</td></tr>
-                )}
-              </tbody>
-            </table>
+        ) : (
+          <div className="space-y-4">
+            {grupos.map(g => (
+              <div key={g.alterou} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                <div className={`px-5 py-3 border-b flex items-center gap-2 ${g.terceiro ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-200'}`}>
+                  <User className={`w-4 h-4 ${g.terceiro ? 'text-red-500' : 'text-gray-400'}`} />
+                  <span className="text-[15px] font-bold text-gray-800">{g.alterou}</span>
+                  {g.terceiro && <span className="text-[11px] font-semibold text-red-600 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> mexeu no caixa de outros</span>}
+                </div>
+                <div className="p-5 space-y-4">
+                  {(['alteracao', 'insercao', 'exclusao'] as const).map(tipo => {
+                    const lista = g[tipo]
+                    if (!lista.length) return null
+                    const info = TIPO_INFO[tipo]
+                    const Icon = info.icon
+                    return (
+                      <div key={tipo}>
+                        <p className={`text-[13px] font-bold mb-1.5 flex items-center gap-1.5 ${info.cls}`}>
+                          <Icon className="w-3.5 h-3.5" /> {info.label} ({lista.length})
+                        </p>
+                        <ul className="space-y-1.5">
+                          {lista.map((a, i) => (
+                            <li key={i} className="flex items-start gap-2 text-[13px] text-gray-700">
+                              <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${info.dot}`} />
+                              <span>
+                                {tipo === 'alteracao' && descreverAlteracao(a)}
+                                {tipo === 'insercao' && <>Inseriu {descreverLinha(a, 'depois')}</>}
+                                {tipo === 'exclusao' && <>Excluiu {descreverLinha(a, 'antes')}</>}
+                                <span className="text-gray-400 text-[11px]">
+                                  {' — '}caixa de <b className="text-gray-500">{a.operador}</b> · {hora(a.quando)}
+                                  {a.estacao ? ` · ${a.estacao}` : ''}
+                                </span>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
+        )
       )}
 
       {!dados && !loading && (
@@ -248,49 +239,11 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
   )
 }
 
-function Detalhe({ a }: { a: Alteracao }) {
-  if (!a.campos.length) return <p className="text-[12px] text-gray-400">Sem detalhes do registro.</p>
-
-  if (a.tipo === 'alteracao') {
-    return (
-      <div className="max-w-2xl">
-        <p className="text-[12px] font-semibold text-amber-700 mb-1.5">O que foi alterado (antes → depois):</p>
-        <table className="w-full text-[12px] border border-gray-200 rounded-lg overflow-hidden bg-white">
-          <thead>
-            <tr className="bg-gray-100 text-gray-500">
-              <th className="text-left px-3 py-1.5 font-medium">Campo</th>
-              <th className="text-left px-3 py-1.5 font-medium">Antes</th>
-              <th className="text-left px-3 py-1.5 font-medium">Depois</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {a.campos.map((c, i) => (
-              <tr key={i} className={c.mudou ? 'bg-amber-50' : ''}>
-                <td className="px-3 py-1.5 font-medium text-gray-700">{c.campo}</td>
-                <td className="px-3 py-1.5 text-gray-500">{c.antes ?? '—'}</td>
-                <td className={`px-3 py-1.5 ${c.mudou ? 'text-amber-800 font-semibold' : 'text-gray-500'}`}>{c.depois ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    )
-  }
-
-  const inser = a.tipo === 'insercao'
+function ResumoCard({ label, valor, cls }: { label: string; valor: number; cls: string }) {
   return (
-    <div className="max-w-xl">
-      <p className={`text-[12px] font-semibold mb-1.5 ${inser ? 'text-emerald-700' : 'text-red-700'}`}>
-        {inser ? 'Conteúdo inserido:' : 'Conteúdo excluído:'}
-      </p>
-      <div className={`border rounded-lg divide-y bg-white ${inser ? 'border-emerald-200 divide-emerald-50' : 'border-red-200 divide-red-50'}`}>
-        {a.campos.map((c, i) => (
-          <div key={i} className="flex justify-between gap-4 px-3 py-1.5 text-[12px]">
-            <span className="text-gray-500">{c.campo}</span>
-            <span className="text-gray-800 font-medium text-right">{(inser ? c.depois : c.antes) ?? '—'}</span>
-          </div>
-        ))}
-      </div>
+    <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+      <p className="text-[11px] text-gray-400">{label}</p>
+      <p className={`text-[20px] font-bold mt-0.5 ${cls}`}>{valor}</p>
     </div>
   )
 }
