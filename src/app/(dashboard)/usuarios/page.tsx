@@ -18,8 +18,8 @@ import { can, PERMISSIONS, ROLE_LABELS, ROLE_COLORS, getRoleLabel, getRoleColor 
 import { formatDate } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils/cn'
 import {
-  Plus, Pencil, Trash2, Loader2, Eye, EyeOff, UserCircle, KeyRound, MapPin,
-  CheckCircle2, XCircle, ClipboardList, RotateCcw, AlertTriangle, Info,
+  Plus, Pencil, Loader2, Eye, EyeOff, UserCircle, KeyRound, MapPin,
+  CheckCircle2, XCircle, ClipboardList, RotateCcw, AlertTriangle, Info, Ban, UserCheck,
 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Usuario, Empresa, Posto, Role, PerfilPermissoes } from '@/types/database.types'
@@ -577,13 +577,28 @@ export default function UsuariosPage() {
     })
     const data = await res.json()
     if (!res.ok) {
-      toast({ variant: 'destructive', title: 'Erro ao excluir', description: data.error })
+      toast({ variant: 'destructive', title: 'Erro ao inativar', description: data.error })
     } else {
-      toast({ title: 'Usuário excluído!' })
+      toast({ title: 'Usuário inativado', description: `"${selected.nome}" perdeu o acesso. As tarefas e o histórico foram preservados.` })
       setOpenDelete(false)
       load()
     }
     setDeleting(false)
+  }
+
+  async function handleReativar(u: Usuario) {
+    const res = await fetch('/api/usuarios', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: u.id, ativo: true }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      toast({ variant: 'destructive', title: 'Erro ao reativar', description: data.error })
+    } else {
+      toast({ title: 'Usuário reativado', description: `"${u.nome}" voltou a ter acesso ao sistema.` })
+      load()
+    }
   }
 
   const availableRoles: Role[] = role === 'master'
@@ -722,14 +737,25 @@ export default function UsuariosPage() {
               </Button>
             )}
             {!isSelf && can(role ?? null, 'usuarios.delete') && (
-              <Button
-                variant="ghost" size="icon"
-                className="h-8 w-8 text-gray-400 hover:text-red-600 hover:bg-red-50"
-                onClick={() => { setSelected(u); setOpenDelete(true) }}
-                title="Excluir"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
+              u.ativo ? (
+                <Button
+                  variant="ghost" size="icon"
+                  className="h-8 w-8 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                  onClick={() => { setSelected(u); setOpenDelete(true) }}
+                  title="Inativar (bloquear acesso)"
+                >
+                  <Ban className="w-3.5 h-3.5" />
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost" size="icon"
+                  className="h-8 w-8 text-gray-400 hover:text-green-600 hover:bg-green-50"
+                  onClick={() => handleReativar(u)}
+                  title="Reativar (liberar acesso)"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                </Button>
+              )
             )}
             {isSelf && (
               <span className="text-[11px] text-gray-400 px-2">Você</span>
@@ -1417,8 +1443,9 @@ export default function UsuariosPage() {
       <ConfirmDialog
         open={openDelete}
         onOpenChange={open => { if (!deleting) setOpenDelete(open) }}
-        title="Excluir usuário"
-        description={`Tem certeza que deseja excluir "${selected?.nome}"? O usuário perderá acesso ao sistema imediatamente.`}
+        title="Inativar usuário"
+        description={`Tem certeza que deseja inativar "${selected?.nome}"? Ele perde o acesso ao sistema imediatamente, mas as tarefas e o histórico continuam no nome dele. Você pode reativá-lo depois.`}
+        confirmLabel="Inativar"
         onConfirm={handleDelete}
         loading={deleting}
       />

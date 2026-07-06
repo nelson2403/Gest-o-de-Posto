@@ -113,6 +113,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .single()
 
         if (data) {
+          // Usuário inativado perde o acesso — encerra a sessão.
+          if ((data as Usuario).ativo === false) {
+            await supabase.auth.signOut()
+            setUsuario(null)
+            setPermissoesEfetivas(null)
+            setLoading(false)
+            return
+          }
           setUsuario(data as Usuario)
           await loadPermissions(data.role, data.perfil_id ?? null)
           // Postos vinculados ao gerente (junção; fallback para o posto principal)
