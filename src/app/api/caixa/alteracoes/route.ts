@@ -234,8 +234,10 @@ export async function GET(req: Request) {
   // quem realmente fez alterações.
   const frentistas = [...new Set(frentLogins)]
     .map(login => ({ login, nome: nomeDe(login) })).sort((a, b) => a.nome.localeCompare(b.nome))
+  // "Quem alterou/conferiu" NÃO inclui quem só autorizou conversão para a prazo —
+  // esses aparecem apenas no relatório de conversões, para ciência dos donos.
   const altSet = new Map<string, string>()
-  for (const a of alteracoes) if (a.alterou_login && !USUARIOS_SISTEMA.has(a.alterou_login)) altSet.set(a.alterou_login, a.alterou)
+  for (const a of alteracoes) if (a.alterou_login && !USUARIOS_SISTEMA.has(a.alterou_login) && !a.fiado) altSet.set(a.alterou_login, a.alterou)
   const usuarios = [...altSet].map(([login, nome]) => ({ login, nome })).sort((a, b) => a.nome.localeCompare(b.nome))
 
   // Aplica os filtros só no resultado (as listas acima continuam completas)
@@ -245,12 +247,14 @@ export async function GET(req: Request) {
     (!fAlterou || a.alterou_login === fAlterou) &&
     (!soTerceiros || a.terceiro))
 
+  // Conversões para a prazo saem do balde de "inserções" e dos "terceiros" —
+  // viram uma categoria própria (só no relatório de conversões).
   const resumo = {
     total:      filtradas.length,
-    insercoes:  filtradas.filter(a => a.tipo === 'insercao').length,
+    insercoes:  filtradas.filter(a => a.tipo === 'insercao' && !a.fiado).length,
     alteracoes: filtradas.filter(a => a.tipo === 'alteracao').length,
     exclusoes:  filtradas.filter(a => a.tipo === 'exclusao').length,
-    terceiros:  filtradas.filter(a => a.terceiro).length,
+    terceiros:  filtradas.filter(a => a.terceiro && !a.fiado).length,
     fiados:     filtradas.filter(a => a.fiado).length,
   }
 
