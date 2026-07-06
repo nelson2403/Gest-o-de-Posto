@@ -31,21 +31,49 @@ type Dados = {
 const HOJE = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
 const hora = (iso: string) => iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''
 
-// ── Frases descritivas ─────────────────────────────────────────────────────
+// ── Detalhes descritivos ───────────────────────────────────────────────────
 const campoVal = (a: Alteracao, campo: string, lado: 'antes' | 'depois') =>
   a.campos.find(c => c.campo === campo)?.[lado] ?? null
 
-function descreverAlteracao(a: Alteracao): string {
-  const mud = a.campos.filter(c => c.mudou)
-  if (!mud.length) return 'lançamento re-gravado (sem mudança de valor)'
-  return mud.map(c => `${c.campo.toLowerCase()} estava "${c.antes ?? '—'}", alterado para "${c.depois ?? '—'}"`).join(' · ')
+function Pilula({ children, cor }: { children: React.ReactNode; cor: 'red' | 'green' | 'gray' }) {
+  const cls = cor === 'red' ? 'bg-red-50 text-red-700 border-red-200'
+    : cor === 'green' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+    : 'bg-gray-50 text-gray-600 border-gray-200'
+  return <span className={`px-1.5 py-0.5 rounded border text-[12px] font-semibold ${cls}`}>{children}</span>
 }
-function descreverLinha(a: Alteracao, lado: 'antes' | 'depois'): string {
-  const forma = campoVal(a, 'Forma de pagamento', lado) || 'lançamento'
-  const valor = campoVal(a, 'Valor', lado)
-  const doc   = campoVal(a, 'Documento', lado)
+
+// alteração: cada campo que mudou como  antes → depois
+function DetalheAlteracao({ a }: { a: Alteracao }) {
+  const mud = a.campos.filter(c => c.mudou)
+  if (!mud.length) return <span className="text-gray-500">alteração no lançamento</span>
+  return (
+    <div className="space-y-1">
+      {mud.map((c, i) => (
+        <div key={i} className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[12px] text-gray-500">{c.campo}:</span>
+          <Pilula cor="red"><span className="line-through">{c.antes ?? '—'}</span></Pilula>
+          <span className="text-gray-400 text-xs">→</span>
+          <Pilula cor="green">{c.depois ?? '—'}</Pilula>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// inserção / exclusão: forma + valor + autorização destacados
+function DetalheLinha({ a, lado }: { a: Alteracao; lado: 'antes' | 'depois' }) {
+  const forma  = campoVal(a, 'Forma de pagamento', lado)
+  const valor  = campoVal(a, 'Valor', lado)
+  const doc    = campoVal(a, 'Documento', lado)
   const pessoa = campoVal(a, 'Pessoa', lado)
-  return `${forma}${valor ? ` de ${valor}` : ''}${doc ? ` · autorização/doc ${doc}` : ''}${pessoa ? ` · ${pessoa}` : ''}`
+  return (
+    <span className="inline-flex items-center gap-1.5 flex-wrap">
+      {forma && <Pilula cor="gray">{forma}</Pilula>}
+      {valor && <span className="font-bold text-gray-800">{valor}</span>}
+      {doc && <span className="text-[11px] text-gray-400">autorização {doc}</span>}
+      {pessoa && <span className="text-[11px] text-gray-400">· {pessoa}</span>}
+    </span>
+  )
 }
 
 const TIPO_INFO = {
@@ -204,19 +232,19 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
                         <p className={`text-[13px] font-bold mb-1.5 flex items-center gap-1.5 ${info.cls}`}>
                           <Icon className="w-3.5 h-3.5" /> {info.label} ({lista.length})
                         </p>
-                        <ul className="space-y-1.5">
+                        <ul className="space-y-2">
                           {lista.map((a, i) => (
-                            <li key={i} className="flex items-start gap-2 text-[13px] text-gray-700">
-                              <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${info.dot}`} />
-                              <span>
-                                {tipo === 'alteracao' && descreverAlteracao(a)}
-                                {tipo === 'insercao' && <>Inseriu {descreverLinha(a, 'depois')}</>}
-                                {tipo === 'exclusao' && <>Excluiu {descreverLinha(a, 'antes')}</>}
-                                <span className="text-gray-400 text-[11px]">
-                                  {' — '}caixa de <b className="text-gray-500">{a.operador}</b> · {hora(a.quando)}
+                            <li key={i} className="flex items-start gap-2 text-[13px] text-gray-700 border-l-2 border-gray-100 pl-3 py-0.5">
+                              <span className={`w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0 ${info.dot}`} />
+                              <div className="min-w-0">
+                                {tipo === 'alteracao' && <DetalheAlteracao a={a} />}
+                                {tipo === 'insercao' && <span className="inline-flex items-center gap-1.5 flex-wrap"><span className="font-semibold text-emerald-700">Inseriu</span> <DetalheLinha a={a} lado="depois" /></span>}
+                                {tipo === 'exclusao' && <span className="inline-flex items-center gap-1.5 flex-wrap"><span className="font-semibold text-red-700">Excluiu</span> <DetalheLinha a={a} lado="antes" /></span>}
+                                <div className="text-gray-400 text-[11px] mt-0.5">
+                                  caixa de <b className="text-gray-600">{a.operador}</b> · {hora(a.quando)}
                                   {a.estacao ? ` · ${a.estacao}` : ''}
-                                </span>
-                              </span>
+                                </div>
+                              </div>
                             </li>
                           ))}
                         </ul>

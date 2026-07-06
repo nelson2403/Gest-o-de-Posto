@@ -7,8 +7,10 @@ export const dynamic = 'force-dynamic'
 
 const dec = (b: unknown) => (b && Buffer.isBuffer(b) ? (b as Buffer).toString('latin1') : (b == null ? '' : String(b)))
 
-// Usuários "de sistema" (não são pessoas) — não contam como alteração de usuário.
-const USUARIOS_SISTEMA = new Set(['PDV', 'SYSTEM', 'SISTEMA', 'AUTOSYSTEM'])
+// Usuários "de sistema" (não são pessoas / são integração TEF-PDV) — não contam
+// como alteração feita por um usuário e nem como frentista.
+const USUARIOS_SISTEMA = new Set(['PDV', 'SYSTEM', 'SISTEMA', 'AUTOSYSTEM', 'lzt', 'LZT'])
+const SISTEMA_SQL = "('PDV','SYSTEM','SISTEMA','AUTOSYSTEM','lzt','LZT')"
 
 export interface CampoDetalhe { campo: string; antes: string | null; depois: string | null; mudou: boolean }
 export interface AlteracaoCaixa {
@@ -65,19 +67,37 @@ export async function GET(req: Request) {
   const emp = Number(posto?.codigo_empresa_externo)
   if (!emp) return NextResponse.json({ error: 'Posto sem empresa externa' }, { status: 400 })
 
-  // Frentistas do dia = operadores dos movimentos na CONTA DO CAIXA (1.1.2.%)
+  // Conta(s) do PDV de COMBUSTÍVEL (nome "PDV - <posto>") — exclui loja, caixa
+  // interno e contas inativas. É onde caem as vendas/recebimentos dos frentistas
+  // de pista. É a conta que faz a lista bater com a Conferência de Caixa.
+  let pdvContas: string[] = []
+  try {
+    const pc = await queryAS<{ c: string }>(
+      `SELECT codigo c FROM conta
+        WHERE nome ILIKE 'PDV%' AND nome NOT ILIKE '%LOJA%' AND nome NOT ILIKE '%INATIV%'`)
+    pdvContas = pc.map(r => String(r.c)).filter(Boolean)
+  } catch { /* usa fallback abaixo */ }
+  const usaPdv = pdvContas.length > 0
+  const scopeCaixa = (a: string) => usaPdv
+    ? `(${a}.conta_debitar = ANY($4::text[]) OR ${a}.conta_creditar = ANY($4::text[]))`
+    : `(${a}.conta_debitar LIKE '1.1.2.%' OR ${a}.conta_creditar LIKE '1.1.2.%')`
+  const scopeParams: any[] = usaPdv ? [emp, dataIni, dataFim, pdvContas] : [emp, dataIni, dataFim]
+
+  // Frentistas do dia = operadores (turno de caixa) dos movimentos no PDV de combustível.
   let frentLogins: string[] = []
   try {
     const fr = await queryAS<{ u: string }>(
       `SELECT DISTINCT convert_to(coalesce(usuario,''),'LATIN1') u
-         FROM movto WHERE empresa=$1 AND data BETWEEN $2 AND $3 AND usuario IS NOT NULL
-          AND (conta_debitar LIKE '1.1.2.%' OR conta_creditar LIKE '1.1.2.%')`,
-      [emp, dataIni, dataFim],
+         FROM movto m WHERE empresa=$1 AND data BETWEEN $2 AND $3 AND usuario IS NOT NULL
+          AND ${scopeCaixa('m')}
+          AND coalesce(turno,0) > 0
+          AND coalesce(usuario,'') NOT IN ${SISTEMA_SQL}`,
+      scopeParams,
     )
     frentLogins = fr.map(r => dec(r.u)).filter(u => u && !USUARIOS_SISTEMA.has(u))
   } catch { /* segue */ }
 
-  // Alterações (movto_flow) — só na CONTA DO CAIXA (1.1.2.%), sem usuário de sistema
+  // Alterações (movto_flow) — só na conta do PDV de combustível, sem usuário de sistema
   let rows: any[] = []
   try {
     rows = await queryAS<any>(
@@ -93,11 +113,11 @@ export async function GET(req: Request) {
          FROM movto_flow mf
          LEFT JOIN motivo_movto mo ON mo.grid = mf.motivo
         WHERE mf.empresa = $1 AND mf.data BETWEEN $2 AND $3
-          AND coalesce(mf.pgd_username,'') NOT IN ('PDV','SYSTEM','SISTEMA','AUTOSYSTEM')
-          AND (mf.conta_debitar LIKE '1.1.2.%' OR mf.conta_creditar LIKE '1.1.2.%')
+          AND coalesce(mf.pgd_username,'') NOT IN ${SISTEMA_SQL}
+          AND ${scopeCaixa('mf')}
         ORDER BY mf.pgd_when DESC
         LIMIT 8000`,
-      [emp, dataIni, dataFim],
+      scopeParams,
     )
   } catch (e: any) {
     return NextResponse.json({ error: 'AUTOSYSTEM indisponível: ' + (e?.message ?? '') }, { status: 502 })
@@ -164,8 +184,16 @@ export async function GET(req: Request) {
     const campos: CampoDetalhe[] = CAMPOS.map(campo => {
       const antes  = antesRec  ? (antesRec  as any)[campo] : null
       const depois = depoisRec ? (depoisRec as any)[campo] : null
-      return { campo, antes, depois, mudou: (antes ?? '') !== (depois ?? '') }
+      // Mudança na OBSERVAÇÃO não conta como alteração do caixa — é só a nota de
+      // conciliação que a retaguarda (financeiro) grava. Só forma/valor/pessoa/
+      // documento/datas caracterizam uma mexida real no lançamento.
+      const mudou = campo !== 'Observação' && (antes ?? '') !== (depois ?? '')
+      return { campo, antes, depois, mudou }
     }).filter(c => c.antes != null || c.depois != null)
+
+    // Alteração que não mexeu em nenhum campo relevante (só re-gravou / mudou nota)
+    // = re-gravação automática da retaguarda → não é uma alteração de verdade.
+    if (tipo === 'alteracao' && !campos.some(c => c.mudou)) continue
 
     alteracoes.push({
       tipo,
