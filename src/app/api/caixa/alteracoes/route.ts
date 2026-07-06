@@ -24,6 +24,9 @@ export interface AlteracaoCaixa {
   estacao:        string
   documento:      string | null
   valor:          number | null
+  forma:          string | null   // forma de pagamento / bandeira do cartão do lançamento
+  pessoa:         string | null   // cliente (usado no fiado a prazo)
+  fiado:          boolean          // conversão para "A PRAZO" (fiado) feita por terceiro
   campos:         CampoDetalhe[]
 }
 
@@ -201,6 +204,12 @@ export async function GET(req: Request) {
     // = re-gravação automática da retaguarda → não é uma alteração de verdade.
     if (tipo === 'alteracao' && !campos.some(c => c.mudou)) continue
 
+    const forma  = (depoisRec?.['Forma de pagamento'] ?? antesRec?.['Forma de pagamento'] ?? null) as string | null
+    const pessoa = (depoisRec?.['Pessoa'] ?? antesRec?.['Pessoa'] ?? null) as string | null
+    // Conversão para FIADO: alguém (terceiro) inseriu um lançamento "A PRAZO" sobre a
+    // venda do frentista — normalmente era dinheiro e virou fiado (precisa de senha).
+    const fiado = tipo === 'insercao' && terceiro && !!forma && /prazo|fiad/i.test(forma)
+
     alteracoes.push({
       tipo,
       quando:         typeof ref.quando === 'string' ? ref.quando : ref.quando?.toISOString?.() ?? '',
@@ -212,6 +221,9 @@ export async function GET(req: Request) {
       estacao:        dec(ref.estacao) || '',
       documento:      dec(ref.documento) || null,
       valor:          ref.valor == null ? null : Number(ref.valor),
+      forma,
+      pessoa,
+      fiado,
       campos,
     })
   }
@@ -239,6 +251,7 @@ export async function GET(req: Request) {
     alteracoes: filtradas.filter(a => a.tipo === 'alteracao').length,
     exclusoes:  filtradas.filter(a => a.tipo === 'exclusao').length,
     terceiros:  filtradas.filter(a => a.terceiro).length,
+    fiados:     filtradas.filter(a => a.fiado).length,
   }
 
   return NextResponse.json({

@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Loader2, Search, Plus, Pencil, Trash2, AlertTriangle, User } from 'lucide-react'
+import { Loader2, Search, Plus, Pencil, Trash2, AlertTriangle, User, FileDown, CreditCard, HandCoins } from 'lucide-react'
 
 type PostoRow = { id: string; nome: string }
 type CampoDetalhe = { campo: string; antes: string | null; depois: string | null; mudou: boolean }
@@ -16,10 +16,13 @@ type Alteracao = {
   estacao: string
   documento: string | null
   valor: number | null
+  forma: string | null
+  pessoa: string | null
+  fiado: boolean
   campos: CampoDetalhe[]
 }
 type LoginNome = { login: string; nome: string }
-type Resumo = { total: number; insercoes: number; alteracoes: number; exclusoes: number; terceiros: number }
+type Resumo = { total: number; insercoes: number; alteracoes: number; exclusoes: number; terceiros: number; fiados: number }
 type Dados = {
   alteracoes: Alteracao[]
   total: number
@@ -42,20 +45,29 @@ function Pilula({ children, cor }: { children: React.ReactNode; cor: 'red' | 'gr
   return <span className={`px-1.5 py-0.5 rounded border text-[12px] font-semibold ${cls}`}>{children}</span>
 }
 
-// alteração: cada campo que mudou como  antes → depois
+// alteração: identifica o cartão (bandeira + autorização) e mostra cada campo que
+// mudou como  antes → depois
 function DetalheAlteracao({ a }: { a: Alteracao }) {
   const mud = a.campos.filter(c => c.mudou)
-  if (!mud.length) return <span className="text-gray-500">alteração no lançamento</span>
+  const forma = a.forma
+  const doc   = a.documento
   return (
     <div className="space-y-1">
-      {mud.map((c, i) => (
+      {(forma || doc) && (
+        <div className="flex items-center gap-1.5 flex-wrap text-[12px]">
+          <CreditCard className="w-3.5 h-3.5 text-gray-400" />
+          {forma && <span className="font-semibold text-gray-700">{forma}</span>}
+          {doc && <span className="text-gray-400">· autorização {doc}</span>}
+        </div>
+      )}
+      {mud.length ? mud.map((c, i) => (
         <div key={i} className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[12px] text-gray-500">{c.campo}:</span>
           <Pilula cor="red"><span className="line-through">{c.antes ?? '—'}</span></Pilula>
           <span className="text-gray-400 text-xs">→</span>
           <Pilula cor="green">{c.depois ?? '—'}</Pilula>
         </div>
-      ))}
+      )) : <span className="text-gray-500 text-[12px]">alteração no lançamento</span>}
     </div>
   )
 }
@@ -81,6 +93,21 @@ const TIPO_INFO = {
   alteracao: { label: 'Alterações', cls: 'text-amber-700', dot: 'bg-amber-500', icon: Pencil },
   exclusao:  { label: 'Exclusões', cls: 'text-red-700', dot: 'bg-red-500', icon: Trash2 },
 } as const
+
+// ── Frases (texto puro, reusadas no PDF) ────────────────────────────────────
+const money = (n: number | null) => n == null ? '' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+function linhaFrase(a: Alteracao): string {
+  const parts = [a.forma || 'lançamento']
+  if (a.valor != null) parts.push(money(a.valor))
+  if (a.documento) parts.push(`autorização ${a.documento}`)
+  if (a.pessoa) parts.push(a.pessoa)
+  return parts.join(' · ')
+}
+function alteracaoFrase(a: Alteracao): string {
+  const card = [a.forma, a.documento ? `autorização ${a.documento}` : ''].filter(Boolean).join(' · ')
+  const mud = a.campos.filter(c => c.mudou).map(c => `${c.campo}: ${c.antes ?? '-'} -> ${c.depois ?? '-'}`).join('; ')
+  return (card ? card + ' — ' : '') + (mud || 'alteração no lançamento')
+}
 
 export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
   const [postoId, setPostoId] = useState(postos[0]?.id ?? '')
@@ -131,6 +158,62 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
     return [...m.values()].sort((x, y) =>
       (y.alteracao.length + y.insercao.length + y.exclusao.length) - (x.alteracao.length + x.insercao.length + x.exclusao.length))
   }, [dados])
+
+  // Conversões para fiado (a prazo) — indicador de risco
+  const fiados = useMemo(() => dados ? dados.alteracoes.filter(a => a.fiado) : [], [dados])
+
+  const postoNome = postos.find(p => p.id === postoId)?.nome ?? ''
+
+  async function exportarPDF() {
+    if (!dados) return
+    const { jsPDF } = await import('jspdf')
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+    const M = 14, MAX_Y = 285, WRAP = 180
+    let y = 16
+    const check = (h: number) => { if (y + h > MAX_Y) { doc.addPage(); y = 16 } }
+    const write = (txt: string, opts: { size?: number; bold?: boolean; color?: [number, number, number]; indent?: number } = {}) => {
+      const { size = 9, bold = false, color = [40, 40, 40], indent = 0 } = opts
+      doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(size); doc.setTextColor(...color)
+      const lines = doc.splitTextToSize(txt, WRAP - indent) as string[]
+      for (const ln of lines) { check(size * 0.5); doc.text(ln, M + indent, y); y += size * 0.5 + 1.4 }
+    }
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(150, 20, 20)
+    doc.text('Alterações no Caixa', M, y); y += 7
+    write(`${postoNome}   ·   ${dados.periodo.ini}${dados.periodo.fim !== dados.periodo.ini ? ` a ${dados.periodo.fim}` : ''}`, { size: 11, color: [50, 50, 50] })
+    write(`Gerado em ${new Date().toLocaleString('pt-BR')}`, { size: 8, color: [140, 140, 140] })
+    y += 1
+    write(`Alterações: ${dados.resumo.alteracoes}    Inserções: ${dados.resumo.insercoes}    Exclusões: ${dados.resumo.exclusoes}    Por terceiros: ${dados.resumo.terceiros}    Conversões p/ fiado: ${dados.resumo.fiados}`, { size: 9, bold: true })
+    y += 2
+
+    if (fiados.length) {
+      check(8); write('(!) Conversões para FIADO (a prazo)', { size: 11, bold: true, color: [150, 20, 20] })
+      for (const a of fiados) {
+        write(`• ${money(a.valor)} — cliente ${a.pessoa ?? '—'} · autorizado por ${a.alterou} · caixa de ${a.operador} · ${hora(a.quando)}`, { size: 9, indent: 3, color: [120, 20, 20] })
+      }
+      y += 3
+    }
+
+    for (const g of grupos) {
+      check(10)
+      write(`${g.alterou}${g.terceiro ? '  (mexeu no caixa de outros)' : ''}`, { size: 12, bold: true, color: g.terceiro ? [150, 20, 20] : [30, 30, 30] })
+      const secs: [keyof typeof TIPO_INFO, Alteracao[]][] = [['alteracao', g.alteracao], ['insercao', g.insercao], ['exclusao', g.exclusao]]
+      for (const [tipo, lista] of secs) {
+        if (!lista.length) continue
+        write(`${TIPO_INFO[tipo].label} (${lista.length})`, { size: 10, bold: true, indent: 2, color: [90, 90, 90] })
+        for (const a of lista) {
+          const corpo = tipo === 'alteracao' ? alteracaoFrase(a)
+            : tipo === 'insercao' ? `Inseriu ${linhaFrase(a)}${a.fiado ? '  [FIADO]' : ''}`
+            : `Excluiu ${linhaFrase(a)}`
+          write(`• ${corpo}`, { size: 9, indent: 5 })
+          write(`caixa de ${a.operador} · ${hora(a.quando)}${a.estacao ? ` · ${a.estacao}` : ''}`, { size: 7.5, indent: 8, color: [150, 150, 150] })
+        }
+      }
+      y += 3
+    }
+
+    doc.save(`alteracoes-caixa-${postoNome.replace(/[^\w]+/g, '_')}-${dados.periodo.ini}.pdf`)
+  }
 
   return (
     <div className="p-4 md:p-6 max-w-5xl space-y-5">
@@ -198,11 +281,48 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
 
       {/* Resumo */}
       {dados && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <ResumoCard label="Alterações" valor={dados.resumo.alteracoes} cls="text-amber-600" />
           <ResumoCard label="Inserções" valor={dados.resumo.insercoes} cls="text-emerald-600" />
           <ResumoCard label="Exclusões" valor={dados.resumo.exclusoes} cls="text-red-600" />
           <ResumoCard label="Por terceiros ⚠" valor={dados.resumo.terceiros} cls="text-red-600" />
+          <ResumoCard label="Fiado a prazo ⚠" valor={dados.resumo.fiados} cls="text-rose-700" />
+        </div>
+      )}
+
+      {/* Botão exportar PDF */}
+      {dados && grupos.length > 0 && (
+        <div className="flex justify-end">
+          <button onClick={exportarPDF}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-1.5">
+            <FileDown className="w-4 h-4" /> Exportar PDF
+          </button>
+        </div>
+      )}
+
+      {/* Conversões para fiado (a prazo) — risco */}
+      {dados && fiados.length > 0 && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl overflow-hidden">
+          <div className="px-5 py-3 border-b border-rose-100 flex items-center gap-2">
+            <HandCoins className="w-4 h-4 text-rose-600" />
+            <span className="text-[14px] font-bold text-rose-800">Conversões para fiado (a prazo)</span>
+            <span className="text-[11px] text-rose-500">venda que virou fiado — precisa de senha de autorização</span>
+          </div>
+          <ul className="divide-y divide-rose-100">
+            {fiados.map((a, i) => (
+              <li key={i} className="px-5 py-2.5 text-[13px] text-gray-700 flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 flex-shrink-0" />
+                <div>
+                  <span className="font-bold text-gray-800">{money(a.valor)}</span>
+                  {a.pessoa && <span className="text-gray-600"> · cliente {a.pessoa}</span>}
+                  <span className="text-rose-700"> · autorizado por <b>{a.alterou}</b></span>
+                  <div className="text-gray-400 text-[11px] mt-0.5">
+                    caixa de <b className="text-gray-600">{a.operador}</b> · {hora(a.quando)}{a.estacao ? ` · ${a.estacao}` : ''}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -238,7 +358,12 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
                               <span className={`w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0 ${info.dot}`} />
                               <div className="min-w-0">
                                 {tipo === 'alteracao' && <DetalheAlteracao a={a} />}
-                                {tipo === 'insercao' && <span className="inline-flex items-center gap-1.5 flex-wrap"><span className="font-semibold text-emerald-700">Inseriu</span> <DetalheLinha a={a} lado="depois" /></span>}
+                                {tipo === 'insercao' && (
+                                  <span className="inline-flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-semibold text-emerald-700">Inseriu</span> <DetalheLinha a={a} lado="depois" />
+                                    {a.fiado && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 text-[10px] font-bold border border-rose-200"><HandCoins className="w-3 h-3" /> FIADO — autorizado por {a.alterou}</span>}
+                                  </span>
+                                )}
                                 {tipo === 'exclusao' && <span className="inline-flex items-center gap-1.5 flex-wrap"><span className="font-semibold text-red-700">Excluiu</span> <DetalheLinha a={a} lado="antes" /></span>}
                                 <div className="text-gray-400 text-[11px] mt-0.5">
                                   caixa de <b className="text-gray-600">{a.operador}</b> · {hora(a.quando)}
