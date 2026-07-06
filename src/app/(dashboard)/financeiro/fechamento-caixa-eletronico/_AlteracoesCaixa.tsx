@@ -191,7 +191,7 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
     if (fiados.length) {
       check(8); write('(!) Conversoes de nota para A PRAZO', { size: 11, bold: true, color: [150, 20, 20] })
       for (const a of fiados) {
-        write(`• ${money(a.valor)} — cliente ${a.pessoa ?? '—'} · login que autorizou: ${a.alterou} · caixa de ${a.operador} · ${hora(a.quando)}`, { size: 9, indent: 3, color: [120, 20, 20] })
+        write(`• ${money(a.valor)} — cliente ${a.pessoa ?? '—'} · caixa de ${a.operador} · ${hora(a.quando)}`, { size: 9, indent: 3, color: [120, 20, 20] })
       }
       y += 3
     }
@@ -317,7 +317,6 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
                 <div>
                   <span className="font-bold text-gray-800">{money(a.valor)}</span>
                   {a.pessoa && <span className="text-gray-600"> · cliente {a.pessoa}</span>}
-                  <span className="text-rose-700"> · login que autorizou: <b>{a.alterou}</b></span>
                   <div className="text-gray-400 text-[11px] mt-0.5">
                     caixa de <b className="text-gray-600">{a.operador}</b> · {hora(a.quando)}{a.estacao ? ` · ${a.estacao}` : ''}
                   </div>
