@@ -158,11 +158,38 @@ export async function DELETE(request: Request) {
 
   const { userId } = await request.json()
   if (!userId) return NextResponse.json({ error: 'userId obrigatório' }, { status: 400 })
+  if (userId === user.id) return NextResponse.json({ error: 'Você não pode excluir a si mesmo' }, { status: 400 })
 
   const adminSupabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
+
+  // ── Limpa referências que bloqueiam a exclusão (senão o Supabase retorna
+  //    "Database error deleting user") ────────────────────────────────────────
+  // Junções de postos (conciliador / operador de caixa)
+  await adminSupabase.from('usuario_postos_fechamento').delete().eq('usuario_id', userId)
+  await adminSupabase.from('usuario_postos_caixa').delete().eq('usuario_id', userId)
+  // Reatribui ao master que está excluindo as tabelas com usuario_id NOT NULL
+  // (tarefas / tarefas_recorrentes) — preserva o histórico.
+  for (const tab of ['tarefas', 'tarefas_recorrentes']) {
+    await adminSupabase.from(tab).update({ usuario_id: user.id }).eq('usuario_id', userId)
+  }
+  // Remove o registro interno. Se alguma outra tabela ainda referenciar o usuário
+  // por usuario_id, reatribui ao master e tenta de novo (trata FKs desconhecidas).
+  let usuariosErr: any = null
+  for (let i = 0; i < 8; i++) {
+    const { error } = await adminSupabase.from('usuarios').delete().eq('id', userId)
+    if (!error) { usuariosErr = null; break }
+    usuariosErr = error
+    const tab = error.message.match(/on table "(\w+)"/)?.[1]
+    if (!tab) break
+    const { error: reErr } = await adminSupabase.from(tab).update({ usuario_id: user.id }).eq('usuario_id', userId)
+    if (reErr) { usuariosErr = reErr; break }
+  }
+  if (usuariosErr) {
+    return NextResponse.json({ error: `Ainda há dados vinculados ao usuário: ${usuariosErr.message}` }, { status: 400 })
+  }
 
   const { error } = await adminSupabase.auth.admin.deleteUser(userId)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
