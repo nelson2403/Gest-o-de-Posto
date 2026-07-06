@@ -139,11 +139,13 @@ export async function GET(req: Request) {
   const nomes = await mapaNomes([...frentLogins, ...rows.map(r => dec(r.operador)), ...rows.map(r => dec(r.alterou))])
   const nomeDe = (login: string) => nomes.get(login) || login
 
-  // Agrupa pelo REGISTRO individual (grid) + instante → um evento (I / D / Uo+Un).
-  // (mlid é o documento e agrupa várias linhas — venda + pagamentos — misturando tudo.)
+  // Cada pgd_gfid é UMA operação no lançamento: I (inseriu), D (excluiu) ou o par
+  // Uo+Un (alterou — o valor ANTIGO e o NOVO vêm com o MESMO gfid). Agrupar por
+  // gfid casa o "antes" (Uo) com o "depois" (Un). (Agrupar por grid+instante
+  // misturava várias operações do mesmo registro no mesmo segundo.)
   const grupos = new Map<string, any[]>()
   for (const r of rows) {
-    const k = `${r.rgrid ?? r.mlid}|${r.quando?.toISOString?.() ?? r.quando}`
+    const k = String(r.gfid)
     if (!grupos.has(k)) grupos.set(k, [])
     grupos.get(k)!.push(r)
   }
@@ -161,14 +163,18 @@ export async function GET(req: Request) {
 
   const alteracoes: AlteracaoCaixa[] = []
   for (const grp of grupos.values()) {
-    // dedupe por gfid
-    const uniq = Array.from(new Map(grp.map(r => [r.gfid, r])).values())
-    const i  = uniq.find(r => r.op === 'I')
-    const d  = uniq.find(r => r.op === 'D')
-    const un = uniq.find(r => r.op === 'Un')
-    const uo = uniq.find(r => r.op === 'Uo')
+    const i  = grp.find(r => r.op === 'I')
+    const d  = grp.find(r => r.op === 'D')
+    const un = grp.find(r => r.op === 'Un')
+    const uo = grp.find(r => r.op === 'Uo')
     const ref = i || un || d || uo
     if (!ref) continue
+
+    // Alteração de verdade tem imagem ANTES (Uo) E DEPOIS (Un). Um Un sozinho (ou
+    // Uo sozinho), sem I/D, é re-gravação/baixa da retaguarda — snapshot sem edição
+    // real (ex.: conciliação de cartão feita por ALEXANDRA/HUGO) → ignora. Assim
+    // esses usuários de retaguarda deixam de aparecer como se tivessem conferido.
+    if (!i && !d && !(uo && un)) continue
 
     const tipo: AlteracaoCaixa['tipo'] = i ? 'insercao' : d ? 'exclusao' : 'alteracao'
     const alterou = dec(ref.alterou), operador = dec(ref.operador)
