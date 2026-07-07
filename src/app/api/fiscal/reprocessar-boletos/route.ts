@@ -36,6 +36,13 @@ function extractPdfTextStreams(buf: Buffer): string {
   return texts.join(' ')
 }
 
+// JPEG completo = começa com FFD8 e termina com FFD9. JPEG truncado faz o tesseract
+// nativo estourar ("Premature end of JPEG file") como uncaughtException e derruba o
+// servidor — por isso só mandamos ao OCR o que estiver íntegro.
+function jpegCompleto(j: Buffer | null): j is Buffer {
+  return !!j && j.length > 1000 && j[0] === 0xFF && j[1] === 0xD8 && j[j.length - 2] === 0xFF && j[j.length - 1] === 0xD9
+}
+
 function extractLargestJpeg(buf: Buffer): Buffer | null {
   let best: Buffer | null = null
   let pos = 0
@@ -138,9 +145,9 @@ async function parsePdfUrl(url: string): Promise<{ vencimento: string; valor: st
     const r1 = parseBoletoData(text)
     if (r1.vencimento || r1.valor) return r1
 
-    // 2. OCR
+    // 2. OCR — só com JPEG COMPLETO (evita crash nativo do tesseract)
     const jpeg = extractLargestJpeg(buffer)
-    if (jpeg) {
+    if (jpegCompleto(jpeg)) {
       const worker = await createWorker('por', 1, { logger: () => {} })
       try {
         const { data: { text: ocrText } } = await worker.recognize(jpeg)

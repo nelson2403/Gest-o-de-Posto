@@ -192,8 +192,15 @@ function extractBoletoData(text: string, valorRef?: number): { vencimento: strin
   return { vencimento, valor }
 }
 
+// JPEG completo = FFD8...FFD9. JPEG truncado estoura no tesseract nativo como
+// uncaughtException e derruba o servidor — então só mandamos ao OCR o que estiver íntegro.
+function jpegCompleto(j: Buffer | null | undefined): boolean {
+  return !!j && j.length > 1000 && j[0] === 0xFF && j[1] === 0xD8 && j[j.length - 2] === 0xFF && j[j.length - 1] === 0xD9
+}
+
 // ─── OCR com Tesseract ────────────────────────────────────────────────────────
 async function ocrImage(imageBuffer: Buffer): Promise<string> {
+  if (!jpegCompleto(imageBuffer)) return ''
   const worker = await createWorker('por', 1, {
     logger: () => {},
   })
