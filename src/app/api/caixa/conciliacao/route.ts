@@ -41,7 +41,7 @@ export async function GET(req: Request) {
   let sistema: LinhaSistema[] = []
   try {
     const rows = await queryAS<any>(
-      `SELECT m.grid, to_char(m.data,'YYYY-MM-DD') data, m.conta_debitar deb, m.valor::float valor,
+      `SELECT m.grid, to_char(m.data,'YYYY-MM-DD') AS dt, m.conta_debitar AS deb, m.valor::float AS valor,
               convert_to(coalesce(mo.nome,''),'LATIN1') motivo,
               convert_to(coalesce(p.nome,''),'LATIN1')  pessoa,
               convert_to(coalesce(m.obs,''),'LATIN1')   obs,
@@ -59,7 +59,7 @@ export async function GET(req: Request) {
       const descricao = [dec(r.motivo), dec(r.pessoa), dec(r.obs)].filter(Boolean).join(' · ')
       return {
         id: String(r.grid),
-        data: r.data,
+        data: r.dt,
         descricao: descricao || dec(r.documento) || '—',
         valor: entrada ? Number(r.valor) : -Number(r.valor),
         direcao: (entrada ? 'entrada' : 'saida') as 'entrada' | 'saida',
