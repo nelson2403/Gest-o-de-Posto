@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, Search, Link2Off, Wand2, Check, Building2, Cpu, Link2, Download, ClipboardCheck, CircleDot, Sparkles, X } from 'lucide-react'
+import { Loader2, Search, Link2Off, Wand2, Check, Building2, Cpu, Link2, Download, ClipboardCheck, CircleDot, Sparkles, X, Upload } from 'lucide-react'
 
 type PostoRow = { id: string; nome: string }
 type Conta = { id: string; banco: string; conta: string | null }
@@ -89,6 +89,7 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
   const [contaId, setContaId] = useState('')
   const [dataIni, setDataIni] = useState(HOJE)
   const [dataFim, setDataFim] = useState(HOJE)
+  const [arquivo, setArquivo] = useState<File | null>(null)
   const [dados, setDados] = useState<Dados | null>(null)
   const [conc, setConc] = useState<Concil[]>([])
   const [loading, setLoading] = useState(false)
@@ -126,11 +127,20 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
     if (!contaId) { setErro('Selecione a conta bancária.'); return }
     setLoading(true); setErro(null); setAviso(null); setSelBanco(new Set()); setSelSistema(new Set())
     try {
-      const p = new URLSearchParams({ conta_id: contaId, data_ini: dataIni, data_fim: dataFim })
-      const r = await fetch(`/api/caixa/conciliacao?${p}`, { cache: 'no-store' })
-      const txt = await r.text()
-      let d: any = null; try { d = txt ? JSON.parse(txt) : null } catch {}
-      if (!r.ok) throw new Error(d?.error || `Erro ${r.status}`)
+      let d: any = null
+      if (arquivo) {
+        const fd = new FormData(); fd.set('conta_id', contaId); fd.set('file', arquivo)
+        const r = await fetch('/api/caixa/conciliacao/upload', { method: 'POST', body: fd })
+        const txt = await r.text(); try { d = txt ? JSON.parse(txt) : null } catch {}
+        if (!r.ok) throw new Error(d?.error || `Erro ${r.status}`)
+        if (d?.periodo) { setDataIni(d.periodo.ini); setDataFim(d.periodo.fim) }
+      } else {
+        const p = new URLSearchParams({ conta_id: contaId, data_ini: dataIni, data_fim: dataFim })
+        const r = await fetch(`/api/caixa/conciliacao?${p}`, { cache: 'no-store' })
+        const txt = await r.text(); try { d = txt ? JSON.parse(txt) : null } catch {}
+        if (!r.ok) throw new Error(d?.error || `Erro ${r.status}`)
+      }
+      if (!d) throw new Error('Resposta vazia do servidor.')
       setDados(d); setConc(d.conciliacoes ?? [])
       // Auto-conciliação por soma (revisável) — roda com os dados recém-carregados.
       const grupos = computeAuto(d.banco, d.sistema, d.conciliacoes ?? [])
@@ -334,14 +344,29 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
             {contas.length === 0 && <option value="">Nenhuma conta</option>}
             {contas.map(c => <option key={c.id} value={c.id}>{c.banco}{c.conta ? ` — ${c.conta}` : ''}</option>)}
           </select></div>
+        <div><label className="block text-xs font-medium text-gray-700 mb-1">Extrato OFX</label>
+          <div className="flex items-center gap-2">
+            <label className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 cursor-pointer flex items-center gap-1.5 whitespace-nowrap">
+              <Upload className="w-4 h-4" /> {arquivo ? 'Trocar OFX' : 'Anexar OFX'}
+              <input type="file" accept=".ofx" className="hidden" onChange={e => setArquivo(e.target.files?.[0] ?? null)} />
+            </label>
+            {arquivo && (
+              <span className="text-[12px] text-gray-500 flex items-center gap-1 max-w-[150px]">
+                <span className="truncate">{arquivo.name}</span>
+                <button onClick={() => setArquivo(null)} title="Remover" className="text-gray-400 hover:text-red-500 flex-shrink-0"><X className="w-3.5 h-3.5" /></button>
+              </span>
+            )}
+          </div>
+        </div>
         <div><label className="block text-xs font-medium text-gray-700 mb-1">De</label>
-          <input type="date" value={dataIni} onChange={e => setDataIni(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+          <input type="date" value={dataIni} onChange={e => setDataIni(e.target.value)} disabled={!!arquivo} className="border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-400" /></div>
         <div><label className="block text-xs font-medium text-gray-700 mb-1">Até</label>
-          <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+          <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} disabled={!!arquivo} className="border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-400" /></div>
         <button onClick={buscar} disabled={loading} className="px-5 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50 flex items-center gap-1.5">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Buscar
         </button>
       </div>
+      {arquivo && <p className="-mt-2 text-[11px] text-gray-400">Com OFX anexado, o período é definido automaticamente pelas datas do extrato.</p>}
 
       {erro && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">{erro}</div>}
       {aviso && <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-700 flex items-center gap-2"><Wand2 className="w-4 h-4" />{aviso}</div>}
