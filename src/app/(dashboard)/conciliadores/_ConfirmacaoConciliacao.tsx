@@ -322,7 +322,7 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
 
   async function analisarDivergencias() {
     if (!dados) return
-    const bankCards = dados.banco.filter(b => b.valor > 0 && bandeiraFiltro(b.descricao)).map(b => ({ data: b.data, descricao: b.descricao, valor: b.valor }))
+    const bankCards = dados.banco.filter(b => b.valor > 0).map(b => ({ data: b.data, descricao: b.descricao, valor: b.valor }))
     setDivLoading(true); setErro(null); setDivObs(null); setDivergencias([])
     try {
       const r = await fetch('/api/caixa/conciliacao/ia-divergencia', {
@@ -465,8 +465,8 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
             <div className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
               <div className="px-5 py-3 border-b border-amber-100 flex items-center gap-2 flex-wrap">
                 <CalendarClock className="w-4 h-4 text-amber-600" />
-                <span className="text-[14px] font-bold text-amber-800">Cartões a baixar — por dia que o dinheiro cai</span>
-                <span className="text-[11px] text-amber-500">clique num cartão para ver venda por venda</span>
+                <span className="text-[14px] font-bold text-amber-800">Recebíveis a baixar — por dia que o dinheiro cai</span>
+                <span className="text-[11px] text-amber-500">cartões, PIX e vouchers · clique num item para ver venda por venda</span>
                 <button onClick={analisarDivergencias} disabled={divLoading}
                   className="ml-auto px-3 py-1.5 bg-violet-600 text-white rounded-lg text-[12px] font-medium hover:bg-violet-700 disabled:opacity-50 flex items-center gap-1.5">
                   {divLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Divergências (IA)

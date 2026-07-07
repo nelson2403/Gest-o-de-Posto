@@ -85,7 +85,7 @@ export async function POST(req: Request) {
     if (!error && ms) conciliacoes = ms as any
   } catch { /* migração 142 ainda não rodou */ }
 
-  const cartoes = await cartoesLiquidando(emp, dataIni, dataFim)
+  const cartoes = await cartoesLiquidando(emp, code, dataIni, dataFim)
 
   return NextResponse.json({
     conta: { id: conta.id, banco: conta.banco, numero: conta.conta, posto: (conta.posto as any)?.nome ?? '—', posto_id: conta.posto_id },

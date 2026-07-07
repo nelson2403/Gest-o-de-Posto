@@ -39,6 +39,7 @@ export async function GET(req: Request) {
          LEFT JOIN pessoa p       ON p.grid  = m.pessoa
          JOIN motivo_movto mo     ON mo.grid = m.motivo
         WHERE m.empresa = $1 AND m.data = $2 AND m.vencto = $3 AND mo.nome = $4
+          AND m.conta_debitar LIKE '1.3.01.%'
         ORDER BY m.valor DESC`,
       [emp, venda, liquida, bandeira],
     )

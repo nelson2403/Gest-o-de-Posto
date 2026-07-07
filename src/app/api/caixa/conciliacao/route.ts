@@ -13,22 +13,32 @@ export interface LinhaSistema { id: string; data: string; descricao: string; doc
 export interface Conciliacao { grupo_id: string; lado: 'banco' | 'sistema'; linha_hash: string; baixado_em: string | null }
 export interface CartaoLiquida { liquida: string; bandeira: string; venda: string; valor: number; qtd: number }
 
-// Recebíveis de cartão que LIQUIDAM no período (vencto), com a data da VENDA e a
-// bandeira — responde "de qual dia é o cartão que devo baixar". Só faz sentido em
-// conta de adquirente (Stone etc.); em banco comum retorna vazio.
-export async function cartoesLiquidando(emp: number, ini: string, fim: string): Promise<CartaoLiquida[]> {
+// Recebíveis ELETRÔNICOS que LIQUIDAM no período (vencto) e que caem NESTA CONTA
+// (o extrato anexado). conta_debitar=1.3.01.% é o lado do recebível; quais tipos
+// caem nesta conta vem do histórico de RECEBIMENTO (banco `code` ← recebível
+// 1.3.01.x). Assim uma conta que não recebe cartão NÃO mostra cartão a baixar.
+export async function cartoesLiquidando(emp: number, code: string, ini: string, fim: string): Promise<CartaoLiquida[]> {
   try {
+    // Mapa histórico: contas de recebível que liquidam nesta conta bancária.
+    const lookback = new Date(new Date(fim + 'T00:00:00').getTime() - 200 * 86400000).toISOString().slice(0, 10)
+    const map = await queryAS<{ c: string }>(
+      `SELECT DISTINCT conta_creditar c FROM movto
+        WHERE empresa = $1 AND conta_debitar = $2 AND conta_creditar LIKE '1.3.01.%' AND data >= $3`,
+      [emp, code, lookback],
+    )
+    const contas = map.map(r => String(r.c)).filter(Boolean)
+    if (!contas.length) return []  // esta conta não recebe recebíveis eletrônicos
+
     const rows = await queryAS<any>(
       `SELECT convert_to(coalesce(mo.nome,''),'LATIN1') bandeira,
               to_char(m.data,'YYYY-MM-DD') AS venda, to_char(m.vencto,'YYYY-MM-DD') AS liquida,
               sum(m.valor)::float AS valor, count(*) AS qtd
          FROM movto m JOIN motivo_movto mo ON mo.grid = m.motivo
         WHERE m.empresa = $1 AND m.vencto BETWEEN $2 AND $3
-          AND (mo.nome ILIKE '%VISA%' OR mo.nome ILIKE '%MASTER%' OR mo.nome ILIKE '%ELO%'
-               OR mo.nome ILIKE '%HIPER%' OR mo.nome ILIKE '%AMEX%' OR mo.nome ILIKE '%CART%')
+          AND m.conta_debitar = ANY($4::text[])
           AND mo.nome NOT ILIKE 'RECEBIMENTO%' AND mo.nome NOT ILIKE 'AJUSTE%' AND mo.nome NOT ILIKE 'TAXA%'
         GROUP BY 1, 2, 3 ORDER BY liquida, bandeira, venda`,
-      [emp, ini, fim],
+      [emp, ini, fim, contas],
     )
     return rows.map(r => ({ liquida: r.liquida, bandeira: dec(r.bandeira), venda: r.venda, valor: Number(r.valor), qtd: Number(r.qtd) }))
   } catch { return [] }
@@ -144,9 +154,8 @@ export async function GET(req: Request) {
     if (!error && ms) conciliacoes = ms as any
   } catch { /* migração 142 ainda não rodou */ }
 
-  // Recebíveis de cartão que liquidam no período — a conta que RECEBE o dinheiro
-  // do cartão costuma ser o banco comum (Sicoob), não só a adquirente.
-  const cartoes = await cartoesLiquidando(emp, dataIni, dataFim)
+  // Recebíveis eletrônicos que caem NESTA conta (extrato), no período.
+  const cartoes = await cartoesLiquidando(emp, code, dataIni, dataFim)
 
   return NextResponse.json({
     conta: { id: conta.id, banco: conta.banco, numero: conta.conta, posto: (conta.posto as any)?.nome ?? '—', posto_id: conta.posto_id },
