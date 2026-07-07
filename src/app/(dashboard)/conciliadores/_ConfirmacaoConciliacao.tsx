@@ -62,6 +62,13 @@ function bandeiraFiltro(desc: string): ((c: Cartao) => boolean) | null {
   return null
 }
 
+// Tipo "forte" de recebível (só os que o banco nomeia claramente no extrato).
+// Serve para NÃO mostrar na agenda um tipo que não apareceu no extrato anexado.
+const TIPO_RX: [string, RegExp][] = [
+  ['MASTER', /MASTER|MAESTRO/i], ['VISA', /VISA|ELECTRON/i], ['ELO', /\bELO\b/i], ['PIX', /\bPIX\b/i],
+]
+function tipoForte(desc: string): string | null { for (const [t, rx] of TIPO_RX) if (rx.test(desc || '')) return t; return null }
+
 type GrupoAuto = { banco: LinhaBanco[]; sistema: LinhaSistema[] }
 
 // Auto-conciliação por SOMA: só cria grupos quando o casamento é ÚNICO (sem
@@ -183,12 +190,25 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
   const bancoGrupo = (id: string) => grupoDe.get(`banco:${id}`)
   const sistGrupo  = (id: string) => grupoDe.get(`sistema:${id}`)
 
-  // Agenda de cartões: recebíveis agrupados pelo DIA que o dinheiro cai (liquidação)
+  // Tipos "fortes" (MASTER/VISA/ELO/PIX) que APARECEM no extrato anexado.
+  const tiposNoExtrato = useMemo(() => {
+    const s = new Set<string>()
+    for (const b of dados?.banco ?? []) if (b.valor > 0) { const t = tipoForte(b.descricao); if (t) s.add(t) }
+    return s
+  }, [dados])
+  // Só mostra na agenda o recebível cujo tipo forte apareceu no extrato (ou tipos
+  // que o banco não nomeia — esses passam). Assim, extrato sem Stone não sugere Stone.
+  const cartoesVisiveis = useMemo(() => (dados?.cartoes ?? []).filter(c => {
+    const t = tipoForte(c.bandeira); return !t || tiposNoExtrato.has(t)
+  }), [dados, tiposNoExtrato])
+  const ocultosPorTipo = (dados?.cartoes?.length ?? 0) - cartoesVisiveis.length
+
+  // Agenda de recebíveis agrupados pelo DIA que o dinheiro cai (liquidação)
   const cartoesPorLiquida = useMemo(() => {
     const m = new Map<string, Cartao[]>()
-    for (const c of dados?.cartoes ?? []) (m.get(c.liquida) ?? m.set(c.liquida, []).get(c.liquida)!).push(c)
+    for (const c of cartoesVisiveis) (m.get(c.liquida) ?? m.set(c.liquida, []).get(c.liquida)!).push(c)
     return m
-  }, [dados])
+  }, [cartoesVisiveis])
   const cartoesPorDia = useMemo(() => [...cartoesPorLiquida.entries()].sort((a, b) => a[0].localeCompare(b[0])), [cartoesPorLiquida])
 
   // Dado uma linha do banco (recebível de cartão), sugere a(s) DATA(S) da venda:
@@ -466,7 +486,7 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
               <div className="px-5 py-3 border-b border-amber-100 flex items-center gap-2 flex-wrap">
                 <CalendarClock className="w-4 h-4 text-amber-600" />
                 <span className="text-[14px] font-bold text-amber-800">Recebíveis a baixar — por dia que o dinheiro cai</span>
-                <span className="text-[11px] text-amber-500">cartões, PIX e vouchers · clique num item para ver venda por venda</span>
+                <span className="text-[11px] text-amber-500">só o que apareceu neste extrato · clique num item para ver venda por venda{ocultosPorTipo > 0 ? ` · ${ocultosPorTipo} oculto(s) que não caíram aqui` : ''}</span>
                 <button onClick={analisarDivergencias} disabled={divLoading}
                   className="ml-auto px-3 py-1.5 bg-violet-600 text-white rounded-lg text-[12px] font-medium hover:bg-violet-700 disabled:opacity-50 flex items-center gap-1.5">
                   {divLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Divergências (IA)
