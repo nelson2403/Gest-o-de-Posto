@@ -11,7 +11,7 @@ type Grupo = { banco: Linha[]; sistema: Linha[] }
 // POST /api/caixa/conciliacao/match/batch — cria VÁRIOS grupos de uma vez
 // (usado pela auto-conciliação por soma). Cada grupo vira um grupo_id.
 export async function POST(req: Request) {
-  const auth = await exigirRole(['master'])
+  const auth = await exigirRole(['master', 'adm_financeiro', 'operador_conciliador'])
   if (!auth.ok) return auth.resp
 
   const body = await req.json().catch(() => null)

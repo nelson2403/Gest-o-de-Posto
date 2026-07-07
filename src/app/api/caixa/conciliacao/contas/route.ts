@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 // GET /api/caixa/conciliacao/contas?posto_id=UUID — contas bancárias do posto
 // (via admin, sem depender de RLS no client).
 export async function GET(req: Request) {
-  const auth = await exigirRole(['master'])
+  const auth = await exigirRole(['master', 'adm_financeiro', 'operador_conciliador'])
   if (!auth.ok) return auth.resp
 
   const postoId = new URL(req.url).searchParams.get('posto_id')

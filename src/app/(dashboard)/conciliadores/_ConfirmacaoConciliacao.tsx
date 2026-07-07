@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, Search, Link2Off, Wand2, Check, Building2, Cpu, Link2, Download, ClipboardCheck, CircleDot } from 'lucide-react'
+import { Loader2, Search, Link2Off, Wand2, Check, Building2, Cpu, Link2, Download, ClipboardCheck, CircleDot, Sparkles, X } from 'lucide-react'
 
 type PostoRow = { id: string; nome: string }
 type Conta = { id: string; banco: string; conta: string | null }
@@ -81,7 +81,9 @@ function computeAuto(banco: LinhaBanco[], sistema: LinhaSistema[], conc: Concil[
   return grupos
 }
 
-export function ConfirmacaoConciliacao({ postos }: { postos: PostoRow[] }) {
+type SugIA = { banco: string[]; sistema: string[]; motivo: string; confianca: 'alta' | 'media' | 'baixa' }
+
+export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: PostoRow[]; comIA?: boolean }) {
   const [postoId, setPostoId] = useState(postos[0]?.id ?? '')
   const [contas, setContas] = useState<Conta[]>([])
   const [contaId, setContaId] = useState('')
@@ -95,6 +97,9 @@ export function ConfirmacaoConciliacao({ postos }: { postos: PostoRow[] }) {
   const [selBanco, setSelBanco] = useState<Set<string>>(new Set())
   const [selSistema, setSelSistema] = useState<Set<string>>(new Set())
   const [salvando, setSalvando] = useState(false)
+  const [iaLoading, setIaLoading] = useState(false)
+  const [iaSug, setIaSug] = useState<SugIA[]>([])
+  const [iaObs, setIaObs] = useState<string | null>(null)
 
   useEffect(() => {
     if (!postoId) { setContas([]); setContaId(''); return }
@@ -238,6 +243,36 @@ export function ConfirmacaoConciliacao({ postos }: { postos: PostoRow[] }) {
     } catch (e: any) { setErro(e.message) } finally { setSalvando(false) }
   }
 
+  async function analisarIA() {
+    if (!dados) return
+    const bPend = dados.banco.filter(b => !bancoGrupo(b.id)).map(b => ({ id: b.id, data: b.data, descricao: b.descricao, valor: b.valor }))
+    const sPend = dados.sistema.filter(s => !sistGrupo(s.id)).map(s => ({ id: s.id, data: s.data, descricao: s.descricao, valor: s.valor }))
+    if (!bPend.length || !sPend.length) { setIaObs('Não há pendentes dos dois lados para a IA analisar.'); setIaSug([]); return }
+    setIaLoading(true); setErro(null); setIaObs(null)
+    try {
+      const r = await fetch('/api/caixa/conciliacao/ia', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ banco: bPend, sistema: sPend }) })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erro na IA')
+      setIaSug(j.sugestoes ?? [])
+      setIaObs((j.sugestoes?.length ? `${j.sugestoes.length} sugestão(ões) da IA — confira e confirme.` : 'A IA não encontrou correspondências plausíveis.')
+        + (j.truncado ? ' (analisou as primeiras 80 de cada lado; reduza o período p/ cobrir tudo)' : '')
+        + (j.observacao ? `  ·  ${j.observacao}` : ''))
+    } catch (e: any) { setErro(e.message) } finally { setIaLoading(false) }
+  }
+
+  async function conciliarIA(sug: SugIA, idx: number) {
+    if (!dados) return
+    const bLines = dados.banco.filter(b => sug.banco.includes(b.id) && !bancoGrupo(b.id))
+    const sLines = dados.sistema.filter(s => sug.sistema.includes(s.id) && !sistGrupo(s.id))
+    if (!bLines.length || !sLines.length) { descartarIA(idx); return }
+    setSalvando(true)
+    try {
+      const novos = await batchSalvar([{ banco: bLines, sistema: sLines }], dados.conta.posto_id)
+      setConc(prev => [...prev, ...novos]); descartarIA(idx)
+    } catch (e: any) { setErro(e.message) } finally { setSalvando(false) }
+  }
+  function descartarIA(idx: number) { setIaSug(prev => prev.filter((_, i) => i !== idx)) }
+
   async function exportarPDF() {
     if (!dados || !aBaixar.length) return
     const { jsPDF } = await import('jspdf')
@@ -325,6 +360,11 @@ export function ConfirmacaoConciliacao({ postos }: { postos: PostoRow[] }) {
             <button onClick={autoConciliar} disabled={salvando} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1.5">
               <Wand2 className="w-4 h-4" /> Auto-conciliar por soma
             </button>
+            {comIA && (
+              <button onClick={analisarIA} disabled={iaLoading || salvando} className="px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700 disabled:opacity-50 flex items-center gap-1.5">
+                {iaLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Analisar pendentes com IA
+              </button>
+            )}
             {sugeridos.size > 0 && (
               <button onClick={conciliarSugeridos} disabled={salvando} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1.5">
                 <Link2 className="w-4 h-4" /> Conciliar sugeridos 1:1 ({sugeridos.size})
@@ -333,6 +373,40 @@ export function ConfirmacaoConciliacao({ postos }: { postos: PostoRow[] }) {
             {dados.arquivos.erro > 0 && <span className="text-[12px] text-amber-600">⚠ {dados.arquivos.erro} arquivo(s) de extrato não lidos</span>}
             {salvando && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
           </div>
+
+          {/* Sugestões da IA (só no modo conciliador) */}
+          {comIA && iaObs && (
+            <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 text-sm text-violet-700 flex items-center gap-2"><Sparkles className="w-4 h-4 flex-shrink-0" />{iaObs}</div>
+          )}
+          {comIA && iaSug.length > 0 && (
+            <div className="bg-violet-50 border border-violet-200 rounded-xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-violet-100 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-violet-600" />
+                <span className="text-[14px] font-bold text-violet-800">Sugestões da IA</span>
+                <span className="text-[11px] text-violet-500">confirme cada uma — nada é conciliado sozinho</span>
+              </div>
+              <ul className="divide-y divide-violet-100">
+                {iaSug.map((sug, idx) => {
+                  const bL = dados.banco.filter(b => sug.banco.includes(b.id))
+                  const sL = dados.sistema.filter(s => sug.sistema.includes(s.id))
+                  const cor = sug.confianca === 'alta' ? 'bg-emerald-100 text-emerald-700' : sug.confianca === 'media' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+                  return (
+                    <li key={idx} className="px-5 py-3 flex items-start gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[240px] space-y-1">
+                        <div className="text-[12px]"><span className="text-blue-600 font-semibold">Banco:</span> {bL.map(b => <span key={b.id} className="ml-1 text-gray-600">{dataBR(b.data)} <b>{money(b.valor)}</b> · {b.descricao}</span>)}</div>
+                        <div className="text-[12px]"><span className="text-indigo-600 font-semibold">Sistema:</span> {sL.map(s => <span key={s.id} className="ml-1 text-gray-600">{dataBR(s.data)} <b>{money(s.valor)}</b> · {s.descricao}</span>)}</div>
+                        <div className="text-[12px] text-violet-700 flex items-center gap-1.5 flex-wrap"><span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${cor}`}>{sug.confianca}</span>{sug.motivo}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => conciliarIA(sug, idx)} disabled={salvando} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-[12px] font-medium hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Conciliar</button>
+                        <button onClick={() => descartarIA(idx)} className="px-2.5 py-1.5 text-gray-400 hover:text-red-500 text-[12px] flex items-center gap-1"><X className="w-3.5 h-3.5" /> Descartar</button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
 
           {/* Painel: Baixar no AUTOSYSTEM */}
           {grupos.length > 0 && (

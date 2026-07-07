@@ -14,7 +14,7 @@ export interface Conciliacao { grupo_id: string; lado: 'banco' | 'sistema'; linh
 
 // GET /api/caixa/conciliacao?conta_id=UUID&data_ini=YYYY-MM-DD&data_fim=YYYY-MM-DD
 export async function GET(req: Request) {
-  const auth = await exigirRole(['master'])
+  const auth = await exigirRole(['master', 'adm_financeiro', 'operador_conciliador'])
   if (!auth.ok) return auth.resp
 
   const { searchParams } = new URL(req.url)

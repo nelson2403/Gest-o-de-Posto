@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 // baixado no AUTOSYSTEM. A baixa em si é feita no ERP; aqui só registramos o
 // acompanhamento para o dono saber o que já foi baixado.
 export async function POST(req: Request) {
-  const auth = await exigirRole(['master'])
+  const auth = await exigirRole(['master', 'adm_financeiro', 'operador_conciliador'])
   if (!auth.ok) return auth.resp
 
   const body = await req.json().catch(() => null)

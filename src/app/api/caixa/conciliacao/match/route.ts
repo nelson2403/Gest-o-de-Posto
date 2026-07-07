@@ -10,7 +10,7 @@ type Linha = { id: string; data?: string | null; valor?: number | null; descrica
 // POST /api/caixa/conciliacao/match — cria um GRUPO ligando N linhas do banco a
 // M linhas do sistema (ex.: 1 linha do banco = 2 baixas no sistema).
 export async function POST(req: Request) {
-  const auth = await exigirRole(['master'])
+  const auth = await exigirRole(['master', 'adm_financeiro', 'operador_conciliador'])
   if (!auth.ok) return auth.resp
 
   const body = await req.json().catch(() => null)
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
 
 // DELETE /api/caixa/conciliacao/match — desfaz um grupo inteiro (por grupo_id)
 export async function DELETE(req: Request) {
-  const auth = await exigirRole(['master'])
+  const auth = await exigirRole(['master', 'adm_financeiro', 'operador_conciliador'])
   if (!auth.ok) return auth.resp
 
   const body = await req.json().catch(() => null)
