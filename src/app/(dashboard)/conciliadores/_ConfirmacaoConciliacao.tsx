@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { Loader2, Search, Link2Off, Wand2, Check, Building2, Cpu, Link2 } from 'lucide-react'
 
 type PostoRow = { id: string; nome: string }
@@ -31,7 +30,6 @@ const CORES = [
 ]
 
 export function ConfirmacaoConciliacao({ postos }: { postos: PostoRow[] }) {
-  const supabase = createClient()
   const [postoId, setPostoId] = useState(postos[0]?.id ?? '')
   const [contas, setContas] = useState<Conta[]>([])
   const [contaId, setContaId] = useState('')
@@ -46,9 +44,11 @@ export function ConfirmacaoConciliacao({ postos }: { postos: PostoRow[] }) {
   const [salvando, setSalvando] = useState(false)
 
   useEffect(() => {
-    if (!postoId) { setContas([]); return }
-    supabase.from('contas_bancarias').select('id, banco, conta').eq('posto_id', postoId).order('banco')
-      .then(({ data }) => { const c = (data ?? []) as Conta[]; setContas(c); setContaId(c[0]?.id ?? '') })
+    if (!postoId) { setContas([]); setContaId(''); return }
+    fetch(`/api/caixa/conciliacao/contas?posto_id=${postoId}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(j => { const c = (j.contas ?? []) as Conta[]; setContas(c); setContaId(c[0]?.id ?? '') })
+      .catch(() => { setContas([]); setContaId('') })
   }, [postoId])
 
   async function buscar() {
