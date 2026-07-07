@@ -81,6 +81,7 @@ export const NAV_GROUPS: NavGroup[] = [
           { href: '/tarefas/conciliacao',          label: 'Geração de Tarefas',   icon: ClipboardList, permission: 'contas_bancarias.view' as Permission },
           { href: '/conciliadores',                label: 'Conciliadores',        icon: Users,         permission: 'usuarios.edit' as Permission },
           { href: '/monitoramento/saldos',          label: 'Saldos Bancários',     icon: Landmark,      permission: 'monitoramento.view' as Permission },
+          { href: '/monitoramento/diagnostico',     label: 'Diagnóstico de Divergências', icon: Activity, permission: 'monitoramento.view' as Permission },
           { href: '/conciliadores/confirmacao',     label: 'Confirmação da Conciliação', icon: ArrowRightLeft, permission: 'monitoramento.view' as Permission },
           { href: '/conciliadores/conciliacao-ia',  label: 'Conciliação com IA',   icon: Sparkles,      permission: 'relatorios.conciliacao' as Permission },
         ],
