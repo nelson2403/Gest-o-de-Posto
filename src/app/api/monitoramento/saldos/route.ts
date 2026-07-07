@@ -187,6 +187,12 @@ export async function GET(req: Request) {
     }
     const movimento = movByCode.get(code)
     const saldoAuto = movimento == null ? null : parseFloat((si + movimento).toFixed(2))
+    // Stone: o OFX reporta LEDGERBAL=0, mas a conta pode GUARDAR saldo. Se o extrato
+    // veio 0 e o AUTOSYSTEM tem saldo, esse 0 NÃO é o saldo real (peculiaridade do
+    // OFX Stone) → trata como sem extrato confiável, não como divergência falsa.
+    if (ehStone && ext.saldo_dia === 0 && saldoAuto != null && Math.abs(saldoAuto) > TOLERANCIA) {
+      return { ...base, data_extrato: ext.data, saldo_banco: null, saldo_autosystem: saldoAuto, divergencia: null, status: 'sem_extrato' as const }
+    }
     const div       = saldoAuto == null ? null : parseFloat((ext.saldo_dia - saldoAuto).toFixed(2))
     const status: SaldoConta['status'] =
       saldoAuto == null ? 'diverge'

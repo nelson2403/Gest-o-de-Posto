@@ -32,8 +32,6 @@ export async function GET(req: Request) {
   const emp  = Number((conta.posto as any)?.codigo_empresa_externo)
   const code = conta.codigo_conta_externo as string
   if (!emp || !code) return NextResponse.json({ error: 'Conta sem empresa/código externo' }, { status: 400 })
-  // Stone zera todo dia (extrato = 0); saldo=0 é válido e a conciliação é contra 0.
-  const ehStone = /stone/i.test(String(conta.banco || ''))
 
   // ── Detalhe de um dia: lançamentos do AUTOSYSTEM ──────────────────────────
   if (dia) {
@@ -120,7 +118,11 @@ export async function GET(req: Request) {
     acumulado += movPorDia.get(d) ?? 0
     const saldoAuto = parseFloat((saldoInicial + base31 + acumulado).toFixed(2))
     const ext = extPorDia.get(d)
-    const temExtrato = !!ext && (ehStone || ext.saldo_dia !== 0)
+    // Stone: extrato com saldo 0 só é confiável se o AUTOSYSTEM também está ~0
+    // (conta zerada). Se o AS tem saldo e o extrato veio 0, é o OFX da Stone
+    // (LEDGERBAL=0) — não é o saldo real → não conta como extrato/divergência.
+    const extZero = !!ext && ext.saldo_dia === 0
+    const temExtrato = !!ext && (extZero ? Math.abs(saldoAuto) < 1 : true)
     const saldoBanco = temExtrato ? ext!.saldo_dia : null
     const divergencia = temExtrato ? parseFloat((saldoBanco! - saldoAuto).toFixed(2)) : null
     let jump: number | null = null
