@@ -9,8 +9,8 @@ export const dynamic = 'force-dynamic'
 const dec = (b: unknown) => (b && Buffer.isBuffer(b) ? (b as Buffer).toString('latin1') : (b == null ? '' : String(b)))
 
 export interface LinhaBanco { id: string; data: string; descricao: string; valor: number }
-export interface LinhaSistema { id: string; data: string; descricao: string; valor: number; direcao: 'entrada' | 'saida' }
-export interface Conciliacao { grupo_id: string; lado: 'banco' | 'sistema'; linha_hash: string }
+export interface LinhaSistema { id: string; data: string; descricao: string; documento: string | null; valor: number; direcao: 'entrada' | 'saida' }
+export interface Conciliacao { grupo_id: string; lado: 'banco' | 'sistema'; linha_hash: string; baixado_em: string | null }
 
 // GET /api/caixa/conciliacao?conta_id=UUID&data_ini=YYYY-MM-DD&data_fim=YYYY-MM-DD
 export async function GET(req: Request) {
@@ -61,6 +61,7 @@ export async function GET(req: Request) {
         id: String(r.grid),
         data: r.dt,
         descricao: descricao || dec(r.documento) || '—',
+        documento: dec(r.documento) || null,
         valor: entrada ? Number(r.valor) : -Number(r.valor),
         direcao: (entrada ? 'entrada' : 'saida') as 'entrada' | 'saida',
       }
@@ -116,7 +117,7 @@ export async function GET(req: Request) {
   try {
     const { data: ms, error } = await admin
       .from('conciliacao_manual')
-      .select('grupo_id, lado, linha_hash')
+      .select('grupo_id, lado, linha_hash, baixado_em')
       .eq('conta_bancaria_id', contaId)
     if (!error && ms) conciliacoes = ms as any
   } catch { /* migração 142 ainda não rodou */ }

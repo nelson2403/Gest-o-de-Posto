@@ -20,6 +20,10 @@ create table public.conciliacao_manual (
   conciliado_por     uuid references public.usuarios(id) on delete set null,
   criado_em          timestamptz not null default now(),
 
+  -- controle da baixa no AUTOSYSTEM (feita manualmente no ERP; aqui só marcamos)
+  baixado_em         timestamptz,
+  baixado_por        uuid references public.usuarios(id) on delete set null,
+
   -- cada linha (de cada lado) só participa de UM grupo por conta
   unique (conta_bancaria_id, lado, linha_hash)
 );
