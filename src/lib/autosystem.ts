@@ -2636,6 +2636,23 @@ export async function buscarDadosCaixaFrentista(
       } catch (e: any) { console.log(`[caixa-frentista] fallback fuzzy erro: ${e.message}`) }
     }
 
+    // Fallback: liga funcionario → pessoa (mesmo nome) → usuario, escolhendo o
+    // login que TEM movto nesta empresa+data. Bridgeia divergências nome×login que
+    // o palpite por nome não pega (ex.: nome "OTAVIO DO CANTO BASIL" × login real
+    // "OTAVIOBRASIL", com um R a mais).
+    if (!usuarioAS && funcNome) {
+      try {
+        const rows = await query<{ login: string }>(
+          `SELECT u.nome::text AS login FROM usuario u JOIN pessoa p ON p.grid = u.pessoa
+            WHERE upper(btrim(p.nome::text)) = upper(btrim($1))
+              AND EXISTS (SELECT 1 FROM movto m WHERE m.empresa = $2 AND m.data = $3::date AND m.usuario = u.nome)
+            LIMIT 1`,
+          [funcNome, empresaGrid, data],
+        )
+        if (rows.length) { usuarioAS = String(rows[0].login ?? '').trim(); console.log(`[caixa-frentista] login por pessoa+movto: "${usuarioAS}"`) }
+      } catch (e: any) { console.log(`[caixa-frentista] pessoa->usuario erro: ${e.message}`) }
+    }
+
     // Fallback: testa na tabela usuario (quando existe) para dias sem caixa aberto
     if (!usuarioAS) {
       for (const cand of candidatos) {
