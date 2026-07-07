@@ -49,6 +49,19 @@ function subsetsSum<T extends { valor: number }>(items: T[], targetCents: number
   return sols
 }
 
+// Pela descrição do banco ("CR COMPRAS MASTERCARD", "CR COMPRAS MAESTRO"...),
+// devolve um filtro pra bandeira do recebível — ajuda a achar a venda certa.
+function bandeiraFiltro(desc: string): ((c: Cartao) => boolean) | null {
+  const d = (desc || '').toUpperCase()
+  if (/MAESTRO/.test(d)) return c => /MASTER/i.test(c.bandeira) && /D[EÉ]BITO/i.test(c.bandeira)
+  if (/MASTERCARD|MASTER/.test(d)) return c => /MASTER/i.test(c.bandeira)
+  if (/ELECTRON/.test(d)) return c => /VISA/i.test(c.bandeira) && /D[EÉ]BITO/i.test(c.bandeira)
+  if (/VISA/.test(d)) return c => /VISA/i.test(c.bandeira)
+  if (/\bELO\b/.test(d)) return c => /ELO/i.test(c.bandeira)
+  if (/HIPER/.test(d)) return c => /HIPER/i.test(c.bandeira)
+  return null
+}
+
 type GrupoAuto = { banco: LinhaBanco[]; sistema: LinhaSistema[] }
 
 // Auto-conciliação por SOMA: só cria grupos quando o casamento é ÚNICO (sem
@@ -179,11 +192,29 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
   const aBaixar = grupos.filter(g => !g.baixado)
 
   // Agenda de cartões: recebíveis agrupados pelo DIA que o dinheiro cai (liquidação)
-  const cartoesPorDia = useMemo(() => {
+  const cartoesPorLiquida = useMemo(() => {
     const m = new Map<string, Cartao[]>()
     for (const c of dados?.cartoes ?? []) (m.get(c.liquida) ?? m.set(c.liquida, []).get(c.liquida)!).push(c)
-    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    return m
   }, [dados])
+  const cartoesPorDia = useMemo(() => [...cartoesPorLiquida.entries()].sort((a, b) => a[0].localeCompare(b[0])), [cartoesPorLiquida])
+
+  // Dado uma linha do banco (recebível de cartão), sugere a(s) DATA(S) da venda:
+  // acha os recebíveis que caem no mesmo dia e somam o valor (filtrando a bandeira).
+  function dicaVenda(b: LinhaBanco): string | null {
+    if (b.valor <= 0) return null
+    const doDia = cartoesPorLiquida.get(b.data) ?? []
+    if (!doDia.length) return null
+    const filtro = bandeiraFiltro(b.descricao)
+    const base = filtro && doDia.some(filtro) ? doDia.filter(filtro) : doDia
+    const sols = subsetsSum(base, cents(b.valor), 8, 2)
+    if (sols.length === 1) {
+      const uniq = [...new Set(sols[0].map(c => `${dataBR(c.venda)} ${c.bandeira}`))]
+      return 'venda: ' + uniq.join(' + ')
+    }
+    const datas = [...new Set(base.map(c => c.venda))].sort().slice(0, 4)
+    return datas.length ? 'possíveis vendas: ' + datas.map(dataBR).join(', ') : null
+  }
 
   const sugeridos = useMemo(() => {
     if (!dados) return new Map<string, string>()
@@ -538,6 +569,7 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
               {dados.banco.map(b => { const g = bancoGrupo(b.id)
                 return <Linha key={b.id} data={b.data} descricao={b.descricao} valor={b.valor}
                   conciliado={!!g} cor={g ? corDoGrupo.get(g) : undefined} baixado={g ? !!baixadoDoGrupo.get(g) : false} sugerido={sugeridos.has(b.id)} selecionado={selBanco.has(b.id)}
+                  dica={comIA && !g ? dicaVenda(b) : undefined}
                   onToggle={() => toggle('banco', b.id)} onDesfazer={g ? () => desfazerGrupo(g) : undefined} /> })}
             </Coluna>
             <Coluna titulo="Extrato do AUTOSYSTEM" icone={<Cpu className="w-4 h-4 text-indigo-500" />} vazio="Nenhum lançamento na conta no período">
@@ -601,9 +633,10 @@ function Coluna({ titulo, icone, vazio, children }: { titulo: string; icone: Rea
   )
 }
 
-function Linha({ data, descricao, valor, conciliado, cor, baixado, sugerido, selecionado, onToggle, onDesfazer }: {
+function Linha({ data, descricao, valor, conciliado, cor, baixado, sugerido, selecionado, dica, onToggle, onDesfazer }: {
   data: string; descricao: string; valor: number
   conciliado: boolean; cor?: string; baixado: boolean; sugerido: boolean; selecionado: boolean
+  dica?: string | null
   onToggle: () => void; onDesfazer?: () => void
 }) {
   const pos = valor >= 0
@@ -613,17 +646,18 @@ function Linha({ data, descricao, valor, conciliado, cor, baixado, sugerido, sel
       {conciliado ? (
         baixado ? <ClipboardCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" /> : <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
       ) : (
-        <input type="checkbox" checked={selecionado} onChange={onToggle} className="w-4 h-4 rounded accent-emerald-600 flex-shrink-0 cursor-pointer" />
+        <input type="checkbox" checked={selecionado} onChange={onToggle} className="w-4 h-4 rounded accent-emerald-600 flex-shrink-0 cursor-pointer mt-0.5 self-start" />
       )}
       <div className="min-w-0 flex-1 cursor-pointer" onClick={conciliado ? undefined : onToggle}>
         <div className="flex items-center gap-2">
           <span className="text-gray-400 text-[11px] w-[52px] flex-shrink-0">{dataBR(data)}</span>
           <span className="truncate text-gray-700">{descricao}</span>
         </div>
+        {dica && <div className="ml-[60px] text-[11px] text-amber-700 flex items-center gap-1"><CalendarClock className="w-3 h-3 flex-shrink-0" />{dica}</div>}
       </div>
-      <span className={`font-semibold flex-shrink-0 ${pos ? 'text-emerald-700' : 'text-red-600'}`}>{money(valor)}</span>
+      <span className={`font-semibold flex-shrink-0 self-start mt-0.5 ${pos ? 'text-emerald-700' : 'text-red-600'}`}>{money(valor)}</span>
       {conciliado && onDesfazer && (
-        <button onClick={onDesfazer} title="Desfazer conciliação" className="text-gray-300 hover:text-red-500 flex-shrink-0"><Link2Off className="w-3.5 h-3.5" /></button>
+        <button onClick={onDesfazer} title="Desfazer conciliação" className="text-gray-300 hover:text-red-500 flex-shrink-0 self-start mt-0.5"><Link2Off className="w-3.5 h-3.5" /></button>
       )}
     </div>
   )
