@@ -98,16 +98,18 @@ export async function GET(req: Request) {
            FROM movto m LEFT JOIN motivo_movto mo ON mo.grid=m.motivo LEFT JOIN pessoa pe ON pe.grid=m.pessoa
           WHERE m.empresa=$1 AND (m.conta_debitar=$2 OR m.conta_creditar=$2) AND m.data=$3
           ORDER BY abs(m.valor) DESC`, [emp, code, p.data])
-      // conta ocorrências por valor (para achar duplicados)
-      const cont = new Map<number, number>()
-      for (const r of rows) { const k = c2(Number(r.valor)); cont.set(k, (cont.get(k) ?? 0) + 1) }
+      // Duplicado suspeito = mesmo valor na MESMA direção (dois créditos ou dois
+      // débitos). Par crédito+débito de mesmo valor (cheque devolvido/reapresentação)
+      // se ANULA e é legítimo — não conta como duplicado.
+      const cont = new Map<string, number>()
+      const chave = (dir: 'entrada' | 'saida', k: number) => `${dir === 'entrada' ? 'e' : 's'}:${k}`
+      for (const r of rows) { const dir = r.deb === code ? 'entrada' : 'saida'; cont.set(chave(dir, c2(Number(r.valor))), (cont.get(chave(dir, c2(Number(r.valor)))) ?? 0) + 1) }
       const alvo = c2(p.jump)
       lancs = rows.map(r => {
-        const val = Number(r.valor); const k = c2(val)
+        const val = Number(r.valor); const k = c2(val); const dir = (r.deb === code ? 'entrada' : 'saida') as 'entrada' | 'saida'
         return {
-          direcao: (r.deb === code ? 'entrada' : 'saida') as 'entrada' | 'saida',
-          valor: val, motivo: dec(r.motivo), pessoa: dec(r.pessoa), documento: dec(r.documento),
-          duplicado: (cont.get(k) ?? 0) >= 2,
+          direcao: dir, valor: val, motivo: dec(r.motivo), pessoa: dec(r.pessoa), documento: dec(r.documento),
+          duplicado: (cont.get(chave(dir, k)) ?? 0) >= 2,
           casaPulo: k === alvo && alvo > 0,
         }
       })
