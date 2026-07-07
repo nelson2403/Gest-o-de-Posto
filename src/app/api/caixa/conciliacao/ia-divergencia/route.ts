@@ -17,21 +17,24 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null)
   const cartoes = Array.isArray(body?.cartoes) ? body.cartoes : []
   const banco = Array.isArray(body?.banco) ? body.banco : []
+  const adquirente = Array.isArray(body?.adquirente) ? body.adquirente : []
   if (!cartoes.length && !banco.length) return NextResponse.json({ divergencias: [], observacao: 'Sem dados para analisar.' })
   if (!process.env.GROQ_API_KEY) return NextResponse.json({ error: 'IA não configurada (GROQ_API_KEY ausente).' }, { status: 503 })
 
   const c = cartoes.slice(0, 120).map((x: any) => ({ liq: x.liquida, band: x.bandeira, venda: x.venda, v: Number(Number(x.valor).toFixed(2)) }))
   const b = banco.slice(0, 120).map((x: any) => ({ d: x.data, t: String(x.descricao || '').slice(0, 50), v: Number(Number(x.valor).toFixed(2)) }))
+  const a = adquirente.slice(0, 120).map((x: any) => ({ liq: x.liquida, band: x.bandeira, venda: x.venda, bruto: Number(Number(x.bruto).toFixed(2)), taxa: x.taxa, liq_val: Number(Number(x.liquido).toFixed(2)) }))
 
-  const system = `Você é auditor de conciliação de cartões (Brasil). Recebe:
-- RECEBIVEIS: vendas no cartão do ERP que LIQUIDAM (caem no banco), com dia de liquidação (liq), bandeira (band), dia da venda e valor (v).
-- BANCO: créditos de cartão que caíram na conta, com data (d), descrição (t) e valor (v).
-Tarefa: apontar DIVERGÊNCIAS entre o que caiu no banco e os recebíveis, por bandeira e dia de liquidação. Ex.: o banco creditou menos que os recebíveis (diferença = tarifa da maquininha); um recebível que não apareceu no banco (antecipação/atraso); um crédito no banco sem recebível correspondente.
-Regras: seja conservador e específico; some por bandeira/dia; NÃO invente. gravidade: "alta" (falta dinheiro / crédito sem origem), "media" (tarifa/diferença pequena), "baixa".
+  const system = `Você é auditor de conciliação de cartões (Brasil). Recebe TRÊS lados:
+- RECEBIVEIS: vendas no cartão do ERP que LIQUIDAM (caem no banco): dia de liquidação (liq), bandeira (band), dia da venda, valor (v).
+- ADQUIRENTE (Equals): o que a operadora diz que vai pagar: bruto, taxa (%) e liq_val (líquido = bruto − taxas). É a VERDADE sobre quanto deve cair no banco.
+- BANCO: créditos que caíram de fato na conta: data (d), descrição (t), valor (v).
+Tarefa: apontar DIVERGÊNCIAS por bandeira e dia. O esperado no banco = liq_val da adquirente. Se o banco creditou MENOS que o bruto, a diferença é a TAXA (compare com liq_val: se bate, é só tarifa normal). Se o banco creditou menos que liq_val, falta dinheiro (grave). Se um recebível/adquirente não caiu no banco = antecipação/atraso.
+Regras: use os números da ADQUIRENTE como referência; seja específico e conservador; NÃO invente. gravidade: "alta" (falta além da taxa / crédito sem origem), "media" (só a taxa esperada), "baixa".
 Responda SOMENTE JSON:
-{"divergencias":[{"titulo":"curto (bandeira + dia)","banco":0,"sistema":0,"diferenca":0,"motivo":"explicação curta","gravidade":"media"}],"observacao":"resumo geral curto"}`
+{"divergencias":[{"titulo":"curto (bandeira + dia)","banco":0,"sistema":0,"diferenca":0,"motivo":"explicação com bruto/taxa/líquido","gravidade":"media"}],"observacao":"resumo geral curto"}`
 
-  const user = `RECEBIVEIS:\n${JSON.stringify(c)}\n\nBANCO (créditos de cartão):\n${JSON.stringify(b)}`
+  const user = `ADQUIRENTE (Equals):\n${JSON.stringify(a)}\n\nBANCO (créditos):\n${JSON.stringify(b)}\n\nRECEBIVEIS (ERP):\n${JSON.stringify(c)}`
 
   let parsed: any = null
   try {

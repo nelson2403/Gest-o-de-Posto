@@ -106,6 +106,8 @@ function computeAuto(banco: LinhaBanco[], sistema: LinhaSistema[], conc: Concil[
 type SugIA = { banco: string[]; sistema: string[]; motivo: string; confianca: 'alta' | 'media' | 'baixa' }
 type Divergencia = { titulo: string; banco: number; sistema: number; diferenca: number; motivo: string; gravidade: 'alta' | 'media' | 'baixa' }
 type DetItem = { id: string; valor: number; documento: string | null; pessoa: string | null; hora: string | null }
+type AdqItem = { liquida: string; venda: string | null; bandeira: string; bruto: number; taxa: number; liquido: number; antecipacao: number; ok: boolean }
+const normBand = (s: string) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 
 export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: PostoRow[]; comIA?: boolean }) {
   const [postoId, setPostoId] = useState(postos[0]?.id ?? '')
@@ -131,6 +133,7 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
   const [divLoading, setDivLoading] = useState(false)
   const [divergencias, setDivergencias] = useState<Divergencia[]>([])
   const [divObs, setDivObs] = useState<string | null>(null)
+  const [adq, setAdq] = useState<AdqItem[]>([])
 
   useEffect(() => {
     if (!postoId) { setContas([]); setContaId(''); return }
@@ -155,7 +158,7 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
 
   async function buscar() {
     if (!contaId) { setErro('Selecione a conta bancária.'); return }
-    setLoading(true); setErro(null); setAviso(null); setSelBanco(new Set()); setSelSistema(new Set())
+    setLoading(true); setErro(null); setAviso(null); setSelBanco(new Set()); setSelSistema(new Set()); setAdq([]); setDivergencias([]); setDivObs(null)
     try {
       let d: any = null
       if (arquivo) {
@@ -172,6 +175,12 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
       }
       if (!d) throw new Error('Resposta vazia do servidor.')
       setDados(d); setConc(d.conciliacoes ?? [])
+      // Extrato da adquirente (Equals) do mesmo período/conta
+      try {
+        const pa = new URLSearchParams({ conta_id: contaId, data_ini: d.periodo.ini, data_fim: d.periodo.fim })
+        const ra = await fetch(`/api/caixa/conciliacao/adquirente?${pa}`, { cache: 'no-store' })
+        const ja = await ra.json(); setAdq(ra.ok ? (ja.itens ?? []) : [])
+      } catch { setAdq([]) }
       // Auto-conciliação por soma (revisável) — roda com os dados recém-carregados.
       const grupos = computeAuto(d.banco, d.sistema, d.conciliacoes ?? [])
       if (grupos.length) {
@@ -210,6 +219,28 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
     return m
   }, [cartoesVisiveis])
   const cartoesPorDia = useMemo(() => [...cartoesPorLiquida.entries()].sort((a, b) => a[0].localeCompare(b[0])), [cartoesPorLiquida])
+
+  // Adquirente (Equals): resumo por dia+bandeira e lookup por (dia|bandeira|venda)
+  const adqPorDia = useMemo(() => {
+    const agg = new Map<string, Map<string, { bruto: number; liquido: number }>>()
+    for (const a of adq) {
+      if (!agg.has(a.liquida)) agg.set(a.liquida, new Map())
+      const bm = agg.get(a.liquida)!; const cur = bm.get(a.bandeira) ?? { bruto: 0, liquido: 0 }
+      cur.bruto += a.bruto; cur.liquido += a.liquido; bm.set(a.bandeira, cur)
+    }
+    return [...agg.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([dia, bm]) => [dia, [...bm.entries()].map(([bandeira, v]) => ({ bandeira, ...v })).sort((x, y) => y.bruto - x.bruto)] as [string, { bandeira: string; bruto: number; liquido: number }[]])
+  }, [adq])
+  const adqPorChave = useMemo(() => {
+    const m = new Map<string, { bruto: number; taxa: number; liquido: number }>()
+    for (const a of adq) {
+      const k = `${a.liquida}|${normBand(a.bandeira)}|${a.venda ?? ''}`
+      const cur = m.get(k) ?? { bruto: 0, taxa: a.taxa, liquido: 0 }
+      cur.bruto += a.bruto; cur.liquido += a.liquido; m.set(k, cur)
+    }
+    return m
+  }, [adq])
+  const adqDoCartao = (c: Cartao) => adqPorChave.get(`${c.liquida}|${normBand(c.bandeira)}|${c.venda}`)
 
   // Dado uma linha do banco (recebível de cartão), sugere a(s) DATA(S) da venda:
   // acha os recebíveis que caem no mesmo dia e somam o valor (filtrando a bandeira).
@@ -347,7 +378,7 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
     try {
       const r = await fetch('/api/caixa/conciliacao/ia-divergencia', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cartoes: dados.cartoes ?? [], banco: bankCards }),
+        body: JSON.stringify({ cartoes: dados.cartoes ?? [], banco: bankCards, adquirente: adq }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erro na IA')
@@ -535,6 +566,7 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
                                 <span className="text-gray-400">· venda {dataBR(c.venda)}</span>
                                 <span className="font-semibold text-gray-800">{money(c.valor)}</span>
                                 <span className="text-[11px] text-gray-400">({c.qtd} venda{c.qtd > 1 ? 's' : ''})</span>
+                                {(() => { const a = adqDoCartao(c); return a ? <span className="text-[11px] text-violet-600 font-medium">· adq: bruto {money(a.bruto)} − {a.taxa}% = líq {money(a.liquido)}</span> : null })()}
                               </button>
                               {aberto && (
                                 <div className="ml-6 my-1 border-l-2 border-amber-200 pl-3">
@@ -560,6 +592,43 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
                             </li>
                           )
                         })}
+                      </ul>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Adquirente (Equals): bruto x taxa x liquido, por dia */}
+          {comIA && adqPorDia.length > 0 && (
+            <div className="bg-violet-50 border border-violet-200 rounded-xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-violet-100 flex items-center gap-2 flex-wrap">
+                <Sparkles className="w-4 h-4 text-violet-600" />
+                <span className="text-[14px] font-bold text-violet-800">Adquirente (Equals) — o que a operadora vai pagar</span>
+                <span className="text-[11px] text-violet-500">bruto − taxa = líquido (é o que deve cair no banco)</span>
+              </div>
+              <div className="divide-y divide-violet-100 max-h-[420px] overflow-y-auto">
+                {adqPorDia.map(([dia, lista]) => {
+                  const bruto = lista.reduce((s, x) => s + x.bruto, 0); const liq = lista.reduce((s, x) => s + x.liquido, 0)
+                  return (
+                    <div key={dia} className="px-5 py-2.5">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className="text-[13px] font-bold text-gray-800">Cai em {dataBR(dia)}</span>
+                        <span className="text-[12px] text-gray-500">bruto <b>{money(bruto)}</b></span>
+                        <span className="text-[12px] text-red-500">taxa −{money(bruto - liq)}</span>
+                        <span className="text-[12px] text-violet-700 font-semibold">líquido {money(liq)}</span>
+                      </div>
+                      <ul className="ml-3 space-y-0.5">
+                        {lista.map((x, i) => (
+                          <li key={i} className="text-[12px] text-gray-600 flex items-center gap-2 flex-wrap">
+                            <CircleDot className="w-3 h-3 text-violet-400 flex-shrink-0" />
+                            <span className="font-semibold text-gray-700">{x.bandeira}</span>
+                            <span className="text-gray-400">bruto {money(x.bruto)}</span>
+                            <span className="text-red-500">− {money(x.bruto - x.liquido)}</span>
+                            <span className="font-semibold text-violet-700">= {money(x.liquido)}</span>
+                          </li>
+                        ))}
                       </ul>
                     </div>
                   )
