@@ -125,24 +125,6 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: 'Pombal Massas',
-    onlyForRoles: ['master'],
-    items: [
-      { href: '/pombal-massas',           label: 'Painel',          icon: LayoutDashboard, permission: null, hideForRoles: ['gerente'] },
-      { href: '/pombal-massas/salgados',  label: 'Salgados',        icon: Croissant,       permission: null, hideForRoles: ['gerente'] },
-      { href: '/pombal-massas/insumos',   label: 'Matérias-primas', icon: Wheat,           permission: null, hideForRoles: ['gerente'] },
-      { href: '/pombal-massas/producao',  label: 'Produção',        icon: Factory,         permission: null, hideForRoles: ['gerente'] },
-      { href: '/pombal-massas/pedidos',   label: 'Pedidos',         icon: ClipboardList,   permission: null },
-      { href: '/pombal-massas/relatorios', label: 'Relatórios',     icon: FileText,        permission: null, hideForRoles: ['gerente'] },
-    ],
-  },
-  {
-    label: 'Tarefas',
-    items: [
-      { href: '/tarefas/avulsas', label: 'Gestão de Tarefas', icon: ClipboardList, permission: 'tarefas.view' as Permission },
-    ],
-  },
-  {
     label: 'Controle Geral',
     items: [
       {

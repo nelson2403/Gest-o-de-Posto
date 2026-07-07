@@ -199,15 +199,21 @@ export function AlteracoesCaixa({ postos }: { postos: PostoRow[] }) {
     for (const g of grupos) {
       check(10)
       write(`${g.alterou}${g.terceiro ? '  (mexeu no caixa de outros)' : ''}`, { size: 12, bold: true, color: g.terceiro ? [150, 20, 20] : [30, 30, 30] })
+      const CORPDF: Record<'alteracao' | 'insercao' | 'exclusao', [number, number, number]> = {
+        alteracao: [180, 120, 20],  // âmbar
+        insercao:  [16, 130, 90],   // verde
+        exclusao:  [200, 40, 40],   // vermelho
+      }
       const secs: [keyof typeof TIPO_INFO, Alteracao[]][] = [['alteracao', g.alteracao], ['insercao', g.insercao], ['exclusao', g.exclusao]]
       for (const [tipo, lista] of secs) {
         if (!lista.length) continue
-        write(`${TIPO_INFO[tipo].label} (${lista.length})`, { size: 10, bold: true, indent: 2, color: [90, 90, 90] })
+        const cor = CORPDF[tipo]
+        write(`${TIPO_INFO[tipo].label} (${lista.length})`, { size: 10, bold: true, indent: 2, color: cor })
         for (const a of lista) {
           const corpo = tipo === 'alteracao' ? alteracaoFrase(a)
             : tipo === 'insercao' ? `Inseriu ${linhaFrase(a)}`
             : `Excluiu ${linhaFrase(a)}`
-          write(`• ${corpo}`, { size: 9, indent: 5 })
+          write(`• ${corpo}`, { size: 9, indent: 5, color: cor })
           write(`caixa de ${a.operador} · ${hora(a.quando)}${a.estacao ? ` · ${a.estacao}` : ''}`, { size: 7.5, indent: 8, color: [150, 150, 150] })
         }
       }
