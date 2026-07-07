@@ -133,6 +133,7 @@ export async function POST(
   let movimentoExtrato = 0
   let datasAS: string[] = []
   let extratoEhStone = false
+  let movLiquidoDiaStone: number | null = null  // Stone OFX: net do dia p/ recompor saldo
 
   if (isOFX) {
     // ── Parser OFX (Stone) ─────────────────────────────────────────────────
@@ -179,6 +180,7 @@ export async function POST(
 
     // Saldo: usa o LEDGERBAL do arquivo; saldo anterior = saldo − movimento líquido do dia
     const movLiquidoDia = txnsTarget.reduce((s, t) => s + t.valor, 0)
+    movLiquidoDiaStone = parseFloat(movLiquidoDia.toFixed(2))  // soma de TODAS as transações do dia
     saldoDia      = parseFloat((saldoFinal != null ? saldoFinal : movLiquidoDia).toFixed(2))
     saldoAnterior = parseFloat((saldoDia - movLiquidoDia).toFixed(2))
     extratoData   = targetDate
@@ -411,6 +413,30 @@ export async function POST(
 
   const diferenca     = parseFloat((movimentoExtrato - movimentoExterno).toFixed(2))
   const statusExtrato = !asAcessivel || Math.abs(diferenca) < 0.02 ? 'ok' : 'divergente'
+
+  // Stone via OFX: o LEDGERBAL vem 0,00 (não é o saldo real). Recompõe o saldo do
+  // dia = saldo do último extrato desta conta + movimento do dia (soma de TODAS as
+  // transações). Assim o saldo fica igual anexando OFX ou Excel. No Excel o "Saldo
+  // depois" já é o saldo real, então não mexe.
+  if (extratoEhStone && isOFX && contaBancariaId && movLiquidoDiaStone != null) {
+    try {
+      const { data: recsC } = await admin.from('tarefas_recorrentes').select('id').eq('conta_bancaria_id', contaBancariaId)
+      const recIdsC = (recsC ?? []).map((r: any) => r.id)
+      if (recIdsC.length) {
+        const { data: prev } = await admin.from('tarefas')
+          .select('extrato_saldo_dia')
+          .in('tarefa_recorrente_id', recIdsC)
+          .lt('extrato_data', extratoData)
+          .not('extrato_saldo_dia', 'is', null)
+          .order('extrato_data', { ascending: false })
+          .limit(1).maybeSingle()
+        if (prev && (prev as any).extrato_saldo_dia != null) {
+          saldoAnterior = Number((prev as any).extrato_saldo_dia)
+          saldoDia = parseFloat((saldoAnterior + movLiquidoDiaStone).toFixed(2))
+        }
+      }
+    } catch { /* mantém o saldo do arquivo */ }
+  }
 
   // ── Upload do arquivo ─────────────────────────────────────────────────────
   const nomeArquivo = `${id}/${extratoData}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
