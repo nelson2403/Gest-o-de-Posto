@@ -10,7 +10,7 @@ const dec = (b: unknown) => (b && Buffer.isBuffer(b) ? (b as Buffer).toString('l
 
 export interface LinhaBanco { id: string; data: string; descricao: string; valor: number }
 export interface LinhaSistema { id: string; data: string; descricao: string; valor: number; direcao: 'entrada' | 'saida' }
-export interface MatchSalvo { banco_hash: string; as_grid: string }
+export interface Conciliacao { grupo_id: string; lado: 'banco' | 'sistema'; linha_hash: string }
 
 // GET /api/caixa/conciliacao?conta_id=UUID&data_ini=YYYY-MM-DD&data_fim=YYYY-MM-DD
 export async function GET(req: Request) {
@@ -112,13 +112,13 @@ export async function GET(req: Request) {
   bancoUnicoSort(bancoUnico)
 
   // ── Conciliações já salvas (tolera tabela ainda não migrada) ──────────────
-  let matches: MatchSalvo[] = []
+  let conciliacoes: Conciliacao[] = []
   try {
     const { data: ms, error } = await admin
       .from('conciliacao_manual')
-      .select('banco_hash, as_grid')
+      .select('grupo_id, lado, linha_hash')
       .eq('conta_bancaria_id', contaId)
-    if (!error && ms) matches = ms.map((m: any) => ({ banco_hash: m.banco_hash, as_grid: m.as_grid }))
+    if (!error && ms) conciliacoes = ms as any
   } catch { /* migração 142 ainda não rodou */ }
 
   return NextResponse.json({
@@ -126,7 +126,7 @@ export async function GET(req: Request) {
     periodo: { ini: dataIni, fim: dataFim },
     banco: bancoUnico,
     sistema,
-    matches,
+    conciliacoes,
     arquivos: { total: arquivos.length, lidos: arquivosLidos, erro: arquivosErro },
   })
 }

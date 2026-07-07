@@ -1,56 +1,65 @@
 import { NextResponse } from 'next/server'
+import { randomUUID } from 'crypto'
 import { exigirRole } from '@/lib/auth-guard'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
 
-// POST /api/caixa/conciliacao/match — liga uma linha do banco a uma do sistema
+type Linha = { id: string; data?: string | null; valor?: number | null; descricao?: string | null }
+
+// POST /api/caixa/conciliacao/match — cria um GRUPO ligando N linhas do banco a
+// M linhas do sistema (ex.: 1 linha do banco = 2 baixas no sistema).
 export async function POST(req: Request) {
   const auth = await exigirRole(['master'])
   if (!auth.ok) return auth.resp
 
   const body = await req.json().catch(() => null)
   const { conta_id, posto_id, banco, sistema } = body ?? {}
-  if (!conta_id || !banco?.id || !sistema?.id) {
-    return NextResponse.json({ error: 'conta_id, banco e sistema são obrigatórios' }, { status: 400 })
+  const bancoLinhas: Linha[] = Array.isArray(banco) ? banco : []
+  const sistemaLinhas: Linha[] = Array.isArray(sistema) ? sistema : []
+  if (!conta_id || bancoLinhas.length === 0 || sistemaLinhas.length === 0) {
+    return NextResponse.json({ error: 'Selecione ao menos uma linha do banco e uma do sistema.' }, { status: 400 })
   }
 
   const admin = createAdminClient()
-  // Relação 1:1 — remove qualquer vínculo anterior de qualquer um dos lados.
-  await admin.from('conciliacao_manual').delete().eq('conta_bancaria_id', conta_id).eq('banco_hash', banco.id)
-  await admin.from('conciliacao_manual').delete().eq('conta_bancaria_id', conta_id).eq('as_grid', sistema.id)
+  // Cada linha só pode estar em um grupo — remove vínculos anteriores das linhas escolhidas.
+  const bancoIds = bancoLinhas.map(l => l.id)
+  const sistemaIds = sistemaLinhas.map(l => l.id)
+  await admin.from('conciliacao_manual').delete().eq('conta_bancaria_id', conta_id).eq('lado', 'banco').in('linha_hash', bancoIds)
+  await admin.from('conciliacao_manual').delete().eq('conta_bancaria_id', conta_id).eq('lado', 'sistema').in('linha_hash', sistemaIds)
 
-  const { error } = await admin.from('conciliacao_manual').insert({
+  const grupo_id = randomUUID()
+  const linhas = [
+    ...bancoLinhas.map(l => ({ lado: 'banco', l })),
+    ...sistemaLinhas.map(l => ({ lado: 'sistema', l })),
+  ].map(({ lado, l }) => ({
     conta_bancaria_id: conta_id,
     posto_id:          posto_id ?? null,
-    banco_hash:        banco.id,
-    banco_data:        banco.data ?? null,
-    banco_valor:       banco.valor ?? null,
-    banco_descricao:   banco.descricao ?? null,
-    as_grid:           sistema.id,
-    as_data:           sistema.data ?? null,
-    as_valor:          sistema.valor ?? null,
-    as_descricao:      sistema.descricao ?? null,
+    grupo_id,
+    lado,
+    linha_hash:        l.id,
+    linha_data:        l.data ?? null,
+    linha_valor:       l.valor ?? null,
+    linha_descricao:   l.descricao ?? null,
     conciliado_por:    auth.user.id,
-  })
+  }))
+
+  const { error } = await admin.from('conciliacao_manual').insert(linhas)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, grupo_id })
 }
 
-// DELETE /api/caixa/conciliacao/match — desfaz o vínculo (por banco_hash ou as_grid)
+// DELETE /api/caixa/conciliacao/match — desfaz um grupo inteiro (por grupo_id)
 export async function DELETE(req: Request) {
   const auth = await exigirRole(['master'])
   if (!auth.ok) return auth.resp
 
   const body = await req.json().catch(() => null)
-  const { conta_id, banco_hash, as_grid } = body ?? {}
-  if (!conta_id || (!banco_hash && !as_grid)) {
-    return NextResponse.json({ error: 'conta_id e banco_hash ou as_grid são obrigatórios' }, { status: 400 })
-  }
+  const { conta_id, grupo_id } = body ?? {}
+  if (!conta_id || !grupo_id) return NextResponse.json({ error: 'conta_id e grupo_id são obrigatórios' }, { status: 400 })
+
   const admin = createAdminClient()
-  let q = admin.from('conciliacao_manual').delete().eq('conta_bancaria_id', conta_id)
-  q = banco_hash ? q.eq('banco_hash', banco_hash) : q.eq('as_grid', as_grid)
-  const { error } = await q
+  const { error } = await admin.from('conciliacao_manual').delete().eq('conta_bancaria_id', conta_id).eq('grupo_id', grupo_id)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   return NextResponse.json({ success: true })
 }
