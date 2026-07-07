@@ -11,6 +11,30 @@ const dec = (b: unknown) => (b && Buffer.isBuffer(b) ? (b as Buffer).toString('l
 export interface LinhaBanco { id: string; data: string; descricao: string; valor: number }
 export interface LinhaSistema { id: string; data: string; descricao: string; documento: string | null; valor: number; direcao: 'entrada' | 'saida' }
 export interface Conciliacao { grupo_id: string; lado: 'banco' | 'sistema'; linha_hash: string; baixado_em: string | null }
+export interface CartaoLiquida { liquida: string; bandeira: string; venda: string; valor: number; qtd: number }
+
+// Recebíveis de cartão que LIQUIDAM no período (vencto), com a data da VENDA e a
+// bandeira — responde "de qual dia é o cartão que devo baixar". Só faz sentido em
+// conta de adquirente (Stone etc.); em banco comum retorna vazio.
+export async function cartoesLiquidando(emp: number, ini: string, fim: string): Promise<CartaoLiquida[]> {
+  try {
+    const rows = await queryAS<any>(
+      `SELECT convert_to(coalesce(mo.nome,''),'LATIN1') bandeira,
+              to_char(m.data,'YYYY-MM-DD') AS venda, to_char(m.vencto,'YYYY-MM-DD') AS liquida,
+              sum(m.valor)::float AS valor, count(*) AS qtd
+         FROM movto m JOIN motivo_movto mo ON mo.grid = m.motivo
+        WHERE m.empresa = $1 AND m.vencto BETWEEN $2 AND $3
+          AND (mo.nome ILIKE '%VISA%' OR mo.nome ILIKE '%MASTER%' OR mo.nome ILIKE '%ELO%'
+               OR mo.nome ILIKE '%HIPER%' OR mo.nome ILIKE '%AMEX%' OR mo.nome ILIKE '%CART%')
+          AND mo.nome NOT ILIKE 'RECEBIMENTO%' AND mo.nome NOT ILIKE 'AJUSTE%'
+        GROUP BY 1, 2, 3 ORDER BY liquida, bandeira, venda`,
+      [emp, ini, fim],
+    )
+    return rows.map(r => ({ liquida: r.liquida, bandeira: dec(r.bandeira), venda: r.venda, valor: Number(r.valor), qtd: Number(r.qtd) }))
+  } catch { return [] }
+}
+
+const EH_ADQUIRENTE = (banco: string | null) => /stone|cielo|rede|getnet|pagseguro|mercado|adquir|cart/i.test(String(banco || ''))
 
 // GET /api/caixa/conciliacao?conta_id=UUID&data_ini=YYYY-MM-DD&data_fim=YYYY-MM-DD
 export async function GET(req: Request) {
@@ -122,12 +146,15 @@ export async function GET(req: Request) {
     if (!error && ms) conciliacoes = ms as any
   } catch { /* migração 142 ainda não rodou */ }
 
+  const cartoes = EH_ADQUIRENTE(conta.banco) ? await cartoesLiquidando(emp, dataIni, dataFim) : []
+
   return NextResponse.json({
     conta: { id: conta.id, banco: conta.banco, numero: conta.conta, posto: (conta.posto as any)?.nome ?? '—', posto_id: conta.posto_id },
     periodo: { ini: dataIni, fim: dataFim },
     banco: bancoUnico,
     sistema,
     conciliacoes,
+    cartoes,
     arquivos: { total: arquivos.length, lidos: arquivosLidos, erro: arquivosErro },
   })
 }

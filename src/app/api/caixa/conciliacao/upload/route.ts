@@ -3,6 +3,7 @@ import { exigirRole } from '@/lib/auth-guard'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { queryAS } from '@/lib/autosystem'
 import { parseExtratoLinhas } from '@/lib/extrato-parser'
+import { cartoesLiquidando } from '../route'
 import type { LinhaBanco, LinhaSistema, Conciliacao } from '../route'
 
 export const dynamic = 'force-dynamic'
@@ -84,10 +85,13 @@ export async function POST(req: Request) {
     if (!error && ms) conciliacoes = ms as any
   } catch { /* migração 142 ainda não rodou */ }
 
+  const ehAdq = /stone|cielo|rede|getnet|pagseguro|mercado|adquir|cart/i.test(String(conta.banco || ''))
+  const cartoes = ehAdq ? await cartoesLiquidando(emp, dataIni, dataFim) : []
+
   return NextResponse.json({
     conta: { id: conta.id, banco: conta.banco, numero: conta.conta, posto: (conta.posto as any)?.nome ?? '—', posto_id: conta.posto_id },
     periodo: { ini: dataIni, fim: dataFim },
-    banco, sistema, conciliacoes,
+    banco, sistema, conciliacoes, cartoes,
     arquivos: { total: 1, lidos: 1, erro: 0 },
     origem: 'ofx',
   })

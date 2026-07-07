@@ -1,19 +1,21 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, Search, Link2Off, Wand2, Check, Building2, Cpu, Link2, Download, ClipboardCheck, CircleDot, Sparkles, X, Upload } from 'lucide-react'
+import { Loader2, Search, Link2Off, Wand2, Check, Building2, Cpu, Link2, Download, ClipboardCheck, CircleDot, Sparkles, X, Upload, CalendarClock } from 'lucide-react'
 
 type PostoRow = { id: string; nome: string }
 type Conta = { id: string; banco: string; conta: string | null }
 type LinhaBanco = { id: string; data: string; descricao: string; valor: number }
 type LinhaSistema = { id: string; data: string; descricao: string; documento: string | null; valor: number; direcao: 'entrada' | 'saida' }
 type Concil = { grupo_id: string; lado: 'banco' | 'sistema'; linha_hash: string; baixado_em: string | null }
+type Cartao = { liquida: string; bandeira: string; venda: string; valor: number; qtd: number }
 type Dados = {
   conta: { id: string; banco: string; numero: string | null; posto: string; posto_id: string | null }
   periodo: { ini: string; fim: string }
   banco: LinhaBanco[]
   sistema: LinhaSistema[]
   conciliacoes: Concil[]
+  cartoes?: Cartao[]
   arquivos: { total: number; lidos: number; erro: number }
 }
 
@@ -175,6 +177,13 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
     return [...g.values()].filter(x => x.sistema.length)
   }, [dados, conc, baixadoDoGrupo])
   const aBaixar = grupos.filter(g => !g.baixado)
+
+  // Agenda de cartões: recebíveis agrupados pelo DIA que o dinheiro cai (liquidação)
+  const cartoesPorDia = useMemo(() => {
+    const m = new Map<string, Cartao[]>()
+    for (const c of dados?.cartoes ?? []) (m.get(c.liquida) ?? m.set(c.liquida, []).get(c.liquida)!).push(c)
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [dados])
 
   const sugeridos = useMemo(() => {
     if (!dados) return new Map<string, string>()
@@ -430,6 +439,41 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
                   )
                 })}
               </ul>
+            </div>
+          )}
+
+          {/* Agenda de cartões: de qual dia é o cartão que cai no banco (só com IA) */}
+          {comIA && cartoesPorDia.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-amber-100 flex items-center gap-2">
+                <CalendarClock className="w-4 h-4 text-amber-600" />
+                <span className="text-[14px] font-bold text-amber-800">Cartões a baixar — por dia que o dinheiro cai</span>
+                <span className="text-[11px] text-amber-500">o valor que cai no banco vem destas vendas (data da venda × bandeira)</span>
+              </div>
+              <div className="divide-y divide-amber-100 max-h-[420px] overflow-y-auto">
+                {cartoesPorDia.map(([dia, lista]) => {
+                  const tot = lista.reduce((s, c) => s + c.valor, 0)
+                  return (
+                    <div key={dia} className="px-5 py-2.5">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[13px] font-bold text-gray-800">Cai em {dataBR(dia)}</span>
+                        <span className="text-[12px] text-amber-700 font-semibold">total {money(tot)}</span>
+                      </div>
+                      <ul className="ml-3 space-y-0.5">
+                        {lista.map((c, i) => (
+                          <li key={i} className="text-[12px] text-gray-600 flex items-center gap-2 flex-wrap">
+                            <CircleDot className="w-3 h-3 text-amber-400 flex-shrink-0" />
+                            <span className="font-semibold text-gray-700">{c.bandeira}</span>
+                            <span className="text-gray-400">· venda {dataBR(c.venda)}</span>
+                            <span className="font-semibold text-gray-800">{money(c.valor)}</span>
+                            {c.qtd > 1 && <span className="text-[11px] text-gray-400">({c.qtd} lançtos)</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
 
