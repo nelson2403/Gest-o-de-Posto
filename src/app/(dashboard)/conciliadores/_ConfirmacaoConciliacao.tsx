@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, Search, Link2Off, Wand2, Check, Building2, Cpu, Link2, Download, ClipboardCheck, CircleDot, Sparkles, X, Upload, CalendarClock } from 'lucide-react'
+import { Loader2, Search, Link2Off, Wand2, Check, Building2, Cpu, Link2, CircleDot, Sparkles, X, Upload, CalendarClock, ChevronRight, ChevronDown, AlertTriangle } from 'lucide-react'
 
 type PostoRow = { id: string; nome: string }
 type Conta = { id: string; banco: string; conta: string | null }
@@ -97,6 +97,8 @@ function computeAuto(banco: LinhaBanco[], sistema: LinhaSistema[], conc: Concil[
 }
 
 type SugIA = { banco: string[]; sistema: string[]; motivo: string; confianca: 'alta' | 'media' | 'baixa' }
+type Divergencia = { titulo: string; banco: number; sistema: number; diferenca: number; motivo: string; gravidade: 'alta' | 'media' | 'baixa' }
+type DetItem = { id: string; valor: number; documento: string | null; pessoa: string | null; hora: string | null }
 
 export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: PostoRow[]; comIA?: boolean }) {
   const [postoId, setPostoId] = useState(postos[0]?.id ?? '')
@@ -116,6 +118,12 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
   const [iaLoading, setIaLoading] = useState(false)
   const [iaSug, setIaSug] = useState<SugIA[]>([])
   const [iaObs, setIaObs] = useState<string | null>(null)
+  const [expDet, setExpDet] = useState<Set<string>>(new Set())
+  const [detCache, setDetCache] = useState<Record<string, DetItem[]>>({})
+  const [detLoading, setDetLoading] = useState<string | null>(null)
+  const [divLoading, setDivLoading] = useState(false)
+  const [divergencias, setDivergencias] = useState<Divergencia[]>([])
+  const [divObs, setDivObs] = useState<string | null>(null)
 
   useEffect(() => {
     if (!postoId) { setContas([]); setContaId(''); return }
@@ -172,24 +180,8 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
 
   const grupoDe = useMemo(() => { const m = new Map<string, string>(); for (const c of conc) m.set(`${c.lado}:${c.linha_hash}`, c.grupo_id); return m }, [conc])
   const corDoGrupo = useMemo(() => { const m = new Map<string, string>(); let i = 0; for (const c of conc) if (!m.has(c.grupo_id)) m.set(c.grupo_id, CORES[i++ % CORES.length]); return m }, [conc])
-  const baixadoDoGrupo = useMemo(() => { const m = new Map<string, boolean>(); for (const c of conc) if (c.baixado_em) m.set(c.grupo_id, true); return m }, [conc])
   const bancoGrupo = (id: string) => grupoDe.get(`banco:${id}`)
   const sistGrupo  = (id: string) => grupoDe.get(`sistema:${id}`)
-
-  // Grupos montados (para o painel "Baixar no AUTOSYSTEM")
-  const grupos = useMemo(() => {
-    if (!dados) return [] as { grupo_id: string; banco: LinhaBanco[]; sistema: LinhaSistema[]; baixado: boolean }[]
-    const mB = new Map(dados.banco.map(b => [b.id, b])); const mS = new Map(dados.sistema.map(s => [s.id, s]))
-    const g = new Map<string, { grupo_id: string; banco: LinhaBanco[]; sistema: LinhaSistema[]; baixado: boolean }>()
-    for (const c of conc) {
-      if (!g.has(c.grupo_id)) g.set(c.grupo_id, { grupo_id: c.grupo_id, banco: [], sistema: [], baixado: !!baixadoDoGrupo.get(c.grupo_id) })
-      const grp = g.get(c.grupo_id)!
-      if (c.lado === 'banco') { const b = mB.get(c.linha_hash); if (b) grp.banco.push(b) }
-      else { const s = mS.get(c.linha_hash); if (s) grp.sistema.push(s) }
-    }
-    return [...g.values()].filter(x => x.sistema.length)
-  }, [dados, conc, baixadoDoGrupo])
-  const aBaixar = grupos.filter(g => !g.baixado)
 
   // Agenda de cartões: recebíveis agrupados pelo DIA que o dinheiro cai (liquidação)
   const cartoesPorLiquida = useMemo(() => {
@@ -282,17 +274,6 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
     } catch (e: any) { setErro(e.message) } finally { setSalvando(false) }
   }
 
-  async function marcarBaixado(grupoId: string, baixado: boolean) {
-    setSalvando(true)
-    try {
-      await fetch('/api/caixa/conciliacao/baixar', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conta_id: contaId, grupo_id: grupoId, baixado }),
-      })
-      setConc(prev => prev.map(c => c.grupo_id === grupoId ? { ...c, baixado_em: baixado ? new Date().toISOString() : null } : c))
-    } catch (e: any) { setErro(e.message) } finally { setSalvando(false) }
-  }
-
   async function analisarIA() {
     if (!dados) return
     const bPend = dados.banco.filter(b => !bancoGrupo(b.id)).map(b => ({ id: b.id, data: b.data, descricao: b.descricao, valor: b.valor }))
@@ -323,30 +304,36 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
   }
   function descartarIA(idx: number) { setIaSug(prev => prev.filter((_, i) => i !== idx)) }
 
-  async function exportarPDF() {
-    if (!dados || !aBaixar.length) return
-    const { jsPDF } = await import('jspdf')
-    const doc = new jsPDF({ unit: 'mm', format: 'a4' })
-    const M = 14, MAX_Y = 285; let y = 16
-    const check = (h: number) => { if (y + h > MAX_Y) { doc.addPage(); y = 16 } }
-    const w = (t: string, o: { s?: number; b?: boolean; c?: [number, number, number]; ind?: number } = {}) => {
-      const { s = 9, b = false, c = [40, 40, 40], ind = 0 } = o
-      doc.setFont('helvetica', b ? 'bold' : 'normal'); doc.setFontSize(s); doc.setTextColor(...c)
-      for (const ln of doc.splitTextToSize(t, 180 - ind) as string[]) { check(s * 0.5); doc.text(ln, M + ind, y); y += s * 0.5 + 1.4 }
+  const keyCartao = (c: Cartao) => `${c.liquida}|${c.venda}|${c.bandeira}`
+  async function toggleDetalhe(c: Cartao) {
+    const k = keyCartao(c)
+    const abrir = !expDet.has(k)
+    setExpDet(prev => { const n = new Set(prev); abrir ? n.add(k) : n.delete(k); return n })
+    if (abrir && !detCache[k]) {
+      setDetLoading(k)
+      try {
+        const p = new URLSearchParams({ conta_id: contaId, liquida: c.liquida, venda: c.venda, bandeira: c.bandeira })
+        const r = await fetch(`/api/caixa/conciliacao/cartoes-detalhe?${p}`, { cache: 'no-store' })
+        const j = await r.json()
+        if (r.ok) setDetCache(prev => ({ ...prev, [k]: j.itens ?? [] }))
+      } catch { /* ignora */ } finally { setDetLoading(null) }
     }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(150, 20, 20)
-    doc.text('Baixar no AUTOSYSTEM', M, y); y += 7
-    w(`${dados.conta.posto} — ${dados.conta.banco}${dados.conta.numero ? ` (${dados.conta.numero})` : ''}   ·   ${dataBR(dados.periodo.ini)} a ${dataBR(dados.periodo.fim)}`, { s: 11, c: [50, 50, 50] })
-    w(`Gerado em ${new Date().toLocaleString('pt-BR')}  ·  ${aBaixar.length} conciliação(ões) a baixar`, { s: 8, c: [140, 140, 140] }); y += 2
-    for (const g of aBaixar) {
-      check(10)
-      const tot = g.sistema.reduce((s, x) => s + x.valor, 0)
-      const ref = g.banco.map(b => `${dataBR(b.data)} ${money(b.valor)}`).join(' + ')
-      w(`Banco: ${ref}  →  baixar ${money(tot)} no sistema:`, { s: 9, b: true, c: [20, 20, 20] })
-      for (const s of g.sistema) w(`• ${dataBR(s.data)}  ${money(s.valor)}  ${s.documento ? `[doc ${s.documento}] ` : ''}${s.descricao}`, { s: 8.5, ind: 4, c: [60, 60, 60] })
-      y += 2
-    }
-    doc.save(`baixar-autosystem-${dados.conta.posto.replace(/[^\w]+/g, '_')}-${dados.periodo.ini}.pdf`)
+  }
+
+  async function analisarDivergencias() {
+    if (!dados) return
+    const bankCards = dados.banco.filter(b => b.valor > 0 && bandeiraFiltro(b.descricao)).map(b => ({ data: b.data, descricao: b.descricao, valor: b.valor }))
+    setDivLoading(true); setErro(null); setDivObs(null); setDivergencias([])
+    try {
+      const r = await fetch('/api/caixa/conciliacao/ia-divergencia', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cartoes: dados.cartoes ?? [], banco: bankCards }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Erro na IA')
+      setDivergencias(j.divergencias ?? [])
+      setDivObs((j.divergencias?.length ? `${j.divergencias.length} divergência(s) possível(is) — confira.` : 'Nenhuma divergência aparente entre banco e recebíveis.') + (j.observacao ? `  ·  ${j.observacao}` : ''))
+    } catch (e: any) { setErro(e.message) } finally { setDivLoading(false) }
   }
 
   const selInfo = useMemo(() => {
@@ -362,15 +349,16 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
     return {
       somaB: dados.banco.reduce((s, b) => s + b.valor, 0), somaS: dados.sistema.reduce((s, x) => s + x.valor, 0),
       grupos: gr, pendB: dados.banco.filter(b => !grupoDe.get(`banco:${b.id}`)).length,
-      pendS: dados.sistema.filter(s => !grupoDe.get(`sistema:${s.id}`)).length, aBaixar: aBaixar.length,
+      pendS: dados.sistema.filter(s => !grupoDe.get(`sistema:${s.id}`)).length,
     }
-  }, [dados, conc, grupoDe, aBaixar])
+  }, [dados, conc, grupoDe])
 
   return (
     <div className="p-4 md:p-6 space-y-5 pb-24">
       <p className="text-[13px] text-gray-500">
         Extrato do <b>banco</b> × <b>AUTOSYSTEM</b>. O sistema já <b>auto-concilia por soma</b> (1 linha = soma de várias)
-        quando o valor fecha sem ambiguidade; você revisa. Depois, o painel <b>Baixar no AUTOSYSTEM</b> te avisa o que baixar no ERP.
+        quando o valor fecha sem ambiguidade; você revisa. Na agenda de <b>Cartões a baixar</b>, clique num dia para ver
+        venda por venda e as divergências apontadas pela IA.
       </p>
 
       {/* Filtros */}
@@ -413,12 +401,11 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
 
       {dados && totais && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Card label="Total banco" valor={money(totais.somaB)} cls="text-blue-700" />
             <Card label="Total sistema" valor={money(totais.somaS)} cls="text-indigo-700" />
             <Card label="Conciliações" valor={String(totais.grupos)} cls="text-emerald-600" />
             <Card label="Pendentes (banco/sist.)" valor={`${totais.pendB} / ${totais.pendS}`} cls="text-amber-600" />
-            <Card label="A baixar no AUTOSYSTEM" valor={String(totais.aBaixar)} cls="text-rose-700" />
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
@@ -476,12 +463,39 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
           {/* Agenda de cartões: de qual dia é o cartão que cai no banco (só com IA) */}
           {comIA && cartoesPorDia.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-amber-100 flex items-center gap-2">
+              <div className="px-5 py-3 border-b border-amber-100 flex items-center gap-2 flex-wrap">
                 <CalendarClock className="w-4 h-4 text-amber-600" />
                 <span className="text-[14px] font-bold text-amber-800">Cartões a baixar — por dia que o dinheiro cai</span>
-                <span className="text-[11px] text-amber-500">o valor que cai no banco vem destas vendas (data da venda × bandeira)</span>
+                <span className="text-[11px] text-amber-500">clique num cartão para ver venda por venda</span>
+                <button onClick={analisarDivergencias} disabled={divLoading}
+                  className="ml-auto px-3 py-1.5 bg-violet-600 text-white rounded-lg text-[12px] font-medium hover:bg-violet-700 disabled:opacity-50 flex items-center gap-1.5">
+                  {divLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Divergências (IA)
+                </button>
               </div>
-              <div className="divide-y divide-amber-100 max-h-[420px] overflow-y-auto">
+
+              {divObs && (
+                <div className="px-5 py-2 bg-violet-50 border-b border-violet-100 text-[12px] text-violet-700 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 flex-shrink-0" />{divObs}</div>
+              )}
+              {divergencias.length > 0 && (
+                <ul className="divide-y divide-violet-100 bg-violet-50/50 border-b border-violet-100">
+                  {divergencias.map((d, i) => {
+                    const cor = d.gravidade === 'alta' ? 'bg-red-100 text-red-700' : d.gravidade === 'media' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+                    return (
+                      <li key={i} className="px-5 py-2 text-[12px]">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <AlertTriangle className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
+                          <span className="font-semibold text-gray-800">{d.titulo}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${cor}`}>{d.gravidade}</span>
+                          {!!d.diferenca && <span className="text-gray-500">banco {money(d.banco)} × sistema {money(d.sistema)} = <b className="text-red-600">{money(d.diferenca)}</b></span>}
+                        </div>
+                        <p className="text-gray-600 ml-5">{d.motivo}</p>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+
+              <div className="divide-y divide-amber-100 max-h-[460px] overflow-y-auto">
                 {cartoesPorDia.map(([dia, lista]) => {
                   const tot = lista.reduce((s, c) => s + c.valor, 0)
                   return (
@@ -490,16 +504,42 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
                         <span className="text-[13px] font-bold text-gray-800">Cai em {dataBR(dia)}</span>
                         <span className="text-[12px] text-amber-700 font-semibold">total {money(tot)}</span>
                       </div>
-                      <ul className="ml-3 space-y-0.5">
-                        {lista.map((c, i) => (
-                          <li key={i} className="text-[12px] text-gray-600 flex items-center gap-2 flex-wrap">
-                            <CircleDot className="w-3 h-3 text-amber-400 flex-shrink-0" />
-                            <span className="font-semibold text-gray-700">{c.bandeira}</span>
-                            <span className="text-gray-400">· venda {dataBR(c.venda)}</span>
-                            <span className="font-semibold text-gray-800">{money(c.valor)}</span>
-                            {c.qtd > 1 && <span className="text-[11px] text-gray-400">({c.qtd} lançtos)</span>}
-                          </li>
-                        ))}
+                      <ul className="ml-1 space-y-0.5">
+                        {lista.map((c, i) => {
+                          const k = keyCartao(c); const aberto = expDet.has(k); const itens = detCache[k]
+                          return (
+                            <li key={i}>
+                              <button onClick={() => toggleDetalhe(c)} className="w-full text-left text-[12px] text-gray-600 flex items-center gap-2 flex-wrap hover:bg-amber-100/50 rounded px-1 py-0.5">
+                                {aberto ? <ChevronDown className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />}
+                                <span className="font-semibold text-gray-700">{c.bandeira}</span>
+                                <span className="text-gray-400">· venda {dataBR(c.venda)}</span>
+                                <span className="font-semibold text-gray-800">{money(c.valor)}</span>
+                                <span className="text-[11px] text-gray-400">({c.qtd} venda{c.qtd > 1 ? 's' : ''})</span>
+                              </button>
+                              {aberto && (
+                                <div className="ml-6 my-1 border-l-2 border-amber-200 pl-3">
+                                  {detLoading === k ? (
+                                    <p className="text-[11px] text-gray-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> carregando…</p>
+                                  ) : itens && itens.length ? (
+                                    <ul className="space-y-0.5">
+                                      {itens.map(it => (
+                                        <li key={it.id} className="text-[11px] text-gray-600 flex items-center gap-2 flex-wrap">
+                                          <CircleDot className="w-2.5 h-2.5 text-amber-400 flex-shrink-0" />
+                                          <span className="font-semibold text-gray-800">{money(it.valor)}</span>
+                                          {it.documento && <span className="text-gray-400">NSU {it.documento}</span>}
+                                          {it.hora && <span className="text-gray-400">{it.hora}</span>}
+                                          {it.pessoa && <span className="text-gray-400 truncate">{it.pessoa}</span>}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    <p className="text-[11px] text-gray-400">sem detalhamento venda a venda</p>
+                                  )}
+                                </div>
+                              )}
+                            </li>
+                          )
+                        })}
                       </ul>
                     </div>
                   )
@@ -508,74 +548,19 @@ export function ConfirmacaoConciliacao({ postos, comIA = false }: { postos: Post
             </div>
           )}
 
-          {/* Painel: Baixar no AUTOSYSTEM */}
-          {grupos.length > 0 && (
-            <div className="bg-rose-50 border border-rose-200 rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-rose-100 flex items-center gap-2 flex-wrap">
-                <ClipboardCheck className="w-4 h-4 text-rose-600" />
-                <span className="text-[14px] font-bold text-rose-800">Baixar no AUTOSYSTEM</span>
-                <span className="text-[11px] text-rose-500">{aBaixar.length} pendente(s) · faça a baixa no ERP e marque como feito</span>
-                {aBaixar.length > 0 && (
-                  <button onClick={exportarPDF} className="ml-auto px-3 py-1.5 border border-rose-300 text-rose-700 rounded-lg text-[12px] font-medium hover:bg-rose-100 flex items-center gap-1.5">
-                    <Download className="w-3.5 h-3.5" /> Exportar PDF
-                  </button>
-                )}
-              </div>
-              {aBaixar.length === 0 ? (
-                <p className="px-5 py-6 text-center text-[13px] text-emerald-700 font-medium">Tudo baixado ✓</p>
-              ) : (
-                <ul className="divide-y divide-rose-100">
-                  {aBaixar.map(g => {
-                    const tot = g.sistema.reduce((s, x) => s + x.valor, 0)
-                    return (
-                      <li key={g.grupo_id} className="px-5 py-3">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[12px] text-gray-500">Banco:</span>
-                          {g.banco.map(b => <span key={b.id} className="text-[12px] text-gray-600">{dataBR(b.data)} <b>{money(b.valor)}</b></span>)}
-                          <span className="text-gray-300">→</span>
-                          <span className="text-[13px] font-bold text-rose-800">baixar {money(tot)}</span>
-                          <button onClick={() => marcarBaixado(g.grupo_id, true)} disabled={salvando}
-                            className="ml-auto px-3 py-1 bg-emerald-600 text-white rounded-lg text-[12px] font-medium hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1">
-                            <Check className="w-3.5 h-3.5" /> Já baixei
-                          </button>
-                        </div>
-                        <ul className="mt-1.5 ml-3 space-y-0.5">
-                          {g.sistema.map(s => (
-                            <li key={s.id} className="text-[12px] text-gray-600 flex items-center gap-2">
-                              <CircleDot className="w-3 h-3 text-rose-400 flex-shrink-0" />
-                              <span className="text-gray-400 w-[52px] flex-shrink-0">{dataBR(s.data)}</span>
-                              <span className="font-semibold text-gray-700 flex-shrink-0">{money(s.valor)}</span>
-                              {s.documento && <span className="text-[11px] text-gray-400 flex-shrink-0">doc {s.documento}</span>}
-                              <span className="truncate">{s.descricao}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-              {grupos.some(g => g.baixado) && (
-                <div className="px-5 py-2 border-t border-rose-100 text-[12px] text-gray-500">
-                  {grupos.filter(g => g.baixado).length} já baixado(s) no AUTOSYSTEM ✓
-                </div>
-              )}
-            </div>
-          )}
-
           {/* D-Para */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Coluna titulo="Extrato do banco" icone={<Building2 className="w-4 h-4 text-blue-500" />} vazio="Nenhuma linha do banco no período (extrato anexado?)">
               {dados.banco.map(b => { const g = bancoGrupo(b.id)
                 return <Linha key={b.id} data={b.data} descricao={b.descricao} valor={b.valor}
-                  conciliado={!!g} cor={g ? corDoGrupo.get(g) : undefined} baixado={g ? !!baixadoDoGrupo.get(g) : false} sugerido={sugeridos.has(b.id)} selecionado={selBanco.has(b.id)}
+                  conciliado={!!g} cor={g ? corDoGrupo.get(g) : undefined} sugerido={sugeridos.has(b.id)} selecionado={selBanco.has(b.id)}
                   dica={comIA && !g ? dicaVenda(b) : undefined}
                   onToggle={() => toggle('banco', b.id)} onDesfazer={g ? () => desfazerGrupo(g) : undefined} /> })}
             </Coluna>
             <Coluna titulo="Extrato do AUTOSYSTEM" icone={<Cpu className="w-4 h-4 text-indigo-500" />} vazio="Nenhum lançamento na conta no período">
               {dados.sistema.map(s => { const g = sistGrupo(s.id)
                 return <Linha key={s.id} data={s.data} descricao={s.descricao} valor={s.valor}
-                  conciliado={!!g} cor={g ? corDoGrupo.get(g) : undefined} baixado={g ? !!baixadoDoGrupo.get(g) : false} sugerido={sugBySist.has(s.id)} selecionado={selSistema.has(s.id)}
+                  conciliado={!!g} cor={g ? corDoGrupo.get(g) : undefined} sugerido={sugBySist.has(s.id)} selecionado={selSistema.has(s.id)}
                   onToggle={() => toggle('sistema', s.id)} onDesfazer={g ? () => desfazerGrupo(g) : undefined} /> })}
             </Coluna>
           </div>
@@ -633,9 +618,9 @@ function Coluna({ titulo, icone, vazio, children }: { titulo: string; icone: Rea
   )
 }
 
-function Linha({ data, descricao, valor, conciliado, cor, baixado, sugerido, selecionado, dica, onToggle, onDesfazer }: {
+function Linha({ data, descricao, valor, conciliado, cor, sugerido, selecionado, dica, onToggle, onDesfazer }: {
   data: string; descricao: string; valor: number
-  conciliado: boolean; cor?: string; baixado: boolean; sugerido: boolean; selecionado: boolean
+  conciliado: boolean; cor?: string; sugerido: boolean; selecionado: boolean
   dica?: string | null
   onToggle: () => void; onDesfazer?: () => void
 }) {
@@ -644,7 +629,7 @@ function Linha({ data, descricao, valor, conciliado, cor, baixado, sugerido, sel
   return (
     <div className={`px-3 py-2 flex items-center gap-2.5 text-[13px] ${bg}`}>
       {conciliado ? (
-        baixado ? <ClipboardCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" /> : <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+        <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
       ) : (
         <input type="checkbox" checked={selecionado} onChange={onToggle} className="w-4 h-4 rounded accent-emerald-600 flex-shrink-0 cursor-pointer mt-0.5 self-start" />
       )}
