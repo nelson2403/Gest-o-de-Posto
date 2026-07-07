@@ -41,7 +41,7 @@ export async function GET(req: Request) {
       `SELECT DISTINCT conta_creditar c FROM movto WHERE empresa=$1 AND conta_debitar=$2 AND conta_creditar LIKE '1.3.01.%' AND data >= $3`,
       [emp, code, lookback])
     const contasReceb = map.map(r => String(r.c)).filter(Boolean)
-    if (!contasReceb.size) return NextResponse.json({ itens: [] })
+    if (!contasReceb.length) return NextResponse.json({ itens: [] })
 
     // Escopa pela coluna `produto` (que mapeia para a conta de recebível), não pelo
     // blob — os agregados nem sempre têm conta_debitar no texto.
