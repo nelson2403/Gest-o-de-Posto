@@ -6,17 +6,14 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return
 
-  const ehErroImagem = (msg: string) => /jpeg|jpg|\bpix\b|no pix|leptonica|tesseract|image file|internal jpeg|premature end/i.test(msg)
-
+  // NÃO derruba o processo por erro não tratado. Esses erros vêm quase sempre de
+  // código nativo/assíncrono isolado (ex.: tesseract lendo JPEG corrompido) e, como
+  // cada request do Next é independente, é melhor logar e seguir do que matar o
+  // servidor e fazer requisições sem relação (anexar extrato) falharem por minutos.
   process.on('uncaughtException', (err: unknown) => {
-    const msg = (err as { message?: string })?.message ?? String(err)
-    if (ehErroImagem(msg)) { console.error('[uncaughtException OCR/imagem ignorado]:', msg); return }
-    console.error('[uncaughtException fatal]:', err)
-    process.exit(1)
+    console.error('[uncaughtException ignorado — servidor mantido no ar]:', (err as { message?: string })?.message ?? err)
   })
-
   process.on('unhandledRejection', (reason: unknown) => {
-    const msg = (reason as { message?: string })?.message ?? String(reason)
-    console.error('[unhandledRejection]:', msg)
+    console.error('[unhandledRejection ignorado]:', (reason as { message?: string })?.message ?? reason)
   })
 }

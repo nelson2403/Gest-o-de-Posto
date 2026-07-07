@@ -29,7 +29,7 @@ const TOLERANCIA = 0.01
 
 // GET /api/monitoramento/saldos?banco=sicoob|stone — somente master
 export async function GET(req: Request) {
-  const auth = await exigirRole(['master'])
+  const auth = await exigirRole(['master', 'operador_conciliador'])
   if (!auth.ok) return auth.resp
 
   const { searchParams } = new URL(req.url)
@@ -203,7 +203,7 @@ export async function GET(req: Request) {
 
 // POST /api/monitoramento/saldos — salva a observação de uma conta (somente master)
 export async function POST(req: Request) {
-  const auth = await exigirRole(['master'])
+  const auth = await exigirRole(['master', 'operador_conciliador'])
   if (!auth.ok) return auth.resp
 
   const { conta_id, observacao } = await req.json().catch(() => ({})) as {

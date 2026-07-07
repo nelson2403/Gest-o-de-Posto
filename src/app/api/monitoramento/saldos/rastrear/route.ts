@@ -12,7 +12,7 @@ const dec = (b: unknown) => (b && Buffer.isBuffer(b) ? (b as Buffer).toString('l
 //  - sem `dia`: trajetória dia-a-dia (banco × AUTOSYSTEM × divergência) para rastrear onde a diferença entrou
 //  - com `dia`: lançamentos do AUTOSYSTEM naquele dia (linha por linha)
 export async function GET(req: Request) {
-  const auth = await exigirRole(['master'])
+  const auth = await exigirRole(['master', 'operador_conciliador'])
   if (!auth.ok) return auth.resp
 
   const { searchParams } = new URL(req.url)

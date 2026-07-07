@@ -81,8 +81,8 @@ export const PERMISSIONS = {
   'implantacao.edit':   ['master', 'adm_financeiro'],
   'implantacao.delete': ['master', 'adm_financeiro'],
 
-  // AnyDesk
-  'anydesk.view':   [...ACESSO_ALL, 'rh'],
+  // AnyDesk (conciliador não vê)
+  'anydesk.view':   [...ADM_ALL, 'operador_caixa', 'rh'],
   'anydesk.create': [...ADM_ALL],
   'anydesk.edit':   [...ADM_ALL],
   'anydesk.delete': [...ADM_ALL],
@@ -146,8 +146,8 @@ export const PERMISSIONS = {
   'senhas_tef.edit':   [...ADM_ALL],
   'senhas_tef.delete': [...ADM_ALL],
 
-  // Controle de Caixas
-  'controle_caixas.view':       ['master', 'adm_financeiro', 'operador_caixa', 'operador_conciliador', 'rh', 'adm_contabil'],
+  // Controle de Caixas (conciliador não vê caixas / dinheiro / fechamento)
+  'controle_caixas.view':       ['master', 'adm_financeiro', 'operador_caixa', 'rh', 'adm_contabil'],
   'controle_caixas.configurar': ['master'],
 
   // Bobinas — somente master
@@ -158,8 +158,8 @@ export const PERMISSIONS = {
   // Audit
   'audit.view': ['master'],
 
-  // Monitoramento de integrações/sincronizações — somente master
-  'monitoramento.view': ['master'],
+  // Monitoramento / Saldos Bancários (conciliador tem acesso)
+  'monitoramento.view': ['master', 'operador_conciliador'],
 
   // Contas a Pagar — adm_contabil também (área Financeiro)
   'contas_pagar.view':        ['master', 'adm_contas_pagar', 'adm_contabil'],
