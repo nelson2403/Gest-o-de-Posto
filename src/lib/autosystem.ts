@@ -2797,8 +2797,12 @@ export async function buscarDadosCaixaFrentista(
       console.log(`[caixa-frentista] tef_transacao → ${tefRows.length} linha(s)`)
       for (const r of tefRows) {
         const op = decodeBytea(r.op_b).trim(); const bnd = decodeBytea(r.bnd_b).trim()
-        if (!op) continue
-        const chave = bnd ? `${op} - ${bnd}` : op
+        // Em alguns postos (ex.: Alterosa) o tef_transacao vem SEM operadora_nome,
+        // só com a bandeira. O `if (!op) continue` antigo descartava TODAS essas TEF
+        // e o caixa do frentista puxava quase nada. Usa a bandeira como chave nesse
+        // caso — o mapeamento por keyword classifica (Mastercard/Visa→Cartões, Pix→PIX).
+        if (!op && !bnd) continue
+        const chave = op && bnd ? `${op} - ${bnd}` : (op || bnd)
         const jaExiste = Object.keys(movto_por_forma).some(k => {
           const kl = k.toLowerCase(); const cl = chave.toLowerCase()
           return kl === cl || kl.startsWith(cl + ' ') || kl.startsWith(cl + '-')
@@ -2891,8 +2895,8 @@ export async function buscarDadosCaixaFrentista(
         for (const r of tefRows) {
           if (gap <= 0.02) break
           const op = decodeBytea(r.op_b).trim(); const bnd = decodeBytea(r.bnd_b).trim()
-          if (!op) continue
-          const chave = bnd ? `${op} - ${bnd}` : op
+          if (!op && !bnd) continue  // sem operadora E sem bandeira: não classificável
+          const chave = op && bnd ? `${op} - ${bnd}` : (op || bnd)
           const add = Math.min(Number(r.total), gap)
           movto_por_forma[`TEF ${chave}`] = (movto_por_forma[`TEF ${chave}`] ?? 0) + add
           gap = parseFloat((gap - add).toFixed(2))
