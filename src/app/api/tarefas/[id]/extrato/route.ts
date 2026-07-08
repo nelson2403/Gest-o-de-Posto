@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buscarMovtosAutosystem, calcularMovimento, buscarMovimentoContaGrupo } from '@/lib/autosystem'
+import { buscarMovtosAutosystem, calcularMovimento, buscarMovimentoContaGrupo, queryAS } from '@/lib/autosystem'
 import { datasConciliacao, intervaloDatas } from '@/lib/feriados'
 import * as XLSX from 'xlsx'
 
@@ -133,7 +133,7 @@ export async function POST(
   let movimentoExtrato = 0
   let datasAS: string[] = []
   let extratoEhStone = false
-  let movLiquidoDiaStone: number | null = null  // Stone OFX: net do dia p/ recompor saldo
+  let stoneNetPeriodo: number | null = null  // Stone OFX: net (Σ TRNAMT) de todo o período do extrato
 
   if (isOFX) {
     // ── Parser OFX (Stone) ─────────────────────────────────────────────────
@@ -178,9 +178,11 @@ export async function POST(
     movimentoExtrato = parseFloat(disponiveis.reduce((s, t) => s + t.valor, 0).toFixed(2))
     extratoEhStone = true
 
-    // Saldo: usa o LEDGERBAL do arquivo; saldo anterior = saldo − movimento líquido do dia
+    // Saldo: usa o LEDGERBAL do arquivo; saldo anterior = saldo − movimento líquido do dia.
+    // (O OFX da Stone traz LEDGERBAL=0 — o saldo real é recomposto depois, ancorado no
+    //  AUTOSYSTEM, usando o net de TODO o período do extrato.)
     const movLiquidoDia = txnsTarget.reduce((s, t) => s + t.valor, 0)
-    movLiquidoDiaStone = parseFloat(movLiquidoDia.toFixed(2))  // soma de TODAS as transações do dia
+    stoneNetPeriodo = parseFloat(txnsForDate.reduce((s, t) => s + t.valor, 0).toFixed(2))  // net de todo o período agregado
     saldoDia      = parseFloat((saldoFinal != null ? saldoFinal : movLiquidoDia).toFixed(2))
     saldoAnterior = parseFloat((saldoDia - movLiquidoDia).toFixed(2))
     extratoData   = targetDate
@@ -414,28 +416,29 @@ export async function POST(
   const diferenca     = parseFloat((movimentoExtrato - movimentoExterno).toFixed(2))
   const statusExtrato = !asAcessivel || Math.abs(diferenca) < 0.02 ? 'ok' : 'divergente'
 
-  // Stone via OFX: o LEDGERBAL vem 0,00 (não é o saldo real). Recompõe o saldo do
-  // dia = saldo do último extrato desta conta + movimento do dia (soma de TODAS as
-  // transações). Assim o saldo fica igual anexando OFX ou Excel. No Excel o "Saldo
-  // depois" já é o saldo real, então não mexe.
-  if (extratoEhStone && isOFX && contaBancariaId && movLiquidoDiaStone != null) {
+  // Stone via OFX: o LEDGERBAL vem 0,00 (não é o saldo real do banco) e o OFX não
+  // tem saldo nenhum — só o movimento (Σ TRNAMT). Não dá pra encadear extrato-com-
+  // extrato (um único OFX antigo com saldo 0 quebraria toda a cadeia). Então o saldo
+  // é ANCORADO no AUTOSYSTEM, que é a fonte de verdade do saldo:
+  //   saldo_dia = saldo_AS(no dia) + (net_do_extrato − net_do_AS no período)
+  // Assim a divergência que sobra = quanto o movimento do banco difere do que foi
+  // lançado no AUTOSYSTEM naquele período. Extrato correto E já baixado no AS → 0.
+  // Se ainda não foi baixado, a diferença aponta exatamente o que falta lançar.
+  if (extratoEhStone && isOFX && contaCodigo && empresaId && asAcessivel && stoneNetPeriodo != null) {
     try {
-      const { data: recsC } = await admin.from('tarefas_recorrentes').select('id').eq('conta_bancaria_id', contaBancariaId)
-      const recIdsC = (recsC ?? []).map((r: any) => r.id)
-      if (recIdsC.length) {
-        const { data: prev } = await admin.from('tarefas')
-          .select('extrato_saldo_dia')
-          .in('tarefa_recorrente_id', recIdsC)
-          .lt('extrato_data', extratoData)
-          .not('extrato_saldo_dia', 'is', null)
-          .order('extrato_data', { ascending: false })
-          .limit(1).maybeSingle()
-        if (prev && (prev as any).extrato_saldo_dia != null) {
-          saldoAnterior = Number((prev as any).extrato_saldo_dia)
-          saldoDia = parseFloat((saldoAnterior + movLiquidoDiaStone).toFixed(2))
-        }
-      }
-    } catch { /* mantém o saldo do arquivo */ }
+      const netASPeriodo = parseFloat(((entradasAS ?? 0) - (saidasAS ?? 0)).toFixed(2))
+      const rows = await queryAS<{ s: number }>(
+        `SELECT (COALESCE((SELECT saldo_inicial FROM conta WHERE codigo = $2), 0)
+                + COALESCE(SUM(CASE WHEN conta_debitar = $2 THEN valor
+                                    WHEN conta_creditar = $2 THEN -valor ELSE 0 END), 0))::float AS s
+           FROM movto
+          WHERE empresa = $1 AND (conta_debitar = $2 OR conta_creditar = $2) AND data <= $3`,
+        [empresaId, contaCodigo, extratoData],
+      )
+      const saldoAS_D = Number(rows[0]?.s ?? 0)
+      saldoDia      = parseFloat((saldoAS_D + (stoneNetPeriodo - netASPeriodo)).toFixed(2))
+      saldoAnterior = parseFloat((saldoDia - stoneNetPeriodo).toFixed(2))
+    } catch { /* AUTOSYSTEM indisponível — mantém o saldo do arquivo (0) */ }
   }
 
   // ── Upload do arquivo ─────────────────────────────────────────────────────
