@@ -142,6 +142,16 @@ export async function POST(
     if (!txns.length) {
       return NextResponse.json({ error: 'Arquivo OFX sem transações (STMTTRN). Verifique se é o extrato correto.' }, { status: 422 })
     }
+    // Detecta o BANCO pelo cabeçalho do OFX. NÃO é só a Stone que exporta .ofx — o
+    // Sicoob também (arquivo "Comprovante de Extrato.ofx"). Antes o código assumia
+    // Stone para TODO OFX, então um OFX do Sicoob era lido com a lógica da Stone
+    // (filtro "disponível", só entradas) e dava tudo errado / era rejeitado.
+    // Stone: FID/BANKID = 197 (0197); Sicoob: 756.
+    const ofxOrg    = (texto.match(/<ORG>\s*([^<\r\n]+)/i)    || [])[1]?.trim() || ''
+    const ofxBankId = (texto.match(/<BANKID>\s*([^<\r\n]+)/i) || [])[1]?.trim() || ''
+    const ofxFid    = (texto.match(/<FID>\s*([^<\r\n]+)/i)    || [])[1]?.trim() || ''
+    const ehStoneOFX = /stone/i.test(ofxOrg) || /^0*197$/.test(ofxBankId) || /^0*197$/.test(ofxFid)
+
     const datasNoArquivo = [...new Set(txns.map(t => t.data))]
 
     let targetDate: string
@@ -173,18 +183,27 @@ export async function POST(
     //    (depois sai via "Transferência automática" para a conta principal).
     // Então o movimento a comparar com as ENTRADAS do AUTOSYSTEM = soma dos
     // "Recebimento Disponível". (Equivale à coluna "Recebível de Cartão" do CSV.)
-    const ehDisponivel = (t: OfxTxn) => t.tipo === 'CREDIT' && /dispon/i.test(t.memo)
-    const disponiveis  = txnsForDate.filter(ehDisponivel)
-    movimentoExtrato = parseFloat(disponiveis.reduce((s, t) => s + t.valor, 0).toFixed(2))
-    extratoEhStone = true
+    if (ehStoneOFX) {
+      extratoEhStone = true
+      const ehDisponivel = (t: OfxTxn) => t.tipo === 'CREDIT' && /dispon/i.test(t.memo)
+      const disponiveis  = txnsForDate.filter(ehDisponivel)
+      movimentoExtrato = parseFloat(disponiveis.reduce((s, t) => s + t.valor, 0).toFixed(2))
 
-    // Saldo: usa o LEDGERBAL do arquivo; saldo anterior = saldo − movimento líquido do dia.
-    // (O OFX da Stone traz LEDGERBAL=0 — o saldo real é recomposto depois, ancorado no
-    //  AUTOSYSTEM, usando o net de TODO o período do extrato.)
-    const movLiquidoDia = txnsTarget.reduce((s, t) => s + t.valor, 0)
-    stoneNetPeriodo = parseFloat(txnsForDate.reduce((s, t) => s + t.valor, 0).toFixed(2))  // net de todo o período agregado
-    saldoDia      = parseFloat((saldoFinal != null ? saldoFinal : movLiquidoDia).toFixed(2))
-    saldoAnterior = parseFloat((saldoDia - movLiquidoDia).toFixed(2))
+      // Saldo: usa o LEDGERBAL do arquivo; saldo anterior = saldo − movimento líquido do dia.
+      // (O OFX da Stone às vezes traz LEDGERBAL=0 — o saldo real é recomposto depois,
+      //  ancorado no AUTOSYSTEM, usando o net de TODO o período do extrato.)
+      const movLiquidoDia = txnsTarget.reduce((s, t) => s + t.valor, 0)
+      stoneNetPeriodo = parseFloat(txnsForDate.reduce((s, t) => s + t.valor, 0).toFixed(2))  // net de todo o período agregado
+      saldoDia      = parseFloat((saldoFinal != null ? saldoFinal : movLiquidoDia).toFixed(2))
+      saldoAnterior = parseFloat((saldoDia - movLiquidoDia).toFixed(2))
+    } else {
+      // OFX de banco normal (Sicoob etc.): movimento = net de TODAS as transações do
+      // período; saldo do dia = LEDGERBAL real; saldo anterior = saldo − movimento.
+      extratoEhStone = false
+      movimentoExtrato = parseFloat(txnsForDate.reduce((s, t) => s + t.valor, 0).toFixed(2))
+      saldoDia      = parseFloat((saldoFinal != null ? saldoFinal : 0).toFixed(2))
+      saldoAnterior = saldoFinal != null ? parseFloat((saldoDia - movimentoExtrato).toFixed(2)) : 0
+    }
     extratoData   = targetDate
     datasAS       = datasAgregadas
 
