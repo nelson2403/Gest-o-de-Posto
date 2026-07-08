@@ -134,6 +134,8 @@ export async function POST(
   let datasAS: string[] = []
   let extratoEhStone = false
   let stoneNetPeriodo: number | null = null  // Stone OFX: net (Σ TRNAMT) de todo o período do extrato
+  let ofxAcctId = ''   // número da conta lido de dentro do OFX (<ACCTID>)
+  let ofxOrgNome = ''  // instituição lida do OFX (<ORG>) — p/ mensagens
 
   if (isOFX) {
     // ── Parser OFX (Stone) ─────────────────────────────────────────────────
@@ -151,6 +153,8 @@ export async function POST(
     const ofxBankId = (texto.match(/<BANKID>\s*([^<\r\n]+)/i) || [])[1]?.trim() || ''
     const ofxFid    = (texto.match(/<FID>\s*([^<\r\n]+)/i)    || [])[1]?.trim() || ''
     const ehStoneOFX = /stone/i.test(ofxOrg) || /^0*197$/.test(ofxBankId) || /^0*197$/.test(ofxFid)
+    ofxOrgNome = ofxOrg
+    ofxAcctId  = (texto.match(/<ACCTID>\s*([^<\r\n]+)/i) || [])[1]?.trim() || ''
 
     const datasNoArquivo = [...new Set(txns.map(t => t.data))]
 
@@ -363,41 +367,71 @@ export async function POST(
   const admin = createAdminClient()
   let contaCodigo: string | null = null
   let contaBanco:  string | null = null
+  let contaNumero: string | null = null
   if (contaBancariaId) {
     // Conta bancária específica da tarefa (multi-banco)
     const { data: cb } = await admin
       .from('contas_bancarias')
-      .select('codigo_conta_externo, banco')
+      .select('codigo_conta_externo, banco, conta')
       .eq('id', contaBancariaId)
       .single()
     contaCodigo = (cb as any)?.codigo_conta_externo ?? null
     contaBanco  = (cb as any)?.banco ?? null
+    contaNumero = (cb as any)?.conta ?? null
   } else if (postoId) {
     // Legado: pega o primeiro banco do posto
     const { data: contas } = await admin
       .from('contas_bancarias')
-      .select('codigo_conta_externo, banco')
+      .select('codigo_conta_externo, banco, conta')
       .eq('posto_id', postoId)
       .not('codigo_conta_externo', 'is', null)
       .limit(1)
     contaCodigo = (contas?.[0] as any)?.codigo_conta_externo ?? null
     contaBanco  = (contas?.[0] as any)?.banco ?? null
+    contaNumero = (contas?.[0] as any)?.conta ?? null
   }
 
-  // ── Valida que o BANCO do extrato bate com o BANCO da tarefa ──────────────
-  // Impede, por exemplo, comparar um extrato Stone contra a conta Sicoob da
-  // tarefa (foi o que aconteceu: extrato Stone anexado numa tarefa do Sicoob).
+  // ── Valida que a CONTA do extrato bate com a CONTA da tarefa ──────────────
+  // Stone e Sicoob exportam arquivos com o MESMO nome ("Comprovante de Extrato.ofx"),
+  // então adivinhar o banco pelo cabeçalho não basta. A fonte de verdade é o número
+  // da conta DENTRO do OFX (<ACCTID>): se bate com a conta da tarefa, é o arquivo
+  // certo; se não bate, é um extrato de outra conta anexado no lugar errado.
   if (contaBanco) {
     const contaEhStone = /stone/i.test(contaBanco)
-    if (extratoEhStone && !contaEhStone) {
+    const soDig    = (s: string | null) => (s || '').replace(/\D/g, '')
+    const acctDig  = soDig(ofxAcctId)
+    const contaDig = soDig(contaNumero)
+    const semDV    = (s: string) => s.replace(/\d$/, '')   // remove dígito verificador
+    const acctBate = !!acctDig && !!contaDig && (
+      acctDig === contaDig ||
+      semDV(acctDig) === semDV(contaDig) ||
+      acctDig === semDV(contaDig) ||
+      semDV(acctDig) === contaDig
+    )
+    const temNumeros = isOFX && !!acctDig && !!contaDig
+
+    if (temNumeros && !acctBate) {
+      // OFX de OUTRA conta anexado nesta tarefa (ex.: baixou o da Stone e anexou no Sicoob)
       return NextResponse.json({
-        error: `Este arquivo é um extrato da STONE, mas esta tarefa é de conciliação do ${contaBanco} (conta ${contaCodigo ?? '—'}). Anexe o extrato do banco correto — ou use a tarefa Stone deste posto.`,
+        error: `Este OFX é da conta ${ofxAcctId}${ofxOrgNome ? ` (${ofxOrgNome})` : ''}, mas esta tarefa é da conta ${contaNumero ?? contaCodigo ?? '—'} do ${contaBanco}. Baixe o extrato da conta certa — ou anexe este arquivo na tarefa da conta ${ofxAcctId}.`,
       }, { status: 422 })
     }
-    if (!extratoEhStone && contaEhStone) {
-      return NextResponse.json({
-        error: `Esta tarefa é de conciliação da STONE, mas o arquivo enviado não parece um extrato Stone (OFX). Anexe o extrato Stone deste posto.`,
-      }, { status: 422 })
+    if (temNumeros && acctBate) {
+      // O número da conta bate: é o arquivo certo. O banco passa a ser o da CONTA da
+      // tarefa (não a heurística de cabeçalho, que pode errar).
+      extratoEhStone = contaEhStone
+    } else {
+      // Sem número de conta pra comparar (Excel, ou OFX sem ACCTID): usa a heurística.
+      if (extratoEhStone && !contaEhStone) {
+        return NextResponse.json({
+          error: `Este arquivo é um extrato da STONE, mas esta tarefa é de conciliação do ${contaBanco} (conta ${contaCodigo ?? '—'}). Anexe o extrato do banco correto — ou use a tarefa Stone deste posto.`,
+        }, { status: 422 })
+      }
+      if (!extratoEhStone && contaEhStone) {
+        return NextResponse.json({
+          error: `Esta tarefa é de conciliação da STONE, mas o arquivo enviado não parece um extrato Stone (OFX). Anexe o extrato Stone deste posto.`,
+        }, { status: 422 })
+      }
     }
   }
 
