@@ -83,7 +83,7 @@ export async function POST(
   const { data: tarefa } = await supabase
     .from('tarefas')
     .select(`
-      id, status, categoria, posto_id, tarefa_recorrente_id,
+      id, status, categoria, posto_id, tarefa_recorrente_id, banco,
       data_conclusao_prevista,
       posto:postos(id, nome, codigo_empresa_externo),
       recorrente:tarefas_recorrentes(posto_id, conta_bancaria_id, posto:postos(id, nome, codigo_empresa_externo))
@@ -379,16 +379,26 @@ export async function POST(
     contaBanco  = (cb as any)?.banco ?? null
     contaNumero = (cb as any)?.conta ?? null
   } else if (postoId) {
-    // Legado: pega o primeiro banco do posto
+    // Recorrente sem conta_bancaria_id (ex.: recorrente Stone órfã do Sudeste, sem
+    // conta): NÃO pega a 1ª conta do posto às cegas (pegava a do Sicoob e rejeitava
+    // o extrato Stone). Casa pelo BANCO do rótulo da tarefa (tarefa.banco = "Stone").
     const { data: contas } = await admin
       .from('contas_bancarias')
       .select('codigo_conta_externo, banco, conta')
       .eq('posto_id', postoId)
       .not('codigo_conta_externo', 'is', null)
-      .limit(1)
-    contaCodigo = (contas?.[0] as any)?.codigo_conta_externo ?? null
-    contaBanco  = (contas?.[0] as any)?.banco ?? null
-    contaNumero = (contas?.[0] as any)?.conta ?? null
+    const lista = contas ?? []
+    const norm = (s: string | null) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+    const labelBanco = (tarefa as any).banco as string | null
+    const alvo = (labelBanco
+      ? lista.find((c: any) => {
+          const a = norm(c.banco), b = norm(labelBanco)
+          return a && b && (a.includes(b) || b.includes(a))
+        })
+      : null) ?? lista[0]
+    contaCodigo = (alvo as any)?.codigo_conta_externo ?? null
+    contaBanco  = (alvo as any)?.banco ?? null
+    contaNumero = (alvo as any)?.conta ?? null
   }
 
   // ── Valida que a CONTA do extrato bate com a CONTA da tarefa ──────────────
